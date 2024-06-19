@@ -1,0 +1,59 @@
+# Code to find the minimum std value of the sky
+
+# Original author:
+# Giulia Golini <giulia.golini@gmail.com>
+# Contributing author(s)
+# Copyright (C) 2020, Giulia Golini.
+#
+# This Python script is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version.
+#
+# This Python script is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+# Public License for more details. See <http://www.gnu.org/licenses/>.
+
+# System imports
+
+import os
+import pdb
+import sys
+import warnings
+
+# 3rd parties
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+
+
+filter = sys.argv[1]        # band
+start = int(sys.argv[2])
+print(start)
+end = int(sys.argv[3])
+h = str(sys.argv[4])        #n ccd
+path_images = str(sys.argv[5])
+obj = str(sys.argv[6])
+
+rms = []
+
+
+
+# Read std values
+with open(path_images + '/build/noise-sky-after-photometry/noiseSky.txt') as f:
+    for line in f:
+        values = line.split()
+        if (len(values) == 3):
+            rms.append(float(values[2]))
+        else:
+            rms.append(np.nan)
+
+rms_min = np.nanmin(rms[1:])
+
+file = open(path_images + '/build/rms_min_val-1_ccd' + h + '.txt', "w")
+file.write(str(rms_min))
+
