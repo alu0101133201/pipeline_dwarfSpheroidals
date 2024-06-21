@@ -2171,22 +2171,150 @@ fi
 
 
 # Remove intermediate folders to save some space
-rm -rf $BDIR/sub-sky-fullGrid_it1
-rm -rf $BDIR/sub-sky-smallGrid_it1
-rm -rf $BDIR/photCorrFullGrid-dir_it1
-rm -rf $BDIR/photCorrSmallGrid-dir_it1
 
-rm -rf $wdir
-rm -rf $wonlydir
-rm -rf $mowdir
-rm -rf $moonwdir
+find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+
+find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/decals-aperture-catalog_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/ourData-catalogs-apertures_it1 -type f ! -name 'done*' -exec rm {} \;
+
+find $wdir -type f ! -name 'done*' -exec rm {} \;
+find $wonlydir -type f ! -name 'done*' -exec rm {} \;
+find $mowdir -type f ! -name 'done*' -exec rm {} \;
+find $moonwdir -type f ! -name 'done*' -exec rm {} \;
+
 
 ####### ITERATION 2 ######
 
 iteration=2
 
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
-smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked
+entiredir_smallGrid=$BDIR/pointings_smallGrid
+
+smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
+maskedPointingsDone=$smallPointings_maskedDir/done_.txt
+echo maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName
+
+noiseskydir=$BDIR/noise-sky_it$iteration
+noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone # compute sky with frames masked with global mask
+
+subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
+subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
+subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir
+
+subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
+subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
+subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir
+
+imagesForCalibration=$subskySmallGrid_dir
+alphatruedir=$BDIR/alpha-stars-true_it$iteration
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $frameChosenBrickMap $decalsImagesDir $alphatruedir
+
+photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
+photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+
+applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
+applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
+
+
+# We mask again the points in order to measure (after photometric calibration) the sky accurately
+smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
+maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
+maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName
+
+
+noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
+noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone
+
+python3 find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+
+
+
+wdir=$BDIR/weight-dir_it$iteration
+wdone=$wdir/done_"$k"_ccd"$h".txt
+if ! [ -d $wdir ]; then mkdir $wdir; fi
+wonlydir=$BDIR/only-w-dir_it$iteration
+wonlydone=$wonlydir/done_"$k"_ccd"$h".txt
+if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+
+# We provide the fullGrid because we are going to combine then now
+computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskydir $iteration
+
+clippingdir=$BDIR/clipping-outliers_it$iteration
+clippingdone=$clippingdir/done_"$k".txt
+buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
+
+
+
+# Fornax. Around 490 frames. Deimos, 20 cores. Around 1 h and 15 min
+mowdir=$BDIR/weight-dir-no-outliers_it$iteration
+if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+# only weight
+moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
+if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
+mowdone=$mowdir/done_"$k"_ccd"$h".txt
+
+if [ -f $mowdone ]; then
+    echo -e "\nOutliers of the weighted images already masked\n"
+else
+  framesToRemoveOutliers=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+    framesToRemoveOutliers+=("$a")
+  done
+  printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $moonwdir $clippingdir $wdir $wonlydir
+  echo done > $mowdone 
+fi
+
+
+echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+baseCoaddir=$BDIR/coadds_it$iteration 
+buildCoadd $baseCoaddir $mowdir $moonwdir
+
+maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
+if [ -f $maskName ]; then
+  echo "The mask of the weighted coadd is already done"
+else
+  astnoisechisel $coaddName $noisechisel_param -o $maskName
+fi
+
+
+# Remove intermediate folders to save some space
+find $BDIR/sub-sky-fullGrid_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/sub-sky-smallGrid_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrFullGrid-dir_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrSmallGrid-dir_it2 -type f ! -name 'done*' -exec rm {} \;
+
+
+find $BDIR/my-catalog-halfmaxradius_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/match-decals-myData_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/decals-aperture-catalog_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/ourData-catalogs-apertures_it2 -type f ! -name 'done*' -exec rm {} \;
+
+find $BDIR/pointings_smallGrid_masked_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrSmallGrid_masked_it2 -type f ! -name 'done*' -exec rm {} \;
+
+find $wdir -type f ! -name 'done*' -exec rm {} \;
+find $wonlydir -type f ! -name 'done*' -exec rm {} \;
+find $mowdir -type f ! -name 'done*' -exec rm {} \;
+find $moonwdir -type f ! -name 'done*' -exec rm {} \;
+
+
+
+
+####### ITERATION 3 ######
+
+iteration=3
+entiredir_smallGrid=$BDIR/pointings_smallGrid
+entiredir_fullGrid=$BDIR/pointings_fullGrid
+
+# We mask the pointings in order to measure (before photometric calibration) the sky accurately
+smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName
 
@@ -2214,7 +2342,7 @@ applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
 
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
-smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked
+smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName
 
@@ -2270,13 +2398,6 @@ buildCoadd $baseCoaddir $mowdir $moonwdir
 
 
 exit 0
-
-
-
-
-
-
-
 
 
 
