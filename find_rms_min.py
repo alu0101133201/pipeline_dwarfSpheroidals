@@ -21,6 +21,7 @@ import os
 import pdb
 import sys
 import warnings
+import glob
 
 # 3rd parties
 
@@ -36,24 +37,27 @@ start = int(sys.argv[2])
 print(start)
 end = int(sys.argv[3])
 h = str(sys.argv[4])        #n ccd
-path_images = str(sys.argv[5])
-obj = str(sys.argv[6])
+noiseFilesPath = str(sys.argv[5])
+rootDir = str(sys.argv[6])
+iteration = str(sys.argv[7])
 
 rms = []
 
+noiseFiles = glob.glob(noiseFilesPath + "/entirecamera_*.txt")
+
+for file in noiseFiles:
+    try:
+        with open(file, 'r') as currentFile:
+            data = currentFile.read().split(' ')
+            rms.append(float(data[2]))
+
+    except Exception as e:
+        print(f'Error processing file {file}: {e}')
 
 
-# Read std values
-with open(path_images + '/build/noise-sky-after-photometry/noiseSky.txt') as f:
-    for line in f:
-        values = line.split()
-        if (len(values) == 3):
-            rms.append(float(values[2]))
-        else:
-            rms.append(np.nan)
 
 rms_min = np.nanmin(rms[1:])
 
-file = open(path_images + '/build/rms_min_val-1_ccd' + h + '.txt', "w")
+file = open(rootDir + '/build/rms_min_val-1_ccd' + h + '_it' + str(iteration) + '.txt', "w")
 file.write(str(rms_min))
 

@@ -2197,7 +2197,7 @@ entiredir_smallGrid=$BDIR/pointings_smallGrid
 
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-echo maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName
+maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
