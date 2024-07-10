@@ -12,7 +12,7 @@ checkIfExist_DATEOBS() {
     DATEOBSValue=$1
 
     if [ "$DATEOBSValue" = "n/a" ]; then
-        errorNumber=2
+        errorNumber=3
         echo -e "The file $i do not has the $dateHeaderKey, used for sorting the raw files for the pipeline"
         echo -e "Exiting with error number: $errorNumber"
         exit $errorNumber
@@ -158,6 +158,17 @@ divideImagesByWholeNightFlat(){
 }
 export -f divideImagesByWholeNightFlat
 
+runNoiseChiselOnFrame() {
+baseName=$1
+inputFileDir=$2
+outputDir=$3
+noiseChiselParams=$4
+
+imageToUse=$inputFileDir/$baseName
+output=$outputDir/$baseName
+astnoisechisel $imageToUse $noiseChiselParams -o $output
+}
+export -f runNoiseChiselOnFrame
 
 # Functions for Warping the frames
 getCentralCoordinate(){
@@ -325,7 +336,7 @@ getParametersFromHalfMaxRadius() {
     astnoisechisel $image -h1 -o $tmpFolder/det.fits --convolved=$tmpFolder/convolved.fits --tilesize=20,20 --detgrowquant=0.95 --erode=4 1>/dev/null
     astsegment $tmpFolder/det.fits -o $tmpFolder/seg.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3 1>/dev/null
     astmkcatalog $tmpFolder/seg.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals.txt --zeropoint=22.5 1>/dev/null
-    astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
+    astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
 
     numOfStars=$( cat $tmpFolder/match_decals_gaia.txt | wc -l )
     median=$( asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median )
@@ -351,8 +362,8 @@ chooseBrickToUse() {
         for i in $bricks; do
             brickFullName_g=$brickDir/"decal_image_"$i"_g.fits"
             brickFullName_r=$brickDir/"decal_image_"$i"_r.fits"
-            parameters_g=$(getParametersFromHalfMaxRadius $brickFullName_g "$BDIR/Gaia_eDR3.fits" $kernel $tmpFolder)
-            parameters_r=$(getParametersFromHalfMaxRadius $brickFullName_r "$BDIR/Gaia_eDR3.fits" $kernel $tmpFolder)
+            parameters_g=$(getParametersFromHalfMaxRadius $brickFullName_g "$BDIR/catalogs/"$objectName"_Gaia_eDR3.fits" $kernel $tmpFolder)
+            parameters_r=$(getParametersFromHalfMaxRadius $brickFullName_r "$BDIR/catalogs/"$objectName"_Gaia_eDR3.fits" $kernel $tmpFolder)
 
             # The following code converts the parameters obtained in the previous lines to the number format needed for numerical comparison
             # The sed - bc - awk combination is needed because the values are returned in scientific notation and I have not found an easy way of
@@ -388,6 +399,10 @@ downloadDecalsData() {
     filters=$filters
     ringFile=$ringFile
 
+    # Obtain path for running the "downloadBricksForFrame.py" python script
+    pipelinePath=`dirname "$0"`
+    pipelinePath=`( cd "$pipelinePath" && pwd )`
+
     echo -e "\n-Downloading Decals bricks"
 
     donwloadMosaicDone=$mosaicDir/decalsImages/done_downloads.txt
@@ -400,7 +415,7 @@ downloadDecalsData() {
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_$a".fits
             echo "Downloading decals bricks for image: " $base " for filters: " $filters
-            bricksOfTheFrame=$(python3 downloadBricksForFrame.py $referenceImagesForMosaic/$base $ringFile $filters $decalsImagesDir)
+            bricksOfTheFrame=$(python3 $pipelinePath/downloadBricksForFrame.py $referenceImagesForMosaic/$base $ringFile $filters $decalsImagesDir)
             echo $base $bricksOfTheFrame >> $frameBrickCorrespondenceFile         # Creating the map between frames and bricks to recover it in the photometric calibration
         done
         echo done > $donwloadMosaicDone
@@ -477,8 +492,8 @@ downloadGaiaCatalogueForField() {
     if [ -f $retcatdone ]; then
             echo -e "\ngaia dr3 catalog retrived\n"
     else
-        astquery gaia --dataset=edr3 --overlapwith=$ref --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error    -o$BDIR/Gaia_eDR3_.fits
-        asttable $BDIR/Gaia_eDR3_.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -otmp.txt
+        astquery gaia --dataset=edr3 --overlapwith=$ref --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error    -o$BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits
+        asttable $BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -otmp.txt
 
         # Here I demand that the gaia object fulfills simultaneously that:
         # 1.- Parallax > 3 times its error
@@ -486,9 +501,9 @@ downloadGaiaCatalogueForField() {
         # 3.- Proper motion (dec) > 3 times its error
         asttable tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where'    -otest_.txt
         asttable test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -otest1.txt
-        asttable test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $BDIR/Gaia_eDR3.fits
+        asttable test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
 
-        rm test1.txt tmp.txt $BDIR/Gaia_eDR3_.fits test_.txt
+        rm test1.txt tmp.txt $BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits test_.txt
         echo done > $retcatdone
     fi
 }
@@ -554,7 +569,7 @@ selectStarsAndSelectionRangeDecals() {
                 # cp $tmpFolder/decals_c.txt $decalsClumpsCat/decals_"$base"_$chosenBrick.txt
                 #
 
-                astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
+                astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
 
                 s=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
                 std=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
@@ -641,7 +656,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     astnoisechisel $i -h1 -o det_"$a".fits
     astsegment det_"$a".fits -o seg_"$a".fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
     astmkcatalog seg_"$a".fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $mycatdir/"$base".txt
-    astmatch $BDIR/Gaia_eDR3.fits --hdu=1 $mycatdir/"$base"_c.txt --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aRA,aDEC,bMAGNITUDE,bHALF_MAX_RADIUS -o$mycatdir/match_"$base"_my_gaia.txt
+    astmatch $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 $mycatdir/"$base"_c.txt --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aRA,aDEC,bMAGNITUDE,bHALF_MAX_RADIUS -o$mycatdir/match_"$base"_my_gaia.txt
 
     s=$(asttable $mycatdir/match_"$base"_my_gaia.txt -h1 -c4 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
     std=$(asttable $mycatdir/match_"$base"_my_gaia.txt -h1 -c4 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)

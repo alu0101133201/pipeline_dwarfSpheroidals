@@ -15,37 +15,85 @@
 # Filtro de luminancia, marca Astrodon
 
 
+# The functions needed for the pipeline are declared in another file (currently called "pipeline_LuM_parallel_functions.sh")
+# This file is expected to be in the same directory as the pipeline
+# The same applies to the python scripts used (for the moment find_rms_min.py and downloadBricksForFrame.py)
+
+# How the pipeline expects the data -----------------------------------------------
+
+# Two folders must exist: DATA-or and dark
+# DATA-or:
+#   Must contain the data. Each night placed in a folder called nightN where N is the number of the night
+# dark:
+#   Must contain the darks. Same format as data (i.e. nightN with N the night number)
+
+# The pipeline also will look for a 'config' folder
+# This folder must contain:
+#   · Scamp conf file
+#   · Swarp conf file
+#   · Sextractor conf files (.conv, .param and .sex)
+#   · Normalisation ring definition (.txt file)
+
+# ----------------------------------------------------------------------------------------------
+
 ORANGE='\033[0;33m'
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 NOCOLOUR='\033[0m'
 
 export ORANGE
 export GREEN
 export NOCOLOUR
 
+
+
 ########## Loading modules ##########
 echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
 module load gnuastro/0.22
-module load astronomy.net/0.93
+module load astrometry.net/0.94
 
 
 ########## Loading functions ##########
 echo -e "\n ${GREEN} ---Loading Functions--- ${NOCOLOUR}"
 
-source ./pipeline_LuM_parallel_functions.sh
+# The path from which the pipeline is unknown. The functions for the pipeline are expected
+# to be in the same folder as the pipeline, so we retrieve the path in order to run the functions file
+pipelinePath=`dirname "$0"`
+pipelinePath=`( cd "$pipelinePath" && pwd )`
+source $pipelinePath/pipeline_LuM_parallel_functions.sh
 
 
 ########## Load variables ##########
 echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
 
-confFile="./Fornax.conf"
+confFile=$1
+if [ -z $confFile ]; then
+    errorNumber=2
+    echo -e "\nA configuration file has to be provided in order to run the pipeline"
+    echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR"
+    exit $errorNumber
+fi
+
+
 source $confFile
 echo -e "Variables loaded from $confFile file\n"
 
 
+# Exporting the variables from .conf file
+export objectName
+export ra_gal
+export dec_gal
+
+export ROOTDIR
+
 echo -e "The size in px of each side of the coadded image is " $coaddSizePx
 export coaddSizePx
+
+export filter
+export detectorWidth
+export detectorHeight
+export pixelScale
 
 echo -e "\nThe running flat is going to be used?: $ORANGE $RUNNING_FLAT $NOCOLOUR"
 echo -e "If so, the running flat will be computed with a window size of " $windowSize
@@ -53,6 +101,7 @@ echo -e "\n"
 export RUNNING_FLAT
 export windowSize
 export halfWindowSize
+#
 
 
 defaultNumOfCPUs=12
@@ -62,15 +111,7 @@ if [ -z $num_cpus ]; then
 fi
 
 echo "Number of CPUs allocated: $num_cpus"
-
-export objectName
-export filter
-export ra_gal
-export dec_gal
-
-export detectorWidth
-export detectorHeight
-export pixelScale
+export num_cpus
 
 echo -e "\n-Variables defined"
 echo -e "\t·Object name: ${ORANGE} ${objectName} ${NOCOLOUR}"
@@ -109,7 +150,6 @@ INDIR=$ROOTDIR/"$objectName"/DATA
 DARKDIR=$ROOTDIR/"$objectName"/dark
 keyWordDirectory=$ROOTDIR/"$objectName"/keywords
 
-export ROOTDIR
 export DIR
 export INDIRo
 export BDIR
@@ -166,7 +206,6 @@ export dateHeaderKey
 
 framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
-
 
 
 # Function which processes a whole night
@@ -397,6 +436,8 @@ oneNightPreProcessing() {
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
 
+
+
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
@@ -405,11 +446,12 @@ oneNightPreProcessing() {
     if [ -f $noiseit2done ]; then
       echo -e "\nScience images are 'noisechiseled' for it2 running flat for night $currentNight and extension $h\n"
     else
+      frameNames=()
       for a in $(seq 1 $n_exp); do
           base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-          i=$flatit1imadir/$base
-          astnoisechisel $i $noisechisel_param -o $noiseit2dir/$base
+          frameNames+=("$base")
       done
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1imadir $noiseit2dir $noisechisel_param
       echo done > $noiseit2done
     fi
   fi
@@ -421,11 +463,12 @@ oneNightPreProcessing() {
   if [ -f $noiseit2WholeNightdone ]; then
     echo -e "\nScience images are 'noisechiseled' for it2 whole night flat for night $currentNight and extension $h\n"
   else
+    frameNames=()
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-      i=$flatit1WholeNightimaDir/$base
-      astnoisechisel $i $noisechisel_param -o $noiseit2WholeNightDir/$base
+      frameNames+=("$base")
     done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir $noisechisel_param
     echo done > $noiseit2WholeNightdone
   fi
 
@@ -538,11 +581,12 @@ oneNightPreProcessing() {
     if [ -f $noiseit3done ]; then
       echo -e "\nScience images are 'noisechiseled' for it3 running flat for night $currentNight and extension $h\n"
     else
-        for a in $(seq 1 $n_exp); do
-            base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-            i=$flatit2imadir/$base
-            astnoisechisel $i $noisechisel_param -o $noiseit3dir/$base
+      frameNames=()
+      for a in $(seq 1 $n_exp); do
+          base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+          frameNames+=("$base")
       done
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2imadir $noiseit3dir $noisechisel_param
       echo done > $noiseit3done
     fi
   fi
@@ -554,11 +598,13 @@ oneNightPreProcessing() {
   if [ -f $noiseit3WholeNightdone ]; then
     echo -e "\nScience images are 'noisechiseled' for it3 whole night flat for night $currentNight and extension $h\n"
   else
+    frameNames=()
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-      i=$flatit2WholeNightimaDir/$base
-      astnoisechisel $i $noisechisel_param -o $noiseit3WholeNightDir/$base
+      frameNames+=("$base")
+
     done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2WholeNightimaDir $noiseit3WholeNightDir $noisechisel_param
     echo done > $noiseit3WholeNightdone
   fi
 
@@ -734,25 +780,25 @@ oneNightPreProcessing() {
   fi
 
 
-  # Removing everything but the final frames
-  rm -rf $BDIR/bias-corrected_n$currentNight
-  rm -rf $BDIR/masked-corner_n$currentNight
-  rm -rf $BDIR/masterdark_n$currentNight
-  rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
-  rm -rf $BDIR/flat-it3-ima_n$currentNight
-  for a in $(seq 1 3); do
-    rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
-    rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
-    rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
-    rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
-    rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
-    rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
-    rm -rf $BDIR/noise-it"$a"-Running_n$currentNight
-    rm -rf $BDIR/noise-it"$a"-WholeNight_n$currentNight
-    rm -rf $BDIR/norm-it"$a"-images_n$currentNight
-    rm -rf $BDIR/norm-it"$a"-Running-images_n$currentNight
-    rm -rf $BDIR/norm-it"$a"-WholeNight-images_n$currentNight
-  done
+  # # Removing everything but the final frames
+  # rm -rf $BDIR/bias-corrected_n$currentNight
+  # rm -rf $BDIR/masked-corner_n$currentNight
+  # rm -rf $BDIR/masterdark_n$currentNight
+  # rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
+  # rm -rf $BDIR/flat-it3-ima_n$currentNight
+  # for a in $(seq 1 3); do
+  #   rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
+  #   rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
+  #   rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
+  #   rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
+  #   rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
+  #   rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
+  #   rm -rf $BDIR/noise-it"$a"-Running_n$currentNight
+  #   rm -rf $BDIR/noise-it"$a"-WholeNight_n$currentNight
+  #   rm -rf $BDIR/norm-it"$a"-images_n$currentNight
+  #   rm -rf $BDIR/norm-it"$a"-Running-images_n$currentNight
+  #   rm -rf $BDIR/norm-it"$a"-WholeNight-images_n$currentNight
+  # done
 
 }
 export -f oneNightPreProcessing
@@ -766,7 +812,6 @@ printf "%s\n" "${nights[@]}" | parallel -j "$num_cpus" oneNightPreProcessing {}
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
-
 
 
 
@@ -791,6 +836,7 @@ for h in 0; do
     astquery $query_param -o $catdir/"$objectName"_Gaia_eDR3.fits
   fi
 
+
   # Making the indexes
   indexdir=$BDIR/indexes
   indexdone=$indexdir/done_"$filter".txt
@@ -798,7 +844,13 @@ for h in 0; do
   if [ -f $indexdone ]; then
     echo -e "\nGaia eDR3 indexes are already created\n"
   else
-    for re in $(seq -5 6); do
+    # Here we build the indices for different index scales
+    # The index defines the scale on which the stars are selected
+    # For images of 1 degree across the recommended value is around 6
+    # It is recommended to build a range of scales
+    lowestScaleForIndex=-2
+    hightestScaleForIndex=8
+    for re in $(seq $lowestScaleForIndex $hightestScaleForIndex); do
       build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
                               -P $re \
                               -S phot_g_mean_mag \
@@ -807,6 +859,7 @@ for h in 0; do
     done
     echo done > $indexdone
   fi
+
 
   sexcfg=$CDIR/default.sex
   # Solving the images
@@ -829,7 +882,7 @@ for h in 0; do
         base=$a.fits
         i=$framesForCommonReductionDir/$base
         solve-field $i --no-plots \
-        -L 1.15 -H 1.18 -u arcsecperpix \
+        -L 1 -H 2 -u arcsecperpix \
         --ra=$ra_gal --dec=$dec_gal --radius=3. \
         --overwrite --extension 1 --config $astrocfg --no-verify -E 3 -c 0.03 \
         --odds-to-solve 1e7 \
@@ -842,6 +895,7 @@ for h in 0; do
     echo done > $astroimadone
   fi
 done
+
 
 # scamp swarp
 CDIR=$ROOTDIR/"$objectName"/config
@@ -882,6 +936,7 @@ else
     echo done > $scampdone
 fi
 
+
 # We copy the files for improving the astrometry into the folder of the images that we are going to warp
 cp $sexdir/*.head $astroimadir
 
@@ -920,9 +975,6 @@ fi
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
 
-# totalNumberOfFrames=25
-# export totalNumberOfFrames
-echo $totalNumberOfFrames
 
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
@@ -935,7 +987,6 @@ subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noi
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir
-
 
 
 #### PHOTOMETRIC CALIBRATION  ####
@@ -996,7 +1047,7 @@ noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
 computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone
 
 # Store the minimum standard deviation of the frames in order to compute the weights
-python3 find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+python3 $pipelinePath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
 ### Calculate the weights for the images based on the minimum rms ###
 echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
@@ -1023,7 +1074,6 @@ clippingdir=$BDIR/clipping-outliers
 clippingdone=$clippingdir/done_"$k".txt
 
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
-
 
 # Fornax. Around 490 frames. Deimos, 20 cores. Around 1 h and 15 min
 mowdir=$BDIR/weight-dir-no-outliers
@@ -1060,7 +1110,7 @@ else
 fi
 
 
-
+exit 0
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
 # exposuremapdone=$baseCoaddir/done_"$k".txt
@@ -1151,7 +1201,7 @@ noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone
 
-python3 find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+python3 $pipelinePath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
 
 
@@ -1270,7 +1320,7 @@ noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone
 
-python3 find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+python3 $pipelinePath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
 
 
