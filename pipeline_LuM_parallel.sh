@@ -1120,7 +1120,6 @@ else
 fi
 
 
-exit 0
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
 # exposuremapdone=$baseCoaddir/done_"$k".txt
@@ -1376,7 +1375,6 @@ buildCoadd $baseCoaddir $mowdir $moonwdir
 
 
 
-exit 0
 
 
 
