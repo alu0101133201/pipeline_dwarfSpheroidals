@@ -101,6 +101,17 @@ echo -e "\n"
 export RUNNING_FLAT
 export windowSize
 export halfWindowSize
+
+echo -e "\nThe indices that will be built for the construction of indices for astrometrisation are:"
+echo -e "\tLowest index: $lowestScaleForIndex"
+echo -e "\tHighest index: $hightestScaleForIndex"
+export lowestScaleForIndex
+export hightestScaleForIndex
+
+
+export solve_field_L_Param
+export solve_field_H_Param
+export solve_field_u_Param
 #
 
 
@@ -809,6 +820,7 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel -j "$num_cpus" oneNightPreProcessing {}
 
+
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
@@ -848,8 +860,6 @@ for h in 0; do
     # The index defines the scale on which the stars are selected
     # For images of 1 degree across the recommended value is around 6
     # It is recommended to build a range of scales
-    lowestScaleForIndex=-2
-    hightestScaleForIndex=8
     for re in $(seq $lowestScaleForIndex $hightestScaleForIndex); do
       build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
                               -P $re \
@@ -882,7 +892,7 @@ for h in 0; do
         base=$a.fits
         i=$framesForCommonReductionDir/$base
         solve-field $i --no-plots \
-        -L 1 -H 2 -u arcsecperpix \
+        -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --ra=$ra_gal --dec=$dec_gal --radius=3. \
         --overwrite --extension 1 --config $astrocfg --no-verify -E 3 -c 0.03 \
         --odds-to-solve 1e7 \

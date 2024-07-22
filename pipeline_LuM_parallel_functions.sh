@@ -49,7 +49,7 @@ maskImages() {
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         i=$inputDirectory/$base
-        astarithmetic $i -h1 $masksDirectory/$base -h1 1 eq nan where float32 -o $outputDirectory/$base -q
+        astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $outputDirectory/$base -q
     done
 }
 export -f maskImages
