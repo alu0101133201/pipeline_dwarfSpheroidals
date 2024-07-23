@@ -1120,6 +1120,10 @@ else
 fi
 
 
+# Useful keywords for the final image
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits "NIGHTSCOMBINED" $numberOfNights
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits "FRAMESCOMBINED" $totalNumberOfFrames
+
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
 # exposuremapdone=$baseCoaddir/done_"$k".txt
@@ -1261,6 +1265,9 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
+# Useful keywords for the final image
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits "NIGHTSCOMBINED" $numberOfNights
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits "FRAMESCOMBINED" $totalNumberOfFrames
 
 # Remove intermediate folders to save some space
 find $BDIR/sub-sky-fullGrid_it2 -type f ! -name 'done*' -exec rm {} \;
@@ -1373,6 +1380,9 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds_it$iteration 
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
+# Useful keywords for the final image
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits "NIGHTSCOMBINED" $numberOfNights
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits "FRAMESCOMBINED" $totalNumberOfFrames
 
 
 

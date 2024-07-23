@@ -40,6 +40,15 @@ retrieveChosenDecalsBrickForFrame() {
 }
 export -f retrieveChosenDecalsBrickForFrame
 
+writeKeywordToFits() {
+    fitsFile=$1
+    header=$2
+    keyWord=$3
+    value=$4
+
+    astfits --write=$keyWord,$value $fitsFile -h$header
+}
+
 # Functions used in Flat
 maskImages() {
     inputDirectory=$1
@@ -1075,7 +1084,7 @@ buildCoadd() {
 
     if ! [ -d $baseCoaddir ]; then mkdir $baseCoaddir; fi
 
-    coaddir=$baseCoaddir/stdWeighted1
+    coaddir=$baseCoaddir/stdWeighted
     coaddName=$coaddir/"$objectName"_coadd1_"$filter".fits
     coaddone=$coaddir/done_"$k".txt
     if ! [ -d $coaddir ]; then mkdir $coaddir; fi
