@@ -1051,8 +1051,8 @@ cropAndApplyMaskPerFrame() {
     detectorWidthDeg=$(echo    "(($detectorWidth + $securityOffset) * $pixelScale)" | bc )
     detectorHeightDeg=$(echo "(($detectorHeight + $securityOffset) * $pixelScale) + $securityOffset" | bc )
 
-    astcrop $wholeMask --center=$centralRa,$centralDec --mode=wcs --width=$detectorHeightDeg/3600,$detectorWidthDeg/3600    -o $tmpMaskFile
-    astarithmetic $frameToMask -h1 $tmpMaskFile -h1 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_$a.fits -q
+    astcrop $wholeMask --center=$centralRa,$centralDec --mode=wcs --width=$detectorHeightDeg/3600,$detectorWidthDeg/3600 -o $tmpMaskFile
+    astarithmetic $frameToMask -h1 $tmpMaskFile -hDETECTIONS 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_$a.fits -q
     rm $tmpMaskFile
 }
 export -f cropAndApplyMaskPerFrame
