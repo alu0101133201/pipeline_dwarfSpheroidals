@@ -1121,8 +1121,9 @@ fi
 
 
 # Useful keywords for the final image
+numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
 writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "NIGHTSCOMBINED" $numberOfNights
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $totalNumberOfFrames
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $numberOfFramesUsed
 
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
@@ -1266,8 +1267,9 @@ else
 fi
 
 # Useful keywords for the final image
+numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
 writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "NIGHTSCOMBINED" $numberOfNights
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $totalNumberOfFrames
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $numberOfFramesUsed
 
 # Remove intermediate folders to save some space
 find $BDIR/sub-sky-fullGrid_it2 -type f ! -name 'done*' -exec rm {} \;
@@ -1381,9 +1383,9 @@ baseCoaddir=$BDIR/coadds_it$iteration
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
 # Useful keywords for the final image
+numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
 writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "NIGHTSCOMBINED" $numberOfNights
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $totalNumberOfFrames
-
+writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $numberOfFramesUsed
 
 
 
