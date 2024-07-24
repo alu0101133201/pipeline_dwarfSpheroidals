@@ -580,8 +580,10 @@ selectStarsAndSelectionRangeDecals() {
 
                 astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
 
-                s=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-                std=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+                # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
+                # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
+                s=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+                std=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
                 minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
                 maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
 
