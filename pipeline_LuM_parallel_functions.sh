@@ -1,3 +1,4 @@
+#!/bin/bash
 ########## Functions ##########
 
 # Functions of general sue
@@ -212,27 +213,22 @@ warpImage() {
 
     # Parameters for identifing our frame in the full grid
     currentIndex=$(basename $imageToSwarp .fits)
-    frameCentre=$( getCentralCoordinate $imageToSwarp )
-    centralRa=$(echo "$frameCentre" | awk '{print $1}')
-    centralDec=$(echo "$frameCentre" | awk '{print $2}')
 
     tmpFile1=$entiredir"/$currentIndex"_temp1.fits
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
     # Resample into the final grid
     SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE    MANUAL
+    
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
     astarithmetic $entiredir/"$currentIndex"_swarp1.fits -h0 $tmpFile1 -h1 0 eq nan where -o$frameFullGrid
 
-    # Offset for having some margin and not lose any pixel
-    securityOffset=50
-    detectorWidthDeg=$(echo    "(($detectorWidth + $securityOffset) * $pixelScale)" | bc )
-    detectorHeightDeg=$(echo "(($detectorHeight + $securityOffset) * $pixelScale) + $securityOffset" | bc )
-    astcrop $frameFullGrid --center=$centralRa,$centralDec --mode=wcs --width=$detectorHeightDeg/3600,$detectorWidthDeg/3600    -o $entiredir/entirecamera_"$currentIndex".fits
+    regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameFullGrid 1)
+    read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
+    astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits
 
-    # SWarp -c $swarpcfg $entiredir/entirecamera_"$currentIndex".fits -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_back.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE    MANUAL
-    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 # $tmpFile2
+    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 
 }
 export -f warpImage
 
@@ -242,21 +238,38 @@ computeSkyForFrame(){
     base=$1
     entiredir=$2
     noiseskydir=$3
+    constantSky=$4
+    polynomialDegree=$5
 
     i=$entiredir/$1
-    sky=$(echo $base | sed 's/.fits/_sky.fits/')
-    out=$(echo $base | sed 's/.fits/.txt/')
 
-    # The sky substraction is done by using the --checksky option in noisechisel.
-    astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
+    if $constantSky; then
+        # Case when we subtract a constant
+        sky=$(echo $base | sed 's/.fits/_sky.fits/')
+        out=$(echo $base | sed 's/.fits/.txt/')
 
-    # save mean and std
-    m=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
-    s=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
-    echo "$base $m $s" > $noiseskydir/$out
+        # The sky substraction is done by using the --checksky option in noisechisel.
+        astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
 
-    # Remove fist file for saving storage
-    rm -f $noiseskydir/$sky
+        mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
+        std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
+        echo "$base $mean $std" > $noiseskydir/$out
+
+        rm -f $noiseskydir/$sky
+    else
+        # Case when we model a plane
+        noiseOutTmp=$(echo $base | sed 's/.fits/_sky.fits/')
+        maskTmp=$(echo $base | sed 's/.fits/_masked.fits/')
+        planeOutput=$(echo $base | sed 's/.fits/_poly.fits/')
+        planeCoeffFile=$(echo $base | sed 's/.fits/.txt/')
+
+        astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
+        astarithmetic $i -h1 $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
+        python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput -d $polynomialDegree -f $noiseskydir/$planeCoeffFile
+
+        rm -f $noiseskydir/$noiseOutTmp
+        rm -f $noiseskydir/$maskTmp
+    fi
 }
 export -f computeSkyForFrame
 
@@ -264,18 +277,20 @@ computeSky() {
     framesToUseDir=$1
     noiseskydir=$2
     noiseskydone=$3
+    constantSky=$4
+    polynomialDegree=$5
 
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
-        echo -e "\nScience images are 'noisechiseled' for sky substraction for extension $h\n"
+        echo -e "\nScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
     else
         framesToComputeSky=()
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_"$a.fits
             framesToComputeSky+=("$base")
         done
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $polynomialDegree $pipelinePath
         echo done > $noiseskydone
     fi
 }
@@ -285,13 +300,20 @@ subtractSkyForFrame() {
     directoryWithSkyValues=$2
     framesToSubtract=$3
     directoryToStoreSkySubtracted=$4
+    constantSky=$5
 
     base="entirecamera_"$a.fits
-    i=$directoryWithSkyValues/"entirecamera_"$a.txt
-    me=$(awk 'NR=='1'{print $2}' $i)
     input=$framesToSubtract/$base
     output=$directoryToStoreSkySubtracted/$base
-    astarithmetic $input -h1 $me - -o$output;
+
+    if $constantSky; then
+        i=$directoryWithSkyValues/"entirecamera_"$a.txt
+        me=$(awk 'NR=='1'{print $2}' $i)
+        astarithmetic $input -h1 $me - -o$output;
+    else
+        i=$directoryWithSkyValues/"entirecamera_"$a"_poly.fits"
+        astarithmetic $input -h1 $i -h1 - -o$output
+    fi
 }
 export -f subtractSkyForFrame
 
@@ -300,6 +322,8 @@ subtractSky() {
     directoryToStoreSkySubtracted=$2
     directoryToStoreSkySubtracteddone=$3
     directoryWithSkyValues=$4
+    constantSky=$5
+
 
     if ! [ -d $directoryToStoreSkySubtracted ]; then mkdir $directoryToStoreSkySubtracted; fi
     if [ -f $directoryToStoreSkySubtracteddone ]; then
@@ -309,7 +333,7 @@ subtractSky() {
     for a in $(seq 1 $totalNumberOfFrames); do
             framesToSubtractSky+=("$a")            
     done
-    printf "%s\n" "${framesToSubtractSky[@]}" | parallel -j "$num_cpus" subtractSkyForFrame {} $directoryWithSkyValues $framesToSubtract $directoryToStoreSkySubtracted
+    printf "%s\n" "${framesToSubtractSky[@]}" | parallel -j "$num_cpus" subtractSkyForFrame {} $directoryWithSkyValues $framesToSubtract $directoryToStoreSkySubtracted $constantSky
     echo done > $directoryToStoreSkySubtracteddone
     fi
 }
@@ -405,12 +429,9 @@ downloadDecalsData() {
     mosaicDir=$2
     decalsImagesDir=$3
     frameBrickCorrespondenceFile=$4
-    filters=$filters
-    ringFile=$ringFile
-
-    # Obtain path for running the "downloadBricksForFrame.py" python script
-    pipelinePath=`dirname "$0"`
-    pipelinePath=`( cd "$pipelinePath" && pwd )`
+    
+    filters=$5
+    ringFile=$6
 
     echo -e "\n-Downloading Decals bricks"
 
@@ -424,7 +445,7 @@ downloadDecalsData() {
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_$a".fits
             echo "Downloading decals bricks for image: " $base " for filters: " $filters
-            bricksOfTheFrame=$(python3 $pipelinePath/downloadBricksForFrame.py $referenceImagesForMosaic/$base $ringFile $filters $decalsImagesDir)
+            bricksOfTheFrame=$(python3 $pythonScriptsPath/downloadBricksForFrame.py $referenceImagesForMosaic/$base $ringFile $filters $decalsImagesDir)
             echo $base $bricksOfTheFrame >> $frameBrickCorrespondenceFile         # Creating the map between frames and bricks to recover it in the photometric calibration
         done
         echo done > $donwloadMosaicDone
@@ -1048,8 +1069,8 @@ cropAndApplyMaskPerFrame() {
     centralRa=$(echo "$frameCentre" | awk '{print $1}')
     centralDec=$(echo "$frameCentre" | awk '{print $2}')
 
-    # Offset for having some margin and not lose any pixel
-    securityOffset=50
+    # Offset for having some margin and not lose any pixel (the image will be )
+    securityOffset=200
     detectorWidthDeg=$(echo    "(($detectorWidth + $securityOffset) * $pixelScale)" | bc )
     detectorHeightDeg=$(echo "(($detectorHeight + $securityOffset) * $pixelScale) + $securityOffset" | bc )
 

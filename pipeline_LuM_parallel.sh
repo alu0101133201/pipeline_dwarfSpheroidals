@@ -61,7 +61,11 @@ echo -e "\n ${GREEN} ---Loading Functions--- ${NOCOLOUR}"
 # to be in the same folder as the pipeline, so we retrieve the path in order to run the functions file
 pipelinePath=`dirname "$0"`
 pipelinePath=`( cd "$pipelinePath" && pwd )`
-source $pipelinePath/pipeline_LuM_parallel_functions.sh
+pythonScriptsPath=$pipelinePath/pythonScripts
+export pipelinePath
+export pythonScriptsPath
+
+source "$pipelinePath/pipeline_LuM_parallel_functions.sh"
 
 
 ########## Load variables ##########
@@ -101,6 +105,13 @@ echo -e "\n"
 export RUNNING_FLAT
 export windowSize
 export halfWindowSize
+
+
+export MODEL_SKY_AS_CONSTANT
+export polynomialDegree
+echo -e "\nThe background will be modelled as a constant?: $ORANGE $MODEL_SKY_AS_CONSTANT $NOCOLOUR"
+echo -e "If so, the polynomial degree is: $ORANGE $polynomialDegree $NOCOLOUR"
+
 
 echo -e "\nThe indices that will be built for the construction of indices for astrometrisation are:"
 echo -e "\tLowest index: $lowestScaleForIndex"
@@ -274,7 +285,7 @@ oneNightPreProcessing() {
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
-
+  
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
 
@@ -791,25 +802,25 @@ oneNightPreProcessing() {
   fi
 
 
-  # # Removing everything but the final frames
-  # rm -rf $BDIR/bias-corrected_n$currentNight
+  # Removing everything but the final frames
+  rm -rf $BDIR/bias-corrected_n$currentNight
   # rm -rf $BDIR/masked-corner_n$currentNight
-  # rm -rf $BDIR/masterdark_n$currentNight
-  # rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
-  # rm -rf $BDIR/flat-it3-ima_n$currentNight
-  # for a in $(seq 1 3); do
-  #   rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
-  #   rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
-  #   rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
-  #   rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
-  #   rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
-  #   rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
-  #   rm -rf $BDIR/noise-it"$a"-Running_n$currentNight
-  #   rm -rf $BDIR/noise-it"$a"-WholeNight_n$currentNight
-  #   rm -rf $BDIR/norm-it"$a"-images_n$currentNight
-  #   rm -rf $BDIR/norm-it"$a"-Running-images_n$currentNight
-  #   rm -rf $BDIR/norm-it"$a"-WholeNight-images_n$currentNight
-  # done
+  rm -rf $BDIR/masterdark_n$currentNight
+  rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
+  rm -rf $BDIR/flat-it3-ima_n$currentNight
+  for a in $(seq 1 3); do
+    rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
+    rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
+    # rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
+    rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
+    rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
+    rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
+    rm -rf $BDIR/noise-it"$a"-Running_n$currentNight
+    rm -rf $BDIR/noise-it"$a"-WholeNight_n$currentNight
+    rm -rf $BDIR/norm-it"$a"-images_n$currentNight
+    rm -rf $BDIR/norm-it"$a"-Running-images_n$currentNight
+    rm -rf $BDIR/norm-it"$a"-WholeNight-images_n$currentNight
+  done
 
 }
 export -f oneNightPreProcessing
@@ -824,8 +835,6 @@ printf "%s\n" "${nights[@]}" | parallel -j "$num_cpus" oneNightPreProcessing {}
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
-
-
 
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
@@ -870,7 +879,6 @@ for h in 0; do
     echo done > $indexdone
   fi
 
-
   sexcfg=$CDIR/default.sex
   # Solving the images
   astrocfg=$CDIR/astrometry_$objectName.cfg
@@ -906,7 +914,6 @@ for h in 0; do
   fi
 done
 
-
 # scamp swarp
 CDIR=$ROOTDIR/"$objectName"/config
 
@@ -930,6 +937,7 @@ else
     done
     echo done > $sexdone
 fi
+
 
 # Making scamp headers
 scampcfg=$CDIR/scamp.cfg
@@ -976,27 +984,28 @@ else
       base="$a".fits
       imagesToWarp+=("$astroimadir/$base")
   done
-  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx 
+  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
   echo done > $entiredone
 fi
-
 
 # For fornax (around 490 frames). Deimos, 20 cores -> 25 min
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
-
-
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone 
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir
 
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir
+
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree $pipelinePath
+
+subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+exit 0
+subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+exit 0
 
 
 #### PHOTOMETRIC CALIBRATION  ####
@@ -1057,7 +1066,7 @@ noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
 computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone
 
 # Store the minimum standard deviation of the frames in order to compute the weights
-python3 $pipelinePath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
 ### Calculate the weights for the images based on the minimum rms ###
 echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
@@ -1215,7 +1224,7 @@ noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone
 
-python3 $pipelinePath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
 
 
@@ -1338,7 +1347,7 @@ noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone
 
-python3 $pipelinePath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
 
 
