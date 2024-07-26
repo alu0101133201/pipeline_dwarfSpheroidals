@@ -312,7 +312,18 @@ subtractSkyForFrame() {
         astarithmetic $input -h1 $me - -o$output;
     else
         i=$directoryWithSkyValues/"entirecamera_"$a"_poly.fits"
-        astarithmetic $input -h1 $i -h1 - -o$output
+
+        NAXIS1_image=$(gethead $input NAXIS1); NAXIS2_image=$(gethead $input NAXIS2)
+        NAXIS1_plane=$(gethead $i NAXIS1); NAXIS2_plane=$(gethead $i NAXIS2)
+
+        if [[ "$NAXIS1_image" == "$NAXIS1_plane" ]] && [[ "$NAXIS2_image" == "$NAXIS2_plane" ]]; then
+            astarithmetic $input -h1 $i -h1 - -o$output
+        else
+            python3 $pythonScriptsPath/moveSurfaceFitToFullGrid.py $input $i 1 $NAXIS1_image $NAXIS2_image $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
+            astarithmetic $input -h1 $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits" -h1 - -o$output
+            rm $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
+        fi
+
     fi
 }
 export -f subtractSkyForFrame
@@ -1060,8 +1071,11 @@ cropAndApplyMaskPerFrame() {
     dirOfFramesToMask=$2
     dirOfFramesMasked=$3
     wholeMask=$4
+    dirOfFramesFullGrid=$5
+
 
     frameToMask=$dirOfFramesToMask/entirecamera_$a.fits
+    frameToObtainCropRegion=$dirOfFramesFullGrid/entirecamera_$a.fits
     tmpMaskFile=$dirOfFramesMasked/"maskFor"$a.fits
 
     # Parameters for identifing our frame in the full grid
@@ -1069,22 +1083,28 @@ cropAndApplyMaskPerFrame() {
     centralRa=$(echo "$frameCentre" | awk '{print $1}')
     centralDec=$(echo "$frameCentre" | awk '{print $2}')
 
-    # Offset for having some margin and not lose any pixel (the image will be )
-    securityOffset=200
-    detectorWidthDeg=$(echo    "(($detectorWidth + $securityOffset) * $pixelScale)" | bc )
-    detectorHeightDeg=$(echo "(($detectorHeight + $securityOffset) * $pixelScale) + $securityOffset" | bc )
+    # # Offset for having some margin and not lose any pixel (the image will be )
+    # securityOffset=200
+    # detectorWidthDeg=$(echo    "(($detectorWidth + $securityOffset) * $pixelScale)" | bc )
+    # detectorHeightDeg=$(echo "(($detectorHeight + $securityOffset) * $pixelScale) + $securityOffset" | bc )
+    # astcrop $wholeMask --center=$centralRa,$centralDec --mode=wcs --width=$detectorHeightDeg/3600,$detectorWidthDeg/3600 -o $tmpMaskFile
 
-    astcrop $wholeMask --center=$centralRa,$centralDec --mode=wcs --width=$detectorHeightDeg/3600,$detectorWidthDeg/3600 -o $tmpMaskFile
+    regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameToObtainCropRegion 1)
+    read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
+    astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile
     astarithmetic $frameToMask -h1 $tmpMaskFile -h1 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_$a.fits -q
     rm $tmpMaskFile
 }
 export -f cropAndApplyMaskPerFrame
 
+# maskPointings receives the directory with the frames in the full grid because we need it in order to know the region of the full grid
+# in which the specific frame is located. That is obtained by using getRegionToCrop.py frame
 maskPointings() {
     entiredir_smallGrid=$1
     smallPointings_maskedDir=$2
     maskedPointingsDone=$3
     maskName=$4
+    dirOfFramesFullGrid=$5
 
     if ! [ -d $smallPointings_maskedDir ]; then mkdir $smallPointings_maskedDir; fi
     if [ -f $maskedPointingsDone ]; then
@@ -1094,7 +1114,7 @@ maskPointings() {
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToMask+=("$a")
         done
-        printf "%s\n" "${framesToMask[@]}" | parallel -j "$num_cpus" cropAndApplyMaskPerFrame {} $entiredir_smallGrid $smallPointings_maskedDir $maskName
+        printf "%s\n" "${framesToMask[@]}" | parallel -j "$num_cpus" cropAndApplyMaskPerFrame {} $entiredir_smallGrid $smallPointings_maskedDir $maskName $dirOfFramesFullGrid
         echo done > $maskedPointingsDone 
     fi
 }
@@ -1117,6 +1137,10 @@ buildCoadd() {
             astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_wx.fits
             astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits    | wc -l) sum -g1 -o$coaddir/"$k"_w.fits
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
+
+            # Useful keywords for the final image
+            numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
+            writeKeywordToFits $coaddName 1 "FRAMESCOMBINED" $numberOfFramesUsed
             echo done > $coaddone
     fi
 }

@@ -787,7 +787,7 @@ oneNightPreProcessing() {
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
 
-  # WE SHOULD LOCK THE FILE IN ORDER TO AVOID RACE CONDITIONS
+  # WE SHOULD MANAGE THE RACE CONDITIONS
   if [ -f $framesForCommonReductionDone ]; then
     echo -e "\nFrames already placed in the folder for frames prepared to common reduction"
   else
@@ -844,7 +844,6 @@ echo $totalNumberOfFrames
 
 echo -e "${ORANGE} ------ ASTROMETRY AND BACKGROUND-SUBTRACTION ------ ${NOCOLOUR}\n"
 for h in 0; do
-  ########## Astrometry ##########
   echo -e "${GREEN} --- Astrometry --- ${NOCOLOUR}"
 
   query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=3.1 --column=ra,dec,phot_g_mean_mag"
@@ -1000,12 +999,10 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree $pipelinePath
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
 
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-exit 0
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-exit 0
 
 
 #### PHOTOMETRIC CALIBRATION  ####
@@ -1063,10 +1060,11 @@ echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 # Compute rms and of the photometrized frames
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
-computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone
+computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true -1
 
 # Store the minimum standard deviation of the frames in order to compute the weights
 python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
+
 
 ### Calculate the weights for the images based on the minimum rms ###
 echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
@@ -1128,11 +1126,8 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
+# exit 0
 
-# Useful keywords for the final image
-numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "NIGHTSCOMBINED" $numberOfNights
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $numberOfFramesUsed
 
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
@@ -1186,22 +1181,27 @@ iteration=2
 
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
 entiredir_smallGrid=$BDIR/pointings_smallGrid
-
+entiredir_fullGrid=$BDIR/pointings_fullGrid
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName
 
+maskPointings $entiredir_smallGrid  $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
+
+exit 0
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone # compute sky with frames masked with global mask
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir
 
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir
+
+# compute sky with frames masked with global mask
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
+subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+
 
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1216,13 +1216,14 @@ applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
+
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
-maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName
+maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
 
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true -1
 
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
@@ -1275,10 +1276,7 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
-# Useful keywords for the final image
-numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "NIGHTSCOMBINED" $numberOfNights
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $numberOfFramesUsed
+
 
 # Remove intermediate folders to save some space
 find $BDIR/sub-sky-fullGrid_it2 -type f ! -name 'done*' -exec rm {} \;
@@ -1310,21 +1308,26 @@ entiredir_smallGrid=$BDIR/pointings_smallGrid
 entiredir_fullGrid=$BDIR/pointings_fullGrid
 
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
+entiredir_fullGrid=$BDIR/pointings_fullGrid
+
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName
+maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone # compute sky with frames masked with global mask
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir
 
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir
+
+
+# compute sky with frames masked with global mask
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
+subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1340,12 +1343,12 @@ applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
-maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName
+maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
 
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true -1
 
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
@@ -1390,13 +1393,6 @@ fi
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds_it$iteration 
 buildCoadd $baseCoaddir $mowdir $moonwdir
-
-# Useful keywords for the final image
-numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "NIGHTSCOMBINED" $numberOfNights
-writeKeywordToFits $baseCoaddir/stdWeighted/"$objectName"_coadd1_"$filter".fits 1 "FRAMESCOMBINED" $numberOfFramesUsed
-
-
 
 
 

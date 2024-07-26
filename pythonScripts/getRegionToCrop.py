@@ -16,7 +16,7 @@ def find_non_nan_region(matrix):
     if non_nan_indices.size > 0:
         row_min, col_min = non_nan_indices.min(axis=0)
         row_max, col_max = non_nan_indices.max(axis=0)
-        return (row_min, row_max + 1, col_min, col_max + 1)
+        return (int(row_min), int(row_max + 1), int(col_min), int(col_max + 1))
     else:
         return None  # All values are NaN
 
