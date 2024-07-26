@@ -1126,7 +1126,6 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
-# exit 0
 
 
 # # --- Build exposure map
@@ -1187,7 +1186,6 @@ maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 
 maskPointings $entiredir_smallGrid  $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
-exit 0
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 
