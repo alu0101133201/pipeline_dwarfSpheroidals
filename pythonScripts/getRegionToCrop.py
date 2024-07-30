@@ -4,6 +4,14 @@ import numpy as np
 
 from astropy.io import fits
 
+# This script receives an image (and the hdu in which the data is located) and returns four coordinates
+# This coordinates correspond to the smaller rectangle that encloses the non-nan data.
+
+# In the pipeline this is needed because we place the data in a huge grid (the grid of the final coadd)
+# But, since we do not want to work with this huge grid in all the intermediate steps (would take a long time)
+# We crop the region of interest and we use this crop in the intermediate steps to work faster
+# This scripts is the one who provides the region when we perform this crop
+
 
 def find_non_nan_region(matrix):
     # Create a mask of where NaN values are present

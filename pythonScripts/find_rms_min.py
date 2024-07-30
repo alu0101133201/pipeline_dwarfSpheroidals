@@ -32,14 +32,13 @@ import matplotlib.pyplot as plt
 
 
 
-filter = sys.argv[1]        # band
-start = int(sys.argv[2])
-print(start)
-end = int(sys.argv[3])
-h = str(sys.argv[4])        #n ccd
+filter         = sys.argv[1]   
+start          = int(sys.argv[2])
+end            = int(sys.argv[3])
+h              = str(sys.argv[4])   
 noiseFilesPath = str(sys.argv[5])
-rootDir = str(sys.argv[6])
-iteration = str(sys.argv[7])
+rootDir        = str(sys.argv[6])
+iteration      = str(sys.argv[7])
 
 rms = []
 

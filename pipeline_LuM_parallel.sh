@@ -1001,8 +1001,14 @@ subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
 
+badFilesWarningsDir=$BDIR/warnings_badFiles
+if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
+python3 $pythonScriptsPath/checkForBadFrames.py $noiseskydir ".txt" $badFilesWarningsDir
+
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+
+exit 0
 
 
 #### PHOTOMETRIC CALIBRATION  ####

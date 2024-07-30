@@ -243,6 +243,15 @@ computeSkyForFrame(){
 
     i=$entiredir/$1
 
+    # ****** Decision note *******
+    # Here we have implemented two possibilities. Either the background is estimated by a constant or by a polynomial.
+    # If it is a constant we store the fileName, the background value and the std. This is implemented this way because we
+    # need the background to subtract but also later the std for weighing the frames
+    # If it is a polynomial we only use it to subtract the background (the weighing is always with a constat) so we only store
+    # the coefficients of the polynomial.
+    # 
+    # Storing this values is also relevant for checking for potential bad frames
+
     if $constantSky; then
         # Case when we subtract a constant
         sky=$(echo $base | sed 's/.fits/_sky.fits/')
