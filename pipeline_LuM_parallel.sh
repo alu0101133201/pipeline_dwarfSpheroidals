@@ -1214,7 +1214,7 @@ subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 # compute sky with frames masked with global mask
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
@@ -1341,7 +1341,7 @@ subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 
 # compute sky with frames masked with global mask
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
