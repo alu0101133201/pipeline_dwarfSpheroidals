@@ -71,18 +71,20 @@ source "$pipelinePath/pipeline_LuM_parallel_functions.sh"
 ########## Load variables ##########
 echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
 
+
+## ¿Hay alguna manera de checkear esto o debo hacerlo con python? Por ver si el usuario se ha saltado alguna keyword digo
+
 confFile=$1
-if [ -z $confFile ]; then
-    errorNumber=2
-    echo -e "\nA configuration file has to be provided in order to run the pipeline"
-    echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR"
-    exit $errorNumber
+echo $confFile
+if [[ -f $confFile ]]; then 
+  source $confFile
+  echo -e "Variables loaded from $confFile file\n"
+else
+  errorNumber=1
+  echo -e "\nA configuration file has to be provided in order to run the pipeline"
+  echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR"
+  exit $errorNumber
 fi
-
-
-source $confFile
-echo -e "Variables loaded from $confFile file\n"
-
 
 # Exporting the variables from .conf file
 export objectName
@@ -115,14 +117,17 @@ echo -e "If so, the polynomial degree is: $ORANGE $polynomialDegree $NOCOLOUR"
 
 echo -e "\nThe indices that will be built for the construction of indices for astrometrisation are:"
 echo -e "\tLowest index: $lowestScaleForIndex"
-echo -e "\tHighest index: $hightestScaleForIndex"
+echo -e "\tHighest index: $highestScaleForIndex"
 export lowestScaleForIndex
-export hightestScaleForIndex
+export highestScaleForIndex
 
 
 export solve_field_L_Param
 export solve_field_H_Param
 export solve_field_u_Param
+
+
+checkIfAllVariablesAreSet
 #
 
 
@@ -230,6 +235,10 @@ framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
 
 
+  a=$(measureTime)
+  echo $a
+  exit 0
+
 # Function which processes a whole night
 oneNightPreProcessing() {
   currentNight=$1
@@ -245,6 +254,7 @@ oneNightPreProcessing() {
     echo -e "\nScience images for night $currentNight are already processed\n"
     return 0
   fi
+
 
   # ****** Decision note *******
   # In the following, the data from "INDIRo/nightX" is placed in "INDIR/nightX". Additionally they are

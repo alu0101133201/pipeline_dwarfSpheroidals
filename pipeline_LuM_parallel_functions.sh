@@ -2,6 +2,13 @@
 ########## Functions ##########
 
 # Functions of general sue
+
+measureTime() {
+    time=$(date +%s)
+    echo $time
+}
+export -f measureTime
+
 escapeSpacesFromString() {
     local input="$1"
     escaped_string="${input// /\\ }"
@@ -49,6 +56,38 @@ writeKeywordToFits() {
 
     astfits --write=$keyWord,$value $fitsFile -h$header
 }
+
+checkIfAllVariablesAreSet() {
+    errorNumber=2
+    flagToExit=false
+    variablesToCheck=(objectName \
+                ra_gal \
+                dec_gal \
+                ROOTDIR \
+                coaddSizePx \
+                RUNNING_FLAT \
+                windowSize \
+                halfWindowSize \
+                MODEL_SKY_AS_CONSTANT \
+                polynomialDegree \
+                filter \
+                pixelScale \
+                detectorWidth \
+                detectorHeight \ 
+                lowestScaleForIndex \
+                highestScaleForIndex \ 
+                solve_field_L_Param \
+                solve_field_H_Param \
+                solve_field_u_Param)
+
+    echo -e "\n"
+    for currentVar in ${variablesToCheck[@]}; do
+        [[ -z ${!currentVar} ]] && echo "${currentVar} variable not defined" && flagToExit=true
+    done
+
+    [[ $flagToExit ]] && echo -e "Exiting with error number: $errorNumber" && exit $errorNumber
+}
+export -f checkIfAllVariablesAreSet
 
 # Functions used in Flat
 maskImages() {
