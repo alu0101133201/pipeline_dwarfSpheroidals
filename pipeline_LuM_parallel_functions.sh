@@ -59,7 +59,7 @@ writeKeywordToFits() {
 
 checkIfAllVariablesAreSet() {
     errorNumber=2
-    flagToExit=false
+    flagToExit=""
     variablesToCheck=(objectName \
                 ra_gal \
                 dec_gal \
@@ -85,7 +85,9 @@ checkIfAllVariablesAreSet() {
         [[ -z ${!currentVar} ]] && echo "${currentVar} variable not defined" && flagToExit=true
     done
 
+    # I exit here and not when I find the variable missing because I want to show all the messages of "___ variable not defined", so the user knows all the variables that are needed
     [[ $flagToExit ]] && echo -e "Exiting with error number: $errorNumber" && exit $errorNumber
+    exit 0
 }
 export -f checkIfAllVariablesAreSet
 
