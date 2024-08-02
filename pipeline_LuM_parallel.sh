@@ -235,9 +235,6 @@ framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
 
 
-  a=$(measureTime)
-  echo $a
-  exit 0
 
 # Function which processes a whole night
 oneNightPreProcessing() {

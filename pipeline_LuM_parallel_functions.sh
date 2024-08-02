@@ -87,7 +87,6 @@ checkIfAllVariablesAreSet() {
 
     # I exit here and not when I find the variable missing because I want to show all the messages of "___ variable not defined", so the user knows all the variables that are needed
     [[ $flagToExit ]] && echo -e "Exiting with error number: $errorNumber" && exit $errorNumber
-    exit 0
 }
 export -f checkIfAllVariablesAreSet
 
