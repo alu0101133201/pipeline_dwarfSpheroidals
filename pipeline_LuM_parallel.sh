@@ -994,6 +994,7 @@ else
   echo done > $entiredone
 fi
 
+
 # For fornax (around 490 frames). Deimos, 20 cores -> 25 min
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
@@ -1006,7 +1007,8 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
+imagesAreMasked=false
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree $imagesAreMasked
 
 badFilesWarningsDir=$BDIR/warnings_badFiles
 badFilesWarningsDone=$badFilesWarningsDir/done.txt
@@ -1020,6 +1022,7 @@ fi
 
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+
 
 
 
@@ -1078,6 +1081,7 @@ echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 # Compute rms and of the photometrized frames
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
+# Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
 computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true -1
 
 # Store the minimum standard deviation of the frames in order to compute the weights
@@ -1097,6 +1101,7 @@ wonlydone=$wonlydir/done_"$k"_ccd"$h".txt
 if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
 # We provide the fullGrid because we are going to combine then now
 computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskydir $iteration
+
 
 
 echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
@@ -1192,6 +1197,7 @@ find $mowdir -type f ! -name 'done*' -exec rm {} \;
 find $moonwdir -type f ! -name 'done*' -exec rm {} \;
 
 
+
 ####### ITERATION 2 ######
 
 iteration=2
@@ -1203,7 +1209,6 @@ smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 
 maskPointings $entiredir_smallGrid  $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
-
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 
@@ -1214,7 +1219,8 @@ subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 # compute sky with frames masked with global mask
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
+imagesAreMasked=true
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree $imagesAreMasked
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
@@ -1239,6 +1245,7 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
+# Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true -1
 
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
@@ -1292,7 +1299,7 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
-
+exit 0
 
 # Remove intermediate folders to save some space
 find $BDIR/sub-sky-fullGrid_it2 -type f ! -name 'done*' -exec rm {} \;
@@ -1341,7 +1348,8 @@ subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 
 # compute sky with frames masked with global mask
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree
+imagesAreMasked=true
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree $imagesAreMasked
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
@@ -1364,6 +1372,7 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
+# Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true -1
 
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration

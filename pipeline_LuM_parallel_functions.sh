@@ -279,7 +279,8 @@ computeSkyForFrame(){
     entiredir=$2
     noiseskydir=$3
     constantSky=$4
-    polynomialDegree=$5
+    polyDegree=$5
+    inputImagesAreMasked=$6
 
     i=$entiredir/$1
 
@@ -292,12 +293,12 @@ computeSkyForFrame(){
     # 
     # Storing this values is also relevant for checking for potential bad frames
 
-    if $constantSky; then
+    if [ "$constantSky" = true ]; then
         # Case when we subtract a constant
         sky=$(echo $base | sed 's/.fits/_sky.fits/')
         out=$(echo $base | sed 's/.fits/.txt/')
 
-        # The sky substraction is done by using the --checksky option in noisechisel.
+        # The sky substraction is done by using the --checksky option in noisechisel
         astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
 
         mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
@@ -312,9 +313,14 @@ computeSkyForFrame(){
         planeOutput=$(echo $base | sed 's/.fits/_poly.fits/')
         planeCoeffFile=$(echo $base | sed 's/.fits/.txt/')
 
-        astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
-        astarithmetic $i -h1 $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
-        python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput -d $polynomialDegree -f $noiseskydir/$planeCoeffFile
+        # This conditional allows us to introduce the images already masked (masked with the mask of the coadd) in the second and next iterations
+        if ! [ "$inputImagesAreMasked" = true ]; then
+            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
+            astarithmetic $i -h1 $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
+            python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
+        else
+            python3 $pythonScriptsPath/surface-fit.py -i $i -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
+        fi
 
         rm -f $noiseskydir/$noiseOutTmp
         rm -f $noiseskydir/$maskTmp
@@ -327,8 +333,9 @@ computeSky() {
     noiseskydir=$2
     noiseskydone=$3
     constantSky=$4
-    polynomialDegree=$5
-
+    polyDegree=$5
+    inputImagesAreMasked=$6
+	
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -339,7 +346,7 @@ computeSky() {
             base="entirecamera_"$a.fits
             framesToComputeSky+=("$base")
         done
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $polynomialDegree $pipelinePath
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $polyDegree $inputImagesAreMasked
         echo done > $noiseskydone
     fi
 }
@@ -355,7 +362,7 @@ subtractSkyForFrame() {
     input=$framesToSubtract/$base
     output=$directoryToStoreSkySubtracted/$base
 
-    if $constantSky; then
+    if [ "$constantSky" = true ]; then
         i=$directoryWithSkyValues/"entirecamera_"$a.txt
         me=$(awk 'NR=='1'{print $2}' $i)
         astarithmetic $input -h1 $me - -o$output;
