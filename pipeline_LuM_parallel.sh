@@ -292,7 +292,7 @@ oneNightPreProcessing() {
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
-  
+
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
 
@@ -306,14 +306,17 @@ oneNightPreProcessing() {
     if [ -f $mdadone ]; then
       echo -e "\nMasterdark is already done for night $currentNight and extension $h\n"
     else
-      astarithmetic $(ls -v $currentDARKDIR/* ) \
-                    $(ls -v $currentDARKDIR/* | wc -l) \
+      escaped_files=""
+      for file in $currentDARKDIR/*.fits; do
+        escaped_files+="$(escapeSpacesFromString "$file") "
+      done
+
+      eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
                     3 0.2 sigclip-mean -g$h \
-                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits
+                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
     fi
     echo done > $mdadone
   done
-
 
   ########## Save airmass ##########
   echo -e "\n ${GREEN} Saving airmass ${NOCOLOUR}"
@@ -843,7 +846,6 @@ totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
 
-
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equall" so we do no distinction between nights.
@@ -1299,7 +1301,6 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
-exit 0
 
 # Remove intermediate folders to save some space
 find $BDIR/sub-sky-fullGrid_it2 -type f ! -name 'done*' -exec rm {} \;
@@ -1420,7 +1421,7 @@ baseCoaddir=$BDIR/coadds_it$iteration
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
 
-
+exit 0
 
 
 
