@@ -3,6 +3,18 @@
 
 # Functions of general sue
 
+help() {
+    echo -e "Pipeline for reducing data from small telescopes"
+    echo -e ""
+    echo -e "Syntax: pipelineName [-h] configurationFile.conf"
+    echo -e "Options:"
+    echo -e "    h    Print this help"
+    echo -e "Arguments:"
+    echo -e "    Configuration file"
+    echo -e "\n"
+}
+export -f help
+
 measureTime() {
     time=$(date +%s)
     echo $time

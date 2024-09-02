@@ -46,7 +46,6 @@ export GREEN
 export NOCOLOUR
 
 
-
 ########## Loading modules ##########
 echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
@@ -67,12 +66,19 @@ export pythonScriptsPath
 
 source "$pipelinePath/pipeline_LuM_parallel_functions.sh"
 
+# Handling options and arguments
+OPTSTRING=":h"
+while getopts ${OPTSTRING} opt; do
+  case ${opt} in
+    h)
+      help
+      exit 0;;
+    \?)
+      echo "Invalid option: -${OPTARG}"
+      exit 1;;
+  esac
+done
 
-########## Load variables ##########
-echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
-
-
-## ¿Hay alguna manera de checkear esto o debo hacerlo con python? Por ver si el usuario se ha saltado alguna keyword digo
 
 confFile=$1
 echo $confFile
@@ -86,7 +92,11 @@ else
   exit $errorNumber
 fi
 
+
+########## Load variables ##########
 # Exporting the variables from .conf file
+echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
+
 export objectName
 export ra_gal
 export dec_gal
