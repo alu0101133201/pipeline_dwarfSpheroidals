@@ -66,7 +66,7 @@ export pythonScriptsPath
 
 source "$pipelinePath/pipeline_LuM_parallel_functions.sh"
 
-# Handling options and arguments
+########## Handling options and arguments ##########
 OPTSTRING=":h"
 while getopts ${OPTSTRING} opt; do
   case ${opt} in
