@@ -1192,7 +1192,7 @@ fi
 
 
 # Remove intermediate folders to save some space
-
+find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1313,6 +1313,7 @@ fi
 
 
 # Remove intermediate folders to save some space
+find $BDIR/noise-sky_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-fullGrid_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-smallGrid_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/photCorrFullGrid-dir_it2 -type f ! -name 'done*' -exec rm {} \;
