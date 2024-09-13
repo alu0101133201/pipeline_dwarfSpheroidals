@@ -14,13 +14,9 @@ from astropy.io import fits
 
 
 def find_non_nan_region(matrix):
-    # Create a mask of where NaN values are present
     isnan_mask = np.isnan(matrix)
-
-    # Find the indices of non-NaN values
     non_nan_indices = np.argwhere(~isnan_mask)
 
-    # Get the bounding box of non-NaN values
     if non_nan_indices.size > 0:
         row_min, col_min = non_nan_indices.min(axis=0)
         row_max, col_max = non_nan_indices.max(axis=0)
@@ -28,7 +24,6 @@ def find_non_nan_region(matrix):
     else:
         return None  # All values are NaN
 
-# Example usage
 imageFile = sys.argv[1]
 hduNum = int(sys.argv[2])
 

@@ -17,7 +17,7 @@
 
 # The functions needed for the pipeline are declared in another file (currently called "pipeline_LuM_parallel_functions.sh")
 # This file is expected to be in the same directory as the pipeline
-# The same applies to the python scripts used (for the moment find_rms_min.py and downloadBricksForFrame.py)
+# The scripts that are used by the pipeline are expected to be in the directory "pipelineScripts" (value stored in pythonScriptsPath variable)
 
 # How the pipeline expects the data -----------------------------------------------
 
@@ -60,7 +60,7 @@ echo -e "\n ${GREEN} ---Loading Functions--- ${NOCOLOUR}"
 # to be in the same folder as the pipeline, so we retrieve the path in order to run the functions file
 pipelinePath=`dirname "$0"`
 pipelinePath=`( cd "$pipelinePath" && pwd )`
-pythonScriptsPath=$pipelinePath/pythonScripts
+pythonScriptsPath=$pipelinePath/pipelineScripts
 export pipelinePath
 export pythonScriptsPath
 
@@ -287,6 +287,8 @@ oneNightPreProcessing() {
 
             # HERE A CHECK IF THE DATA IS IN FLOAT32 IS NEEDED
             eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
+            nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
+            eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
           done
 
           index=1
@@ -887,7 +889,7 @@ for h in 0; do
     # The index defines the scale on which the stars are selected
     # For images of 1 degree across the recommended value is around 6
     # It is recommended to build a range of scales
-    for re in $(seq $lowestScaleForIndex $hightestScaleForIndex); do
+    for re in $(seq $lowestScaleForIndex $highestScaleForIndex); do
       build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
                               -P $re \
                               -S phot_g_mean_mag \
@@ -1037,7 +1039,6 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 
 
 
-
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 
@@ -1129,11 +1130,10 @@ buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForSt
 
 # Fornax. Around 490 frames. Deimos, 20 cores. Around 1 h and 15 min
 mowdir=$BDIR/weight-dir-no-outliers
-if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-# only weight
 moonwdir=$BDIR/only-weight-dir-no-outliers
-if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 mowdone=$mowdir/done_"$k"_ccd"$h".txt
+if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 
 if [ -f $mowdone ]; then
     echo -e "\nOutliers of the weighted images already masked\n"
