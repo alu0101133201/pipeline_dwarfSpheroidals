@@ -32,7 +32,8 @@
 #   · Scamp conf file
 #   · Swarp conf file
 #   · Sextractor conf files (.conv, .param and .sex)
-#   · Normalisation ring definition (.txt file)
+
+# The path of the ring(s) definition (.txt file) have to be provided in the configuration file of the galaxy.
 
 # ----------------------------------------------------------------------------------------------
 
