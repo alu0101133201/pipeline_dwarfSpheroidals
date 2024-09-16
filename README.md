@@ -12,14 +12,14 @@ pipelineName [-h] configurationFile.conf
 
 The structure of the repository is as follows:
 .
-├── checkScripts 
-├── config 
-├── pipelineScripts 
+├── (d) checkScripts 
+├── (d) config 
+├── (d) pipelineScripts 
 ├
-├── pipeline_LuM_parallel_functions.sh
-├── pipeline_LuM_parallel.sh 
-├── README.md 
-└── template.conf
+├── (-) pipeline_LuM_parallel_functions.sh
+├── (-) pipeline_LuM_parallel.sh 
+├── (-) README.md 
+└── (-) template.conf
 
 * **checkScripts**: Contains python scripts which are not used by the pipeline. They are to be used by the user when checking the data that is going to be reduced (e.g. number of frames, exposure time of frames, airmass-Time plot, etc...)
 

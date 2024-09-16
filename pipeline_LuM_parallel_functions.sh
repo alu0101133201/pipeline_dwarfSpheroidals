@@ -77,6 +77,7 @@ checkIfAllVariablesAreSet() {
                 dec_gal \
                 ROOTDIR \
                 coaddSizePx \
+                USE_COMMON_RING \
                 RUNNING_FLAT \
                 windowSize \
                 halfWindowSize \

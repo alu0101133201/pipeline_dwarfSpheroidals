@@ -111,10 +111,29 @@ export detectorWidth
 export detectorHeight
 export pixelScale
 
+export USE_COMMON_RING
+export commonRingDefinitionFile
+export firstRingDefinitionFile
+export angleValueForFirstRing
+export secondRingDefinitionFile
+export angleValueForSecondRing
+
+echo -e "\nA common normalisation ring is going to be used?: " $ORANGE $USE_COMMON_RING $NOCOLOUR
+if [ "$USE_COMMON_RING" = true ]; then
+  echo -e "The file which contains the ring definition is: " $ORANGE $commonRingDefinitionFile $NOCOLOUR
+else
+  echo -e "The file containing the first ring definition is: " $ORANGE $firstRingDefinitionFile $NOCOLOUR " - Angle: " $ORANGE $angleValueForFirstRing $NOCOLOUR
+  echo -e "The file containing the second ring definition is: " $ORANGE  $secondRingDefinitionFile $NOCOLOUR " - Angle: " $ORANGE  $angleValueForSecondRing $NOCOLOUR
+
+fi
+
+
 echo -e "\nThe running flat is going to be used?: $ORANGE $RUNNING_FLAT $NOCOLOUR"
-echo -e "If so, the running flat will be computed with a window size of " $windowSize
-echo -e "\n"
 export RUNNING_FLAT
+if [ "$RUNNING_FLAT" = true ]; then
+  echo -e "The running flat will be computed with a window size of " $windowSize
+  echo -e "\n"
+fi
 export windowSize
 export halfWindowSize
 
@@ -139,7 +158,6 @@ export solve_field_u_Param
 
 checkIfAllVariablesAreSet
 #
-
 
 defaultNumOfCPUs=12
 num_cpus=$SLURM_CPUS_ON_NODE
@@ -382,18 +400,20 @@ oneNightPreProcessing() {
 
   ########## Creating the ring mask ##########
 
-  ####### THIS HAS TO BE CHECKED, MAYBE USING A NORMAL MEDIAN IS BETTER TO NORMALIZE
+  # Since the ring possibilities are quite flexible (using one common ring or two rings depending on the angle) I always clean and rebuild the rings (It doesn't cost almost time so is worth it)
   ringdir=$BDIR/ring
-  ringFile=$CDIR/flat_ring_ccd"$h".txt
-  ringdone=$ringdir/ring_ccd"$h".txt
-  if ! [ -d $ringdir ]; then mkdir $ringdir; fi
-  if [ -f $ringdone ]; then
-    echo -e "\nRing mask is already created for extension $h\n"
+  rm -rf $ringdir
+  mkdir $ringdir
+  if [ "$USE_COMMON_RING" = true ]; then
+    # Case when we use a common ring for normalising all the frames
+    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
   else
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_ccd"$h".fits $ringFile
-    echo "done" >> $ringdone
+    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
+    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
+
   fi
 
+  exit 0
 
   ########## Creating the it1 master flat image ##########
 
@@ -853,10 +873,12 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel -j "$num_cpus" oneNightPreProcessing {}
 
+exit 0
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
+
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
