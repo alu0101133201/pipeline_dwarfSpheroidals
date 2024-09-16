@@ -902,14 +902,15 @@ for h in 0; do
   sexcfg=$CDIR/default.sex
   # Solving the images
   astrocfg=$CDIR/astrometry_$objectName.cfg
-  if [ -f $astrocfg ]; then
-    echo -e "\nAstrometry config file are already created\n"
-  else
-    echo inparallel > $astrocfg
-    echo cpulimit 300 >> $astrocfg
-    echo "add_path $indexdir" >> $astrocfg
-    echo autoindex >> $astrocfg
-  fi
+  
+  rm $astrocfg
+  echo inparallel > $astrocfg
+  echo cpulimit 300 >> $astrocfg
+  echo "add_path $indexdir" >> $astrocfg
+  echo autoindex >> $astrocfg
+  
+
+
   astroimadir=$BDIR/astro-ima
   astroimadone=$astroimadir/done_"$filter"_ccd"$h".txt
   if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
