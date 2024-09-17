@@ -176,10 +176,8 @@ normaliseImagesWithRing() {
             secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
             if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-                echo "image: " $i " is normalised with ring_1" >> tmp.txt
                 me=$(astarithmetic $i -h1 $ringDir/ring_1.fits -h1 0 eq nan where medianvalue --quiet)
             elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-                echo "image: " $i " is normalised with ring_2" >> tmp.txt
                 me=$(astarithmetic $i -h1 $ringDir/ring_2.fits -h1 0 eq nan where medianvalue --quiet)
             else
                 errorNumber=4
@@ -776,7 +774,7 @@ prepareDecalsDataForPhotometricCalibration() {
     echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
 
     frameBrickCorrespondenceFile=$decalsImagesDir/frameBrickMap.txt
-    ringFile=$CDIR/flat_ring_ccd"$h".txt
+    ringFile=$BDIR/ring/ring.fits
 
     # This first steps donwloads the decals frames that are needed for calibrating each of our frames
     # The file "frameBrickCorrespondenceFile" will store the correspondence between our frames and decals bricks
