@@ -423,13 +423,14 @@ oneNightPreProcessing() {
   rm -rf $ringdir
   mkdir $ringdir
 
-  # We always create the common ring. 
-  # It always will be used for donwloading only certain decals bricks for the photometric calibration
-  # Of course it also will be used for normalising if the option is provided, otherwise the normalisation using two rings based on a header keyword will be performed
-  astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
-  if [ "$USE_COMMON_RING" = false ]; then
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
+  # We always need the common ring  definition always stored for photometric calibration (selection of decals bricks to download)
+  cp $commonRingDefinitionFile $ringdir/ring.txt 
+  # We create the .fits ring image based on how the normalisation is going to be done
+  if [ "$USE_COMMON_RING" = true ]; then
+    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
+  else
     astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
+    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
   fi
 
   ########## Creating the it1 master flat image ##########

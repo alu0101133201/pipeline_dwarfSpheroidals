@@ -774,7 +774,7 @@ prepareDecalsDataForPhotometricCalibration() {
     echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
 
     frameBrickCorrespondenceFile=$decalsImagesDir/frameBrickMap.txt
-    ringFile=$BDIR/ring/ring.fits
+    ringFile=$BDIR/ring/ring.txt
 
     # This first steps donwloads the decals frames that are needed for calibrating each of our frames
     # The file "frameBrickCorrespondenceFile" will store the correspondence between our frames and decals bricks
