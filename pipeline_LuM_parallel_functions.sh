@@ -78,6 +78,13 @@ checkIfAllVariablesAreSet() {
                 ROOTDIR \
                 coaddSizePx \
                 USE_COMMON_RING \
+                commonRingDefinitionFile \
+                keyWordToDecideRing
+                keyWordThreshold
+                firstRingDefinitionFile
+                keyWordValueForFirstRing
+                secondRingDefinitionFile
+                keyWordValueForSecondRing
                 RUNNING_FLAT \
                 windowSize \
                 halfWindowSize \
@@ -103,32 +110,85 @@ checkIfAllVariablesAreSet() {
 }
 export -f checkIfAllVariablesAreSet
 
+
+
+
 # Functions used in Flat
 maskImages() {
     inputDirectory=$1
     masksDirectory=$2
     outputDirectory=$3
+    useCommonRing=$4
+    keyWordToDecideRing=$5
+
 
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         i=$inputDirectory/$base
-        astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $outputDirectory/$base -q
+        out=$outputDirectory/$base
+        astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $out -q
+
+        # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
+        # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
+        if [ "$useCommonRing" = false ]; then
+            propagateKeyword $i $keyWordToDecideRing $out
+        fi
     done
+
 }
 export -f maskImages
+
+propagateKeyword() {
+    image=$1
+    keyWordToPropagate=$2
+    out=$3
+
+    variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate)
+    eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h0" 
+}
+export -f propagateKeyword
 
 normaliseImagesWithRing() {
     imageDir=$1
     outputDir=$2
-    ringFile=$3
+    useCommonRing=$3
+    ringDir=$4
+    keyWordToDecideRing=$5
+    keyWordThreshold=$6
+    keyWordValueForFirstRing=$7
+    keyWordValueForSecondRing=$8
 
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         i=$imageDir/$base
         out=$outputDir/$base
+        if [ "$useCommonRing" = true ]; then
+            # Case when we have one common normalisation ring
+            me=$(astarithmetic $i -h1 $ringDir/ring.fits -h1 0 eq nan where medianvalue --quiet)
+            astarithmetic $i -h1 $me / -o $out
+        else
+            # Case when we do NOT have one common normalisation ring
+            # All the following logic is to decide which normalisation ring apply
+            variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
+            firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
+            firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
+            secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
+            secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
-        me=$(astarithmetic $i -h1 $ringFile -h1 0 eq nan where medianvalue --quiet)
-        astarithmetic $i -h1 $me / -o $out
+            if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
+                echo "image: " $i " is normalised with ring_1" >> tmp.txt
+                me=$(astarithmetic $i -h1 $ringDir/ring_1.fits -h1 0 eq nan where medianvalue --quiet)
+            elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
+                echo "image: " $i " is normalised with ring_2" >> tmp.txt
+                me=$(astarithmetic $i -h1 $ringDir/ring_2.fits -h1 0 eq nan where medianvalue --quiet)
+            else
+                errorNumber=4
+                echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided"
+                echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR"
+                exit $errorNumber 
+            fi
+            astarithmetic $i -h1 $me / -o $out
+        fi
     done
 }
 export -f normaliseImagesWithRing

@@ -104,29 +104,35 @@ export dec_gal
 
 export ROOTDIR
 
-echo -e "The size in px of each side of the coadded image is " $coaddSizePx
 export coaddSizePx
+echo -e "The size in px of each side of the coadded image is " $coaddSizePx
 
 export filter
 export detectorWidth
 export detectorHeight
 export pixelScale
 
+
 export USE_COMMON_RING
 export commonRingDefinitionFile
+
+export keyWordToDecideRing
+export keyWordThreshold
 export firstRingDefinitionFile
-export angleValueForFirstRing
+export keyWordValueForFirstRing
 export secondRingDefinitionFile
-export angleValueForSecondRing
+export keyWordValueForSecondRing
 
 echo -e "\nA common normalisation ring is going to be used?: " $ORANGE $USE_COMMON_RING $NOCOLOUR
 if [ "$USE_COMMON_RING" = true ]; then
   echo -e "The file which contains the ring definition is: " $ORANGE $commonRingDefinitionFile $NOCOLOUR
 else
-  echo -e "The file containing the first ring definition is: " $ORANGE $firstRingDefinitionFile $NOCOLOUR " - Angle: " $ORANGE $angleValueForFirstRing $NOCOLOUR
-  echo -e "The file containing the second ring definition is: " $ORANGE  $secondRingDefinitionFile $NOCOLOUR " - Angle: " $ORANGE  $angleValueForSecondRing $NOCOLOUR
-
+  echo -e "The keyword for deciding the ring to use is: " $ORANGE $keyWordToDecideRing $NOCOLOUR 
+  echo -e "The file containing the first ring definition is: " $ORANGE $firstRingDefinitionFile $NOCOLOUR " and the value for using this ring is " $keyWordValueForFirstRing
+  echo -e "The file containing the second ring definition is: " $ORANGE  $secondRingDefinitionFile $NOCOLOUR  " and the value for using this ring is " $keyWordValueForSecondRing
+  echo -e "And the treshold for detecting the value is: " $ORANGE $keyWordThreshold $NOCOLOUR
 fi
+
 
 
 echo -e "\nThe running flat is going to be used?: $ORANGE $RUNNING_FLAT $NOCOLOUR"
@@ -319,6 +325,7 @@ oneNightPreProcessing() {
       echo done > $renamedone
   fi
 
+  
   # -------------------------------------------------------
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
@@ -386,11 +393,18 @@ oneNightPreProcessing() {
       out=$mbiascorrdir/$base
       astarithmetic $i -h1 set-i $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits  -h1  set-m \
                 i i 55000 gt i isblank or 2 dilate nan where m -  float32  \
-                -o $mbiascorrdir/$base
+                -o $out
 
+      # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
+      # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
+      # This is also done in the function maskImages()
+      if [ "$USE_COMMON_RING" = false ]; then
+        propagateKeyword $i $keyWordToDecideRing $out
+      fi
     done
     echo done > $mbiascorrdone
   fi
+
 
   # until here everything is corrected of bias and renamed
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
@@ -409,12 +423,12 @@ oneNightPreProcessing() {
     # Case when we use a common ring for normalising all the frames
     astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
   else
+    # Case when we use a two ring for normalising the frames
     astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
     astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
 
   fi
 
-  exit 0
 
   ########## Creating the it1 master flat image ##########
 
@@ -422,10 +436,7 @@ oneNightPreProcessing() {
   # Running flat: summary
   # A running flat is a flat built with not all the frames of one night, but each frame has a local flat built from N frames based on time-near frames.
   # Caveat: This requieres to check the data of the night, this only works if the data has been taken at similar times (check DATE-OBS or the airmass)
-  # The size of the window for the running flat can vary, here a window of 11 is used because I have been told that that's the minimum number of frames
-  # that can be successfully used for building the flat. But in general is a compromise between having a lot of frames and characterising the local sky conditions
-
-  # This pipeline also computes a whole night flat.
+  # The size of the window for the running flat can vambiascorrdir/$base 
   # If the running flat is activated, the whole night flat will be used to correct the running flat
   # If the running flat is not activated, the whole night flat will be used to be applied to the data
 
@@ -442,11 +453,12 @@ oneNightPreProcessing() {
   if [ -f $normit1done ]; then
     echo -e "\nScience images are already normalized for night $currentNight and extension $h\n"
   else
-    normaliseImagesWithRing $mbiascorrdir $normit1dir $ringdir/ring_ccd"$h".fits
+    normaliseImagesWithRing $mbiascorrdir $normit1dir $USE_COMMON_RING $ringdir $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit1done
   fi
 
-
+  exit 0
+  
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
   if $RUNNING_FLAT; then
@@ -502,7 +514,6 @@ oneNightPreProcessing() {
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
 
 
-
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
@@ -545,7 +556,7 @@ oneNightPreProcessing() {
     if [ -f $maskedit2done ]; then
       echo -e "\nScience images are masked for running flat, night $currentNight and extension $h\n"
     else
-      maskImages $mbiascorrdir $noiseit2dir $maskedit2dir
+      maskImages $mbiascorrdir $noiseit2dir $maskedit2dir $USE_COMMON_RING $keyWordToDecideRing
       echo done > $maskedit2done
     fi
   fi
@@ -557,7 +568,7 @@ oneNightPreProcessing() {
   if [ -f $maskedit2WholeNightdone ]; then
     echo -e "\nScience images are masked for whole night flat, night $currentNight and extension $h\n"
   else
-    maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir
+    maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir $USE_COMMON_RING $keyWordToDecideRing
     echo done > $maskedit2WholeNightdone
   fi
 
@@ -569,7 +580,7 @@ oneNightPreProcessing() {
     if [ -f $normit2done ]; then
       echo -e "\nMasked science images are normalized for running flat, night $currentNight and extension $h\n"
     else
-      normaliseImagesWithRing $maskedit2dir $normit2dir $ringdir/ring_ccd"$h".fits
+      normaliseImagesWithRing $maskedit2dir $normit2dir $USE_COMMON_RING $ringdir $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
       echo done > $normit2done
     fi
   fi
@@ -581,7 +592,7 @@ oneNightPreProcessing() {
   if [ -f $normit2WholeNightdone ]; then
     echo -e "\nMasked science images are normalized for whole night flat, night $currentNight and extension $h\n"
   else
-    normaliseImagesWithRing $maskedit2WholeNightdir $normit2WholeNightdir $ringdir/ring_ccd"$h".fits
+    normaliseImagesWithRing $maskedit2WholeNightdir $normit2WholeNightdir $USE_COMMON_RING $ringdir $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit2WholeNightdone
   fi
 
@@ -673,6 +684,7 @@ oneNightPreProcessing() {
     echo done > $noiseit3WholeNightdone
   fi
 
+  
   # Mask the images (running flat)
   if $RUNNING_FLAT; then
     maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
@@ -681,7 +693,7 @@ oneNightPreProcessing() {
     if [ -f $maskedit3done ]; then
       echo -e "\nScience images are masked for running flat, night $currentNight and extension $h\n"
     else
-      maskImages $mbiascorrdir $noiseit3dir $maskedit3dir
+      maskImages $mbiascorrdir $noiseit3dir $maskedit3dir $USE_COMMON_RING $keyWordToDecideRing
       echo done > $maskedit3done
     fi
   fi
@@ -693,10 +705,9 @@ oneNightPreProcessing() {
   if [ -f $maskedit3WholeNightdone ]; then
     echo -e "\nScience images are masked for whole night flat, night $currentNight and extension $h\n"
   else
-    maskImages $mbiascorrdir $noiseit3WholeNightDir $maskedit3WholeNightdir
+    maskImages $mbiascorrdir $noiseit3WholeNightDir $maskedit3WholeNightdir $USE_COMMON_RING $keyWordToDecideRing
     echo done > $maskedit3WholeNightdone
   fi
-
 
   # Normalising masked images (running flat)
   if $RUNNING_FLAT; then
@@ -706,7 +717,7 @@ oneNightPreProcessing() {
     if [ -f $normit3done ]; then
       echo -e "\nMasked science images are normalized for running flat, night $currentNight and extension $h\n"
     else
-      normaliseImagesWithRing $maskedit3dir $normit3dir $ringdir/ring_ccd"$h".fits
+      normaliseImagesWithRing $maskedit3dir $normit3dir $USE_COMMON_RING $ringdir $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
       echo done > $normit3done
     fi
   fi
@@ -718,7 +729,7 @@ oneNightPreProcessing() {
   if [ -f $normit3WholeNightdone ]; then
     echo -e "\nMasked science images are normalized for whole night flat, night $currentNight and extension $h\n"
   else
-    normaliseImagesWithRing $maskedit3WholeNightdir $normit3WholeNightdir $ringdir/ring_ccd"$h".fits
+    normaliseImagesWithRing $maskedit3WholeNightdir $normit3WholeNightdir $USE_COMMON_RING $ringdir $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
     echo done > $normit3WholeNightdone
   fi
 
