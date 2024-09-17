@@ -34,6 +34,9 @@
 #   · Sextractor conf files (.conv, .param and .sex)
 
 # The path of the ring(s) definition (.txt file) have to be provided in the configuration file of the galaxy.
+# A common normalisation ring (most of the cases will be centered in the image) has to be provided (mandatory)
+# Because it will be used also for selecting what decals bricks are going to be donwloaded for the photometric calibration
+# The 2 rings needed for normalising with them are only requested if the normalisation is going to be done in that way (non mandatory)
 
 # ----------------------------------------------------------------------------------------------
 
