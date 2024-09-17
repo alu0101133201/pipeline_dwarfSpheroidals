@@ -4,6 +4,34 @@
 
 This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture, large FOV telescopes (amateur telescopes). The purpose of the pipeline is to reduce and produce ultra-deep data from dwarf-spheroidals satellites from the Milky Way.
 
+
+### What do you need to run the pipeline
+##### (i.e. How the pipeline expects the data)
+
+The pipeline is going to look for the following things:
+
+* configuration file (.conf extension) - **Provided to the pipeline when calling it (see *Usage* below)**
+    It contains the parameters that belong to the current execution of the pipeline.
+    One of the parameters of the file is the ROOTDIR path.
+
+* DATA-or - **Location: path specified in ROOTDIR variable**
+    This folder contains the data. The data has to be organised by nights, each of themcalled nightN (with N the number of the night)
+    If for whatever reason it doesn't make sense to you to process the data by nights, just place all the data in a *night1* folder
+
+* dark - **Location: path specified in ROOTDIR variable**
+    This folder contains the darks. Same formas as the data (i.e. nightN with N the night number)
+
+* Rings file(s) -  **Location: path specified in conf file**
+    Definition of ring(s). At least the common ring is mandatory always.
+    They are needed for doing two things in the pipeline. The first one is the normalisation of the frames. We use a ring to follow the illumination pattern and avoid the (frequent) central object. The second one is for the photometric calibration. Due to our large FOV we do not download the full decals mosaic, we select some bricks and download them. This bricks are selected based on four different positions of the rings
+
+* config file (configuration) - **Location: path specified in ROOTDIR variable**
+    Must contain:
+      · Scamp conf file
+      · Swarp conf file
+      · Sextractor conf files (.conv, .param and .sex)
+
+
 ### Usage
 
 The pipeline expects a configuration file, which contains information of the reduction that is going to be performed (variables, path of the normalisation rings, etc...). 
@@ -16,19 +44,19 @@ The pipeline can be used from the pipeline folder itself, although I usually run
 
 The structure of the repository is as follows:
 .
-├── (d) checkScripts 
-├── (d) config 
-├── (d) pipelineScripts 
-├
-├── (-) pipeline_LuM_parallel_functions.sh
-├── (-) pipeline_LuM_parallel.sh 
-├── (-) README.md 
-├── (-) template.conf
-└── (-) flat_ring_template.txt
+├── (d) checkScripts <br />
+├── (d) config_template <br />
+├── (d) pipelineScripts  <br />
+├ <br />
+├── (-) pipeline_LuM_parallel_functions.sh <br />
+├── (-) pipeline_LuM_parallel.sh  <br />
+├── (-) README.md  <br />
+├── (-) template.conf <br />
+└── (-) flat_ring_template.txt <br />
 
 * **checkScripts**: Contains python scripts which are not used by the pipeline. They are to be used by the user when checking the data that is going to be reduced (e.g. number of frames, exposure time of frames, airmass-Time plot, etc...)
 
-* **config**: Contains configuration for software used by the pipeline (SExtractor, scamp and swarp mainly). It also contains the astrometry file is created here during the pipeline run. Usually this has not to be touched. 
+* **config**: Template for the configuration folder. Contains configuration for software used by the pipeline (SExtractor, scamp and swarp mainly). It also contains the astrometry file is created here during the pipeline run. Usually this has not to be touched. 
 
 * **pipelineScripts**: Contains python scripts used by the pipeline. From checking for bad frames to downloading data from decals. This folder is essential.
 

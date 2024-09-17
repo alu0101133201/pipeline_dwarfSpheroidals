@@ -459,8 +459,7 @@ oneNightPreProcessing() {
     echo done > $normit1done
   fi
 
-  exit 0
-  
+ 
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
   if $RUNNING_FLAT; then
@@ -887,7 +886,6 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel -j "$num_cpus" oneNightPreProcessing {}
 
-exit 0
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
