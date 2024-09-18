@@ -2,11 +2,18 @@
 ##### Sergio Guerra Arencibia
 ###### Date: 16-09-24
 
-This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture, large FOV telescopes (amateur telescopes). The purpose of the pipeline is to reduce and produce ultra-deep data from dwarf-spheroidals satellites from the Milky Way.
+This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture (around 10/15 cm) and large FOV telescopes (amateur telescopes). The purpose of the pipeline is to reduce and produce low-surface brightness friendly data.
 
 
 ### What do you need to run the pipeline
-##### (i.e. How the pipeline expects the data)
+
+* Data (raw frames mainly)
+* Darks (the pipeline creates a masterdark to correct the BIAS and dark)
+* Config directory for software used by the pipeline (template given)
+* Configuration file for the specific reduction to perform (.conf file, template give)
+* Files specifing the rings to perform the normalisation (also used in data calibration - template given)
+
+##### How the pipeline expects the data
 
 The pipeline is going to look for the following things:
 
@@ -64,7 +71,7 @@ The structure of the repository is as follows:
 Then we have the pipeline itself (*pipeline_LuM_parallel.sh*) and the functions which are in another script (*pipeline_LuM_parallel_functions.sh*). Additionally *template.conf* contains the a template with the configuration for the pipeline itself. Here is specified the details of the reduction to be performed (coordinates, type of flat to use, how to model the background, normalisation ring(s), details from the instrument used, etc...). Finally, *flat_ring_template.txt* is a template about how to define the normalisation ring(s).
 
 
-##### About the normalisation rings
+##### Notes
 
 Take into account that the configuration file (the one corresponding to *template.conf*) is provided to the pipeline as an argument and the normalisation ring(s) are indicated in the configuration file.
 
