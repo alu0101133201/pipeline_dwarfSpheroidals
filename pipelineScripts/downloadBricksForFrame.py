@@ -30,7 +30,6 @@ def getRingRadiusFromFile(path):
     return()
 
 
-
 if (len(sys.argv) < 5):
     raise Exception("A frame path, ring path, array of filters and download destination has to be provided")
 
