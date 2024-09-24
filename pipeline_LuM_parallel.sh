@@ -160,11 +160,11 @@ echo -e "\tHighest index: $highestScaleForIndex"
 export lowestScaleForIndex
 export highestScaleForIndex
 
-
 export solve_field_L_Param
 export solve_field_H_Param
 export solve_field_u_Param
 
+export numberOfStdForBadFrames
 
 checkIfAllVariablesAreSet
 #
@@ -860,14 +860,14 @@ oneNightPreProcessing() {
 
   # Removing everything but the final frames
   rm -rf $BDIR/bias-corrected_n$currentNight
-  # rm -rf $BDIR/masked-corner_n$currentNight
+  rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/masterdark_n$currentNight
   rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
   rm -rf $BDIR/flat-it3-ima_n$currentNight
   for a in $(seq 1 3); do
     rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
     rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
-    # rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
+    rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
     rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
     rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
     rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
@@ -1057,23 +1057,46 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
+echo -e "Modelling the background for subtracting it"
 imagesAreMasked=false
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree $imagesAreMasked
 
+
+# If we have not done it already (in the modelling of the background) we estimate de background as a constant for identifying bad frames
+if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
+  echo -e "\nModelling the background for the bad frame detection"
+  noiseskyctedir=$BDIR/noise-sky_it1_cte
+  noiseskyctedone=$noiseskyctedir/done_"$filter"_ccd"$h".txt
+  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true -1 false
+fi
+
+
 badFilesWarningsDir=$BDIR/warnings_badFiles
+badFilesWarningsFile=identifiedBadFrames.txt
 badFilesWarningsDone=$badFilesWarningsDir/done.txt
 if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python3 $pythonScriptsPath/checkForBadFrames.py $noiseskydir ".txt" $badFilesWarningsDir
+  # We choose the right directory in order to provide the constant estimation and not the polynomial (in case that it has been selected)
+  if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+    tmpDir=$noiseskydir
+  else
+    tmpDir=$noiseskyctedir
+  fi
+  python3 $pythonScriptsPath/checkForBadFrames.py $tmpDir ".txt" $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
   echo done > $badFilesWarningsDone
 fi
 
+rejectedFramesDir=$BDIR/rejectedFrames
+if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+echo -e "\nRemoving (moving to $rejectedFramesDir) the frames"
+removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+
+echo -e "\nSubtracting backgrounf"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-
-
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
@@ -1091,7 +1114,6 @@ export sigmaForStdSigclip
 export iterationsForStdSigClip
 
 ### PREPARING DECALS DATA FOR CALIBRATION ###
-
 referenceImagesForMosaic=$entiredir_smallGrid
 mosaicDir=$DIR/mosaic
 selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
@@ -1243,7 +1265,6 @@ find $wdir -type f ! -name 'done*' -exec rm {} \;
 find $wonlydir -type f ! -name 'done*' -exec rm {} \;
 find $mowdir -type f ! -name 'done*' -exec rm {} \;
 find $moonwdir -type f ! -name 'done*' -exec rm {} \;
-
 
 
 ####### ITERATION 2 ######

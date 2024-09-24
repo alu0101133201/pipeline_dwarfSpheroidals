@@ -98,7 +98,8 @@ checkIfAllVariablesAreSet() {
                 highestScaleForIndex \ 
                 solve_field_L_Param \
                 solve_field_H_Param \
-                solve_field_u_Param)
+                solve_field_u_Param \ 
+                numberOfStdForBadFrames)
 
     echo -e "\n"
     for currentVar in ${variablesToCheck[@]}; do
@@ -343,6 +344,21 @@ warpImage() {
 }
 export -f warpImage
 
+removeBadFramesFromReduction() {
+    sourceToRemoveFiles=$1
+    destinationDir=$2
+    badFilesWarningDir=$3
+    badFilesWarningFile=$4
+
+    filePath=$badFilesWarningDir/$badFilesWarningFile
+
+    while IFS= read -r file_name; do
+        file_name=$(basename "$file_name")
+        fileName="${file_name%.*}".fits
+        mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
+    done < "$filePath"
+}
+export -f removeBadFramesFromReduction
 
 # Functions for compute and subtract sky from frames
 computeSkyForFrame(){
