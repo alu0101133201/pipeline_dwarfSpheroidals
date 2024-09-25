@@ -129,6 +129,7 @@ maskImages() {
         out=$outputDirectory/$base
         astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $out -q
 
+        propagateKeyword $i $airMassKeyWord $out 
         # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
         # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
         if [ "$useCommonRing" = false ]; then
@@ -145,7 +146,7 @@ propagateKeyword() {
     out=$3
 
     variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate)
-    eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h0" 
+    eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h1" 
 }
 export -f propagateKeyword
 
@@ -187,6 +188,7 @@ normaliseImagesWithRing() {
                 exit $errorNumber 
             fi
             astarithmetic $i -h1 $me / -o $out
+        propagateKeyword $i $airMassKeyWord $out 
         fi
     done
 }
@@ -258,6 +260,8 @@ divideImagesByRunningFlats(){
             astarithmetic $i -h1 $flatToUse -h1 / -o $out
             # This step can probably be removed
             astfits $i --copy=1 -o$out
+
+        propagateKeyword $i $airMassKeyWord $out 
     done
     echo done > $flatDone
 }
@@ -275,6 +279,7 @@ divideImagesByWholeNightFlat(){
         out=$outputDir/$base
 
         astarithmetic $i -h1 $flatToUse -h1 / -o $out
+        propagateKeyword $i $airMassKeyWord $out 
     done
     echo done > $flatDone
 }
