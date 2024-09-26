@@ -42,12 +42,13 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, median, std, imageName, numOfStd):
+def saveHistogram(values, median, std, imageName, numOfStd, title):
     myBins = calculateFreedmanBins(values)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    ax.set_title(title)
     counts, bins, patches = ax.hist(values, bins=myBins)
-    max_bin_height = counts.max()
+    max_bin_height = counts.max() + 10
     ax.set_ylim(0, max_bin_height)
 
     ax.vlines(median, ymin=0, ymax=max_bin_height, color="black", linestyle="--", linewidth=2.0)
@@ -59,25 +60,25 @@ def saveHistogram(values, median, std, imageName, numOfStd):
 
 
 folderWithFWHM            = sys.argv[1]
-extensionToLookFor        = sys.argv[2]
-outputFolder              = sys.argv[3]
-outputFile                = sys.argv[4]
-numberOfStdForRejecting    = float(sys.argv[5])
+outputFolder              = sys.argv[2]
+outputFile                = sys.argv[3]
+numberOfStdForRejecting    = float(sys.argv[4])
 
-
+# 1.- Obtain the FWHM values ------------------------
 fwhmValues = np.array([])
-for currentFile in glob.glob(folderWithFWHM + "/range1_*" + extensionToLookFor):
+for currentFile in glob.glob(folderWithFWHM + "/range1_*.txt"):
     fwhmValue = retrieveFWHMValues(currentFile)
     if (not math.isnan(fwhmValue)):
         fwhmValues = np.concatenate((fwhmValues, [fwhmValue]))
 
-
+# 2.- Obtain the median and std and do teh histogram -------------------------------------
 fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
-saveHistogram(fwhmValues, fwhmValueMean, fwhmValueStd, outputFolder + "/fwhmHist.png", numberOfStdForRejecting)
+saveHistogram(fwhmValues, fwhmValueMean, fwhmValueStd, outputFolder + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")
 
 
+# 3.- Identify what frames are outside the acceptance region -----------------------
 badFiles = []
-for currentFile in glob.glob(folderWithFWHM + "/range1_*" + extensionToLookFor):
+for currentFile in glob.glob(folderWithFWHM + "/range1_*.txt"):
     fwhmValue = retrieveFWHMValues(currentFile)
 
     if (math.isnan(fwhmValue)):

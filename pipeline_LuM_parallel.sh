@@ -273,6 +273,8 @@ framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
 
 
+airMassKeyWord=AIRMASS
+export airMassKeyWord
 
 # Function which processes a whole night
 oneNightPreProcessing() {
@@ -363,7 +365,6 @@ oneNightPreProcessing() {
   ########## Save airmass ##########
   # The airmass is saved in this files on airmass-analysis_n folder but also propagated throught the steps of the pipeline until that information
   # reaches the "framesForCommonReduction", because that information needs to be used in the future for the detection of bad frames
-  airMassKeyWord=AIRMASS
   echo -e "\n ${GREEN} Saving airmass ${NOCOLOUR}"
 
   skydir=$BDIR/airmass-analysis_n$currentNight
@@ -1071,29 +1072,29 @@ if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
 fi
 
 # Checking and removing bad frames based on the background value ------
-# badFilesWarningsDir=$BDIR/warnings_badFiles
-# badFilesWarningsFile=identifiedBadFrames_backgroundValue.txt
-# badFilesWarningsDone=$badFilesWarningsDir/done_backgroundValue.txt
-# if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
-# if [ -f $badFilesWarningsDone ]; then
-#     echo -e "\nbadFiles warning already done\n"
-# else
-#   # We choose the right directory in order to provide the constant estimation and not the polynomial (in case that it has been selected)
-#   if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-#     tmpDir=$noiseskydir
-#   else
-#     tmpDir=$noiseskyctedir
-#   fi
-#   python3 $pythonScriptsPath/checkForBadFrames_backgroundValue.py $tmpDir $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
-#   # echo done > $badFilesWarningsDone
-# fi
+badFilesWarningsDir=$BDIR/warnings_badFiles
+badFilesWarningsFile=identifiedBadFrames_backgroundValue.txt
+badFilesWarningsDone=$badFilesWarningsDir/done_backgroundValue.txt
+if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
+if [ -f $badFilesWarningsDone ]; then
+    echo -e "\nbadFiles warning already done\n"
+else
+  # We choose the right directory in order to provide the constant estimation and not the polynomial (in case that it has been selected)
+  if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+    tmpDir=$noiseskydir
+  else
+    tmpDir=$noiseskyctedir
+  fi
+  python3 $pythonScriptsPath/checkForBadFrames_backgroundValue.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
+  echo done > $badFilesWarningsDone
+fi
 
 
-# rejectedFramesDir=$BDIR/rejectedFrames_background
-# if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-# echo -e "\nRemoving (moving to $rejectedFramesDir) the frames"
-# removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-# removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+rejectedFramesDir=$BDIR/rejectedFrames_background
+if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with backgroundValue"
+removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
 
 
 echo -e "\nSubtracting background"
@@ -1139,34 +1140,24 @@ imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $frameChosenBrickMap $decalsImagesDir $alphatruedir
 
-
-exit 0
-
 # Checking and removing bad frames based on the FWHM value ------
-# badFilesWarningsDir=$BDIR/warnings_badFiles
-# fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
-# badFilesWarningsFile=identifiedBadFrames_fwhm.txt
-# badFilesWarningsDone=$badFilesWarningsDir/done_fwhmValue.txt
-# if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
-# if [ -f $badFilesWarningsDone ]; then
-#     echo -e "\nbadFiles warning already done\n"
-# else
-#   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder ".txt" $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
-#   echo done > $badFilesWarningsDone
-# fi
+badFilesWarningsDir=$BDIR/warnings_badFiles
+fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
+badFilesWarningsFile=identifiedBadFrames_fwhm.txt
+badFilesWarningsDone=$badFilesWarningsDir/done_fwhmValue.txt
+if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
+if [ -f $badFilesWarningsDone ]; then
+    echo -e "\nbadFiles warning already done\n"
+else
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
+  echo done > $badFilesWarningsDone
+fi
 
-# rejectedFramesDir=$BDIR/rejectedFrames_FWHM
-# if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-# echo -e "\nRemoving (moving to $rejectedFramesDir) the frames"
-# removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-# removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-
-
-echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
-photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
-applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
-applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
+rejectedFramesDir=$BDIR/rejectedFrames_FWHM
+if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with FWHM"
+removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
 
 
 # This code just produces the histogram of the background values on magnitudes / arcsec²
@@ -1175,7 +1166,14 @@ if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 else
   tmpDir=$noiseskyctedir
 fi
-python3 $pythonScriptsPath/normalisedBackgroundHist.py $alphatruedir $tmpDir $pixelScale $badFilesWarningsDir
+python3 $pythonScriptsPath/normalisedBackgroundHist_surfaceBrightnessUnits.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $badFilesWarningsDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
+
+
+echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
+photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
+photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
+applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
 
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
@@ -1281,7 +1279,6 @@ fi
 
 
 
-exit 0
 
 # Remove intermediate folders to save some space
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
