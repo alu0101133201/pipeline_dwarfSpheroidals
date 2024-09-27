@@ -1062,7 +1062,6 @@ echo -e "Modelling the background for subtracting it"
 imagesAreMasked=false
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $polynomialDegree $imagesAreMasked
 
-
 # If we have not done it already (in the modelling of the background) we estimate de background as a constant for identifying bad frames
 if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"

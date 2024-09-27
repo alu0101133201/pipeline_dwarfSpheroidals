@@ -133,16 +133,6 @@ def filesMatch(file1, file2):
 def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFactors):
     calibratedValues = []
 
-    # We first need to match the values
-    # for i in calibrationFactors:
-    #     calibrationFile = i[0]
-    #     for j in backgroundValues:
-    #         backgroundFile = j[0]
-    #         if (filesMatch(calibrationFile, backgroundFile)):
-    #             calibratedValues.append(i[1] * j[1])
-    #             if (countsToSurfaceBrightnessUnits(i[1] * j[1], arcsecPerPx) < 19.5):
-    #                 print("aa", j[0])
-
     for j in backgroundValues:
         backgroundFile = j[0]
         found=False
@@ -205,7 +195,6 @@ for currentFile in glob.glob(rejectedFramesFWHM + "/*.fits"):
 
 # 1.- Obtain the normalised background values ------------------
 normalisedBackgroundValues = []
-x = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
@@ -228,10 +217,13 @@ values = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, t
 magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(values, arcsecPerPx)
 saveHistogram(np.array(magnitudesPerArcSecSq), destinationFolder + "/magnitudeHist.png")
 
+# Temporal code, just for checking the relation between background counts and magnitude
+# This gives information of the calibration factors
 
-x = [i[1] for i in normalisedBackgroundValues]
+# x = []
+# x = [i[1] for i in normalisedBackgroundValues]
 
-fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-ax.set_yscale('log')
-ax.scatter(magnitudesPerArcSecSq, x)
-plt.savefig("./tmp.png")
+# fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+# ax.set_yscale('log')
+# ax.scatter(magnitudesPerArcSecSq, x)
+# plt.savefig(destinationFolder + "/tmp.png")
