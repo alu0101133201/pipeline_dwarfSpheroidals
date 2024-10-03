@@ -658,7 +658,7 @@ buildDecalsMosaic() {
             downSampledImages="$swarpedImagesDir/downSampled_$(basename $a)"
             astwarp $a --scale=$scaleFactor -o $downSampledImages
             SWarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/swarp1.fits \
-                                -WEIGHTOUT_NAME $swarpedImagesDir/swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $decalsPxScale -PIXELSCALE_TYPE    MANUAL
+                                -WEIGHTOUT_NAME $swarpedImagesDir/swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $decalsPxScale -PIXELSCALE_TYPE MANUAL
             astarithmetic $swarpedImagesDir/swarp_w1.fits -h0 set-i i i 0 lt nan where -otemp1.fits
             astarithmetic $swarpedImagesDir/swarp1.fits -h0 temp1.fits -h1 0 eq nan where -o$swarpedImagesDir/swarped_"$(basename $a)"
             rm $downSampledImages

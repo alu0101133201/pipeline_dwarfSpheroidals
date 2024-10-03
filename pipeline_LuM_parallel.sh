@@ -194,7 +194,7 @@ noisechisel_param="--tilesize=25,25  \
                     --detgrowquant=0.7 \
                     --detgrowmaxholesize=1000 \
                     --qthresh=0.25 \
-                    --snquant=0.98 \
+                    --snquant=0.99 \
                     --rawoutput"
 export noisechisel_param
 
@@ -265,16 +265,12 @@ export numberOfNights
 echo -e "\nNumber of nights to reduce: ${ORANGE} $numberOfNights ${NOCOLOUR}"
 echo -e "\n"
 
-dateHeaderKey="DATE-OBS"
+export airMassKeyWord
 export dateHeaderKey
-
 
 framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
 
-
-airMassKeyWord=AIRMASS
-export airMassKeyWord
 
 # Function which processes a whole night
 oneNightPreProcessing() {
@@ -330,7 +326,6 @@ oneNightPreProcessing() {
       echo done > $renamedone
   fi
 
-  
   # -------------------------------------------------------
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
@@ -338,7 +333,6 @@ oneNightPreProcessing() {
 
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
-
 
   # Loop for all the ccds
   for h in 0; do
@@ -651,7 +645,6 @@ oneNightPreProcessing() {
   fi
 
 
-
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
@@ -842,6 +835,7 @@ oneNightPreProcessing() {
     echo done > $maskedcornerdone
   fi
 
+  
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
 
@@ -887,7 +881,6 @@ for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
 done
 printf "%s\n" "${nights[@]}" | parallel -j "$num_cpus" oneNightPreProcessing {}
-
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
@@ -1045,7 +1038,6 @@ else
   echo done > $entiredone
 fi
 
-
 # For fornax (around 490 frames). Deimos, 20 cores -> 25 min
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
@@ -1088,12 +1080,13 @@ else
   echo done > $badFilesWarningsDone
 fi
 
+# COMMENTED BECAUSE I'M TESTING
+# rejectedFramesDir=$BDIR/rejectedFrames_background
+# if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+# echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with backgroundValue"
+# removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+# removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
 
-rejectedFramesDir=$BDIR/rejectedFrames_background
-if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with backgroundValue"
-removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
 
 
 echo -e "\nSubtracting background"
@@ -1134,6 +1127,7 @@ frameChosenBrickMap=$decalsImagesDir/frameChosenBrickMap.txt
 
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $bestBrickRecord $frameChosenBrickMap
 
+
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1152,20 +1146,22 @@ else
   echo done > $badFilesWarningsDone
 fi
 
-rejectedFramesDir=$BDIR/rejectedFrames_FWHM
-if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with FWHM"
-removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+# COMMENTED BECAUSE I'M TESTING
+
+# rejectedFramesDir=$BDIR/rejectedFrames_FWHM
+# if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+# echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with FWHM"
+# removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+# removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
 
 
-# This code just produces the histogram of the background values on magnitudes / arcsec²
-if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-  tmpDir=$noiseskydir
-else
-  tmpDir=$noiseskyctedir
-fi
-python3 $pythonScriptsPath/normalisedBackgroundHist_surfaceBrightnessUnits.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $badFilesWarningsDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
+# # This code just produces the histogram of the background values on magnitudes / arcsec²
+# if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+#   tmpDir=$noiseskydir
+# else
+#   tmpDir=$noiseskyctedir
+# fi
+# python3 $pythonScriptsPath/normalisedBackgroundHist_surfaceBrightnessUnits.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $badFilesWarningsDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
@@ -1232,11 +1228,8 @@ else
   echo done > $mowdone 
 fi
 
-
-
 ### Coadd ###
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-
 baseCoaddir=$BDIR/coadds
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
@@ -1247,7 +1240,7 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
-
+exit 0
 
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
