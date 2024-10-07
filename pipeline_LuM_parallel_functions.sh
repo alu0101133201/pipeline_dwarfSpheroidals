@@ -76,6 +76,8 @@ checkIfAllVariablesAreSet() {
                 ra_gal \
                 dec_gal \
                 ROOTDIR \
+                airMassKeyWord \ 
+                dateHeaderKey \
                 coaddSizePx \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
@@ -89,6 +91,7 @@ checkIfAllVariablesAreSet() {
                 windowSize \
                 halfWindowSize \
                 MODEL_SKY_AS_CONSTANT \
+                sky_estimation_method \
                 polynomialDegree \
                 filter \
                 pixelScale \
@@ -150,6 +153,49 @@ propagateKeyword() {
 }
 export -f propagateKeyword
 
+
+getMedianValueInsideRing() {
+    image=$1
+    ringImage=$2
+    useCommonRing=$3
+    keyWordToDecideRing=$4
+    keyWordThreshold=$5
+    keyWordValueForFirstRing=$6
+    keyWordValueForSecondRing=$7
+
+
+    # astarithmetic $image -h1 $ringImage -h1 0 eq nan where medianvalue --quiet
+    if [ "$useCommonRing" = true ]; then
+            # Case when we have one common normalisation ring
+            me=$(astarithmetic $i -h1 $ringDir/ring.fits -h1 0 eq nan where medianvalue --quiet)
+    else
+        # Case when we do NOT have one common normalisation ring
+        # All the following logic is to decide which normalisation ring apply
+        variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
+        firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
+        firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
+        secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
+        secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
+
+        if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
+            me=$(astarithmetic $i -h1 $ringDir/ring_1.fits -h1 0 eq nan where medianvalue --quiet)
+            echo "using ring 1 - $variableToDecideRingToNormalise" >> ".tmp.txt"
+        elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
+            me=$(astarithmetic $i -h1 $ringDir/ring_2.fits -h1 0 eq nan where medianvalue --quiet)
+            echo "using ring 2 - $variableToDecideRingToNormalise" >> ".tmp.txt"
+        else
+            errorNumber=4
+            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided"
+            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR"
+            exit $errorNumber 
+        fi
+    fi
+
+    echo $me # This is for "returning" the value
+}
+export -f getMedianValueInsideRing
+
+
 normaliseImagesWithRing() {
     imageDir=$1
     outputDir=$2
@@ -164,32 +210,10 @@ normaliseImagesWithRing() {
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         i=$imageDir/$base
         out=$outputDir/$base
-        if [ "$useCommonRing" = true ]; then
-            # Case when we have one common normalisation ring
-            me=$(astarithmetic $i -h1 $ringDir/ring.fits -h1 0 eq nan where medianvalue --quiet)
-            astarithmetic $i -h1 $me / -o $out
-        else
-            # Case when we do NOT have one common normalisation ring
-            # All the following logic is to decide which normalisation ring apply
-            variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
-            firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
-            firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
-            secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
-            secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
-            if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-                me=$(astarithmetic $i -h1 $ringDir/ring_1.fits -h1 0 eq nan where medianvalue --quiet)
-            elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-                me=$(astarithmetic $i -h1 $ringDir/ring_2.fits -h1 0 eq nan where medianvalue --quiet)
-            else
-                errorNumber=4
-                echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided"
-                echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR"
-                exit $errorNumber 
-            fi
-            astarithmetic $i -h1 $me / -o $out
+        me=$(getMedianValueInsideRing $i $ringDir/ring.fits $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+        astarithmetic $i -h1 $me / -o $out
         propagateKeyword $i $airMassKeyWord $out 
-        fi
     done
 }
 export -f normaliseImagesWithRing

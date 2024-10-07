@@ -26,7 +26,7 @@ def dateAirMassPlot(xData, yData):
         ax.tick_params(axis='x', which='major', labelsize=15, pad=17, rotation=45)
 
         ax.scatter(xData[i], yData[i], s=150, edgecolors='black', color="blue")
-        plt.savefig("airMassVsTime.png")
+        plt.savefig("airMassVsTime_" + str(i) + ".png")
     return()
 
 

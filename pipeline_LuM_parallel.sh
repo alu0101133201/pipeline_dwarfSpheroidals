@@ -149,9 +149,11 @@ export halfWindowSize
 
 
 export MODEL_SKY_AS_CONSTANT
+export sky_estimation_method
 export polynomialDegree
 echo -e "\nThe background will be modelled as a constant?: $ORANGE $MODEL_SKY_AS_CONSTANT $NOCOLOUR"
-echo -e "If so, the polynomial degree is: $ORANGE $polynomialDegree $NOCOLOUR"
+echo -e "If so, the method to model the sky is: $sky_estimation_method"
+echo -e "Otherwise, the polynomial degree is: $ORANGE $polynomialDegree $NOCOLOUR"
 
 
 echo -e "\nThe indices that will be built for the construction of indices for astrometrisation are:"
@@ -168,6 +170,7 @@ export numberOfStdForBadFrames
 
 checkIfAllVariablesAreSet
 #
+
 
 defaultNumOfCPUs=12
 num_cpus=$SLURM_CPUS_ON_NODE
@@ -270,7 +273,6 @@ export dateHeaderKey
 
 framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
-
 
 # Function which processes a whole night
 oneNightPreProcessing() {
