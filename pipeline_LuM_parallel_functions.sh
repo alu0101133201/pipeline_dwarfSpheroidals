@@ -33,8 +33,8 @@ checkIfExist_DATEOBS() {
 
     if [ "$DATEOBSValue" = "n/a" ]; then
         errorNumber=3
-        echo -e "The file $i do not has the $dateHeaderKey, used for sorting the raw files for the pipeline"
-        echo -e "Exiting with error number: $errorNumber"
+        echo -e "The file $i do not has the $dateHeaderKey, used for sorting the raw files for the pipeline"  >&2
+        echo -e "Exiting with error number: $errorNumber"  >&2
         exit $errorNumber
     fi
 }
@@ -155,19 +155,20 @@ export -f propagateKeyword
 
 
 getMedianValueInsideRing() {
-    image=$1
-    ringImage=$2
-    useCommonRing=$3
-    keyWordToDecideRing=$4
-    keyWordThreshold=$5
-    keyWordValueForFirstRing=$6
-    keyWordValueForSecondRing=$7
+    i=$1
+    commonRing=$2
+    doubleRing_first=$3
+    doubleRing_second=$4
+    useCommonRing=$5
+    keyWordToDecideRing=$6
+    keyWordThreshold=$7
+    keyWordValueForFirstRing=$8
+    keyWordValueForSecondRing=$9
 
 
-    # astarithmetic $image -h1 $ringImage -h1 0 eq nan where medianvalue --quiet
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
-            me=$(astarithmetic $i -h1 $ringDir/ring.fits -h1 0 eq nan where medianvalue --quiet)
+            me=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where medianvalue --quiet)
     else
         # Case when we do NOT have one common normalisation ring
         # All the following logic is to decide which normalisation ring apply
@@ -178,15 +179,13 @@ getMedianValueInsideRing() {
         secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $ringDir/ring_1.fits -h1 0 eq nan where medianvalue --quiet)
-            echo "using ring 1 - $variableToDecideRingToNormalise" >> ".tmp.txt"
+            me=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where medianvalue --quiet)
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $ringDir/ring_2.fits -h1 0 eq nan where medianvalue --quiet)
-            echo "using ring 2 - $variableToDecideRingToNormalise" >> ".tmp.txt"
+            me=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where medianvalue --quiet)
         else
             errorNumber=4
-            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided"
-            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR"
+            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
+            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
             exit $errorNumber 
         fi
     fi
@@ -195,23 +194,66 @@ getMedianValueInsideRing() {
 }
 export -f getMedianValueInsideRing
 
+getStdValueInsideRing() {
+    i=$1
+    commonRing=$2
+    doubleRing_first=$3
+    doubleRing_second=$4
+    useCommonRing=$5
+    keyWordToDecideRing=$6
+    keyWordThreshold=$7
+    keyWordValueForFirstRing=$8
+    keyWordValueForSecondRing=$9
+
+    if [ "$useCommonRing" = true ]; then
+            # Case when we have one common normalisation ring
+            std=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where stdvalue --quiet)
+    else
+        # Case when we do NOT have one common normalisation ring
+        # All the following logic is to decide which normalisation ring apply
+        variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
+        firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
+        firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
+        secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
+        secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
+
+        if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
+            std=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where stdvalue --quiet)
+        elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
+            std=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where stdvalue --quiet)
+        else
+            errorNumber=4
+            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
+            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+            exit $errorNumber 
+        fi
+    fi
+
+    echo $std # This is for "returning" the value
+}
+export -f getStdValueInsideRing
+
 
 normaliseImagesWithRing() {
     imageDir=$1
     outputDir=$2
     useCommonRing=$3
-    ringDir=$4
-    keyWordToDecideRing=$5
-    keyWordThreshold=$6
-    keyWordValueForFirstRing=$7
-    keyWordValueForSecondRing=$8
+
+    commonRing=$4
+    doubleRing_first=$5
+    doubleRing_second=$6
+    
+    keyWordToDecideRing=$7
+    keyWordThreshold=$8
+    keyWordValueForFirstRing=$9
+    keyWordValueForSecondRing=${10}
 
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         i=$imageDir/$base
         out=$outputDir/$base
 
-        me=$(getMedianValueInsideRing $i $ringDir/ring.fits $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+        me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
         astarithmetic $i -h1 $me / -o $out
         propagateKeyword $i $airMassKeyWord $out 
     done
@@ -395,8 +437,15 @@ computeSkyForFrame(){
     entiredir=$2
     noiseskydir=$3
     constantSky=$4
-    polyDegree=$5
-    inputImagesAreMasked=$6
+    constantSkyMethod=$5
+    polyDegree=$6
+    inputImagesAreMasked=$7
+    ringDir=$8
+    useCommonRing=$9
+    keyWordToDecideRing=${10}
+    keyWordThreshold=${11}
+    keyWordValueForFirstRing=${12}
+    keyWordValueForSecondRing=${13}
 
     i=$entiredir/$1
 
@@ -408,20 +457,74 @@ computeSkyForFrame(){
     # the coefficients of the polynomial.
     # 
     # Storing this values is also relevant for checking for potential bad frames
+    out=$(echo $base | sed 's/.fits/.txt/')
 
-    if [ "$constantSky" = true ]; then
-        # Case when we subtract a constant
-        sky=$(echo $base | sed 's/.fits/_sky.fits/')
-        out=$(echo $base | sed 's/.fits/.txt/')
+    if [ "$constantSky" = true ]; then  # Case when we subtract a constant
+        # Here we have two possibilities
+        # Estimate the background within the normalisation ring or using noisechisel
 
-        # The sky substraction is done by using the --checksky option in noisechisel
-        astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
+        # The problem is that I can't use the same ring/s as in the normalisation because here we have warped and cropped the images... So I create a new normalisation ring from the centre of the images
+        # I cannot even create a common ring all, because they are cropped based on the number of non-nan (depending on the vignetting and how the NAN are distributed), so i create a ring per image
+        # For that reason the subtraction of the background using the ring is only available if a common ring is used.
+        # More logic should be implemented to use the TWO normalisation rings and recover them after the warping and cropping
+        if [ "$constantSkyMethod" = "ring" ]; then
+            if [ "$useCommonRing" = false ]; then
+                errorNumber=5
+                echo "The background estimation using multiple rings is not supported by the pipeline right now" >&2
+                echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+                exit $errorNumber
+            fi
 
-        mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
-        std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
-        echo "$base $mean $std" > $noiseskydir/$out
+            # Mask the image if needed
+            inputImagesAreMasked=true
+            if ! [ "$inputImagesAreMasked" = true ]; then
+                tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
+                tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
+                astnoisechisel $i $noisechisel_param -o $noiseskydir/$tmpMask
+                astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage --quiet
+                imageToUse=$noiseskydir/$tmpMaskedImage
+                rm -f $noiseskydir/$tmpMask
+            else
+                imageToUse=$i
+            fi
 
-        rm -f $noiseskydir/$sky
+            # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
+
+            tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
+            tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
+
+            naxis1=$(fitsheader $imageToUse | grep "NAXIS1" | awk '{print $3}')
+            naxis2=$(fitsheader $imageToUse | grep "NAXIS2" | awk '{print $3}')
+            half_naxis1=$(echo "$naxis1 / 2" | bc)
+            half_naxis2=$(echo "$naxis2 / 2" | bc)
+            echo "1 $half_naxis1 $half_naxis2 6 1150 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
+
+            me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            echo "$base $me $std" > $noiseskydir/$out
+
+            rm -f $imageToUse 
+            rm $ringDir/$tmpRingDefinition
+            rm $ringDir/$tmpRingFits
+
+        elif [ "$constantSkyMethod" = "noisechisel" ]; then
+            sky=$(echo $base | sed 's/.fits/_sky.fits/')
+
+            # The sky substraction is done by using the --checksky option in noisechisel
+            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
+
+            mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
+            std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
+            echo "$base $mean $std" > $noiseskydir/$out
+            rm -f $noiseskydir/$sky
+        else
+            errorNumber=6
+            echo -e "\nAn invalid value for the sky_estimation_method was provided" >&2
+            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+            exit $errorNumber
+        fi
+
     else
         # Case when we model a plane
         noiseOutTmp=$(echo $base | sed 's/.fits/_sky.fits/')
@@ -444,14 +547,23 @@ computeSkyForFrame(){
 }
 export -f computeSkyForFrame
 
+
+
 computeSky() {
     framesToUseDir=$1
     noiseskydir=$2
     noiseskydone=$3
     constantSky=$4
-    polyDegree=$5
-    inputImagesAreMasked=$6
-	
+    constantSkyMethod=$5
+    polyDegree=$6
+    inputImagesAreMasked=$7
+    ringDir=$8
+    useCommonRing=$9
+    keyWordToDecideRing=${10}
+    keyWordThreshold=${11}
+    keyWordValueForFirstRing=${12}
+    keyWordValueForSecondRing=${13}
+    
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -462,7 +574,8 @@ computeSky() {
             base="entirecamera_"$a.fits
             framesToComputeSky+=("$base")
         done
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $polyDegree $inputImagesAreMasked
+
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
         echo done > $noiseskydone
     fi
 }
@@ -1145,6 +1258,8 @@ computeWeightForFrame() {
     h=0
 
     base=entirecamera_"$a".fits
+    basetmp=entirecamera_"$a"_tmp.fits
+
     f=$photCorrDir/$base
     rms_min=$(awk 'NR=='1'{print $1}' $BDIR/rms_min_val-1_ccd"$h"_it$iteration.txt)
     rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
@@ -1153,10 +1268,19 @@ computeWeightForFrame() {
     echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt        #    saving into file
 
     # multiply each image for its weight
+    wixi_im_tmp=$wdir/$basetmp                     # frame x weight
+    w_im_tmp=$wonlydir/$basetmp                     # only weight
     wixi_im=$wdir/$base                     # frame x weight
     w_im=$wonlydir/$base                     # only weight
-    astarithmetic $f -h1 $weight x -o$wixi_im
-    astarithmetic $wixi_im -h1 $f -h1 / -o$w_im
+
+    astarithmetic $f -h1 $weight x --type=float32 -o$wixi_im_tmp 
+    astarithmetic $wixi_im_tmp -h1 $f -h1 / --type=float32 -o$w_im_tmp
+    astarithmetic $wixi_im_tmp float32 -g1 -o$wixi_im
+    astarithmetic $w_im_tmp float32 -g1 -o$w_im
+    rm -f $wixi_im_tmp
+    rm -f $w_im_tmp
+
+
 }
 export -f computeWeightForFrame
 
@@ -1188,6 +1312,8 @@ buildUpperAndLowerLimitsForOutliers() {
     clippingdone=$2
     wdir=$3
     sigmaForStdSigclip=$4
+
+
     if ! [ -d $clippingdir ]; then mkdir $clippingdir; fi
     if [ -f $clippingdone ]; then
             echo -e "\nUpper and lower limits for building the masked of the weighted images already computed\n"
@@ -1195,6 +1321,7 @@ buildUpperAndLowerLimitsForOutliers() {
             # Compute clipped median and std
             med_im=$clippingdir/median_image.fits
             std_im=$clippingdir/std_image.fits
+
             astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 -o$med_im
             astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 -o$std_im
             # Compute "borders" images

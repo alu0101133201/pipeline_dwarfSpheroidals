@@ -129,6 +129,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
 
         if (numberOfFields == 3):
             backgroundValue = float(splittedLine[1])
+            backgroundStd   = float(splittedLine[2])
         elif (numberOfFields == 1):
             return(float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
@@ -136,7 +137,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
 
     # Then we read the airmass
     airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
-    return(backgroundValue / airmass)
+    return(backgroundValue / airmass, backgroundStd)
 
 HDU_TO_FIND_AIRMASS = 1
 
@@ -148,33 +149,42 @@ outputFile                    = sys.argv[5]
 numberOfStdForRejecting       = float(sys.argv[6])
 
 
-# 1.- Obtain the normalised background values ------------------
+# 1.- Obtain the normalised background values and std values ------------------
 normalisedBackgroundValues = []
+backgroundStds             = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
-    currentValue = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+    currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
     normalisedBackgroundValues.append(currentValue)
+    backgroundStds.append(currentStd)
     
 normalisedBackgroundValues = np.array(normalisedBackgroundValues)
+backgroundStds = np.array(backgroundStds)
 
-
-# 2.- Obtain the median and std and do the histogram ------------------
+# 2.- Obtain the median and std and do the histograms ------------------
 backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
 saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, \
                 outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass")
+
+backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
+saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
+                outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values")
+
 
 # 3.- Identify what frames are outside the acceptance region ------------------
 badFiles = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
-    currentValue = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+    currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
 
     if (math.isnan(currentValue)):
         continue
     if ((currentValue > (backgroundValueMedian + (numberOfStdForRejecting * backgroundValueStd))) or \
-        (currentValue < (backgroundValueMedian - (numberOfStdForRejecting * backgroundValueStd)))):
+        (currentValue < (backgroundValueMedian - (numberOfStdForRejecting * backgroundValueStd))) or \
+        (currentStd   > (backgroundStdMedian   + (numberOfStdForRejecting * BackgroundStdStd))) or \
+        (currentStd   < (backgroundStdMedian   - (numberOfStdForRejecting * BackgroundStdStd)))):
         badFiles.append(currentFile.split('/')[-1])
         
 with open(outputFolder + "/" + outputFile, 'w') as file:
