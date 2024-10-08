@@ -780,6 +780,7 @@ buildDecalsMosaic() {
     swarpcfg=$3
     ra=$4
     dec=$5
+    filter=$6
 
     buildMosaicDone=$mosaicDir/swarped/done_t.xt
     swarpedImagesDir=$mosaicDir/swarped
@@ -791,7 +792,13 @@ buildDecalsMosaic() {
         decalsPxScale=1.048
         mosaicSize=9500
 
-        for a in $(ls -v $decalsImagesDir/*_g+r_div2.fits); do
+        if [ "$filter" = "lum"]; then
+            bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
+        else
+            bricks=$(ls -v $decalsImagesDir/*$filter.fits)
+        fi
+
+        for a in $bricks; do
             downSampledImages="$swarpedImagesDir/downSampled_$(basename $a)"
             astwarp $a --scale=$scaleFactor -o $downSampledImages
             SWarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/swarp1.fits \
@@ -841,8 +848,7 @@ selectStarsAndSelectionRangeDecals() {
     frameBrickCorrespondenceFile=$4
     selectedDecalsStarsDir=$5
     rangeUsedDecalsDir=$6
-    bestBrickRecord=$7
-    frameChosenBrickMap=$8
+    filter=$7
 
     tmpFolder="./tmpFilesForPhotometricCalibration"
     selectDecalsStarsDone=$selectedDecalsStarsDir/automaticSelection_done.txt
@@ -858,44 +864,43 @@ selectStarsAndSelectionRangeDecals() {
     if [ -f $selectDecalsStarsDone ]; then
             echo -e "\nDecals bricks and stars for doing the photometric calibration are already selected for each frame\n"
     else
-        # Remove the record and map files. This is done to avoid problems with files from previous executions
-        rm $bestBrickRecord
-        rm $frameChosenBrickMap
-
         astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o ./kernel.fits 1>/dev/null
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_"$a.fits
             bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
-            chosenBrick=$( chooseBrickToUse "${bricks[@]}" $decalsImagesDir ./kernel.fits $tmpFolder $bestBrickRecord)
-            echo "$base:$chosenBrick" >> $frameChosenBrickMap
+            echo "Image $a; Bricks $bricks"
 
-            echo "Image $a; Bricks $bricks; Chosen $chosenBrick"
 
-            # The following conditional is not to compute twice the same decals (g+r)/2 frame
+            # The following conditional is not to compute twice the same decals frame
+
+            # ------- For the moment I ignore this. I'm going step by step remembering the code
             matchingSelectedStars=$(find $selectedDecalsStarsDir -maxdepth 1 -type f -name "*${chosenBrick}*" | head -n 1)
             matchingRanges=$(find $rangeUsedDecalsDir -maxdepth 1 -type f -name "*${chosenBrick}*" | head -n 1)
             if [ -n "$matchingSelectedStars" ]; then
                 cp $matchingSelectedStars $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a"_andBrick_"$chosenBrick".txt
                 cp $matchingRanges $rangeUsedDecalsDir/selected_rangeForFrame_"$a"_andBrick_"$chosenBrick".txt
-
-                #
-                # tmp=$(( $a - 1 ))
-                # cp $decalsClumpsCat/decals_"$tmp".fits_$chosenBrick.txt $decalsClumpsCat/decals_"$base"_$chosenBrick.txt
-                #
+            # -------
 
             else
-                decalsImageToUse=$decalsImagesDir/"decal_image_"$chosenBrick"_g+r_div2.fits"
-                astconvolve $decalsImageToUse --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved.fits
-                astnoisechisel $decalsImageToUse -h1 -o $tmpFolder/det.fits --convolved=$tmpFolder/convolved.fits --tilesize=30,30 --detgrowquant=0.95 --erode=4
-                astsegment $tmpFolder/det.fits -o $tmpFolder/seg.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
-                astmkcatalog $tmpFolder/seg.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals.txt --zeropoint=22.5
+                for currentBrick in $bricks; do # I have to go through all the bricks for each frame
+                    if [ "$filter" = "lum"]; then
+                        decalsImageToUse=$decalsImagesDir/"decal_image_"$currentBrick"_g+r_div2.fits"
+                    else
+                        decalsImageToUse=$decalsImagesDir/"decal_image_"$currentBrick"_$filter.fits"
+                    fi
 
-                #
-                # echo cp $tmpFolder/decals_c.txt $decalsClumpsCat/decals_"$base"_$chosenBrick.txt
-                # cp $tmpFolder/decals_c.txt $decalsClumpsCat/decals_"$base"_$chosenBrick.txt
-                #
+                    astconvolve $decalsImageToUse --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
+                    astnoisechisel $decalsImageToUse -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=30,30 --detgrowquant=0.95 --erode=4
+                    astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
+                    astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
+                    astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
 
-                astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
+
+                done
+                exit 0
+
+
+
 
                 # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
                 # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
@@ -920,13 +925,12 @@ selectStarsAndSelectionRangeDecals() {
 prepareDecalsDataForPhotometricCalibration() {
     referenceImagesForMosaic=$1
     decalsImagesDir=$2
-    ra=$3
-    dec=$4
-    mosaicDir=$5
-    selectedDecalsStarsDir=$6
-    rangeUsedDecalsDir=$7
-    bestBrickRecord=$8
-    frameChosenBrickMap=$9
+    filter=$3
+    ra=$4
+    dec=$5
+    mosaicDir=$6
+    selectedDecalsStarsDir=$7
+    rangeUsedDecalsDir=$8
 
 
     echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
@@ -942,32 +946,36 @@ prepareDecalsDataForPhotometricCalibration() {
     # the step takes a while even if the images are already downloaded because we have to do a query to the database
     # in order to obtain the brickname and check if it is already downloaded or no
 
-    # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
-    filters="g,r"
-    downloadDecalsData $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $filters $ringFile
 
-    # This step creates the images (g+r)/2. This is needed because we are using a luminance filter which is a sort of (g+r)
-    # The division by 2 is because in AB system we work with Janskys, which are W Hz^-1 m^-2. So we have to give a flux per wavelenght
-    # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
-    # practically the same wavelenght width, so dividing by 2 is enough
-    add_gAndr_andDivideByTwo $decalsImagesDir
+    if [ "$filter" = "lum"]; then
+        filters="g,r" # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
+        downloadDecalsData $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $filters $ringFile
+
+        # This step creates the images (g+r)/2. This is needed because we are using a luminance filter which is a sort of (g+r)
+        # The division by 2 is because in AB system we work with Janskys, which are W Hz^-1 m^-2. So we have to give a flux per wavelenght
+        # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
+        # practically the same wavelenght width, so dividing by 2 is enough
+        add_gAndr_andDivideByTwo $decalsImagesDir
+    else 
+        filters=$filter
+        downloadDecalsData $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $filters $ringFile
+    fi
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration. But we build it anyway to retrieve in an easier way
     # the Gaia data of the whole field.
-    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec
+    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter
 
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
     downloadGaiaCatalogueForField $mosaicDir
 
-
     # First of all remember that we need to do the photometric calibration frame by frame.
     # For each frame of the data, due to its large field, we have multiple (in our case 4 - defined in "downloadBricksForFrame.py") decals bricks
     # They may have been taken at different moments with different conditions so we have to process them one by one
+    # CORRECTION. This was our initial though, but actually the bricks and the detectors of decals are not the same, so we are already mixing night conditions
+    # Additionally, due to the restricted common range, one brick is not enough for obtaining a reliable calibration so now we use the four bricks
 
-    # With only one field is enough, so in order to avoid extra work having to treat the four bricks independently, we will
-    # choose one of them (based on the std and defining a minimum number of stars needed) and do the calibration of the frame with that brick
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
-    selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $bestBrickRecord $frameChosenBrickMap
+    selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter 
 }
 
 # Photometric calibration functions

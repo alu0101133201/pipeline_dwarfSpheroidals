@@ -1099,6 +1099,7 @@ echo -e "\nSubtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
+
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 
@@ -1122,17 +1123,9 @@ rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 decalsImagesDir=$mosaicDir/decalsImages
 
-# The file "bestBrickRecord" will store the sets of decals bricks already evaluated and the decision made
-# This way we avoid computing the same more than once and saves a considerable amount of time
-# -
-# The file "frameChosenBrickMap" will store the correspondence between our frames and the chosen decals brick
-# It's true that "frameChosenBrickMap" does not store information not present in "bestBrickRecord" together with "frameBrickMap"
-# But it makes our life easier and the amount of space is negligible (a plain text file with some hundreds of lines)
-bestBrickRecord=$decalsImagesDir/bestBrickRecord.txt
-frameChosenBrickMap=$decalsImagesDir/frameChosenBrickMap.txt
 
-prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $bestBrickRecord $frameChosenBrickMap
-
+prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir
+exit 0
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
