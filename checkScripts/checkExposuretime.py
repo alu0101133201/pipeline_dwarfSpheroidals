@@ -18,7 +18,7 @@ hduNum = int(args.hdu)
 
 nightFolders = glob.glob(dataDirectory + "/night*")
 numOfNights = len(nightFolders)
-exposureKeyWord = "EXPOSURE"
+exposureKeyWord = "EXPTIME"
 
 exposureTimes = set()
 framesChecked = 0
@@ -29,7 +29,7 @@ for i in nightFolders:
         tmpHeader = fits.open(j)[hduNum].header
         tmpExposureTime = tmpHeader[exposureKeyWord]
 
-        exposureTimes.add(5)
+        exposureTimes.add(tmpExposureTime)
         framesChecked += 1
 
 print("The exposures times found are: ", exposureTimes)

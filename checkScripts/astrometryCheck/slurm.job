@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=20
+#SBATCH --time=4:00:00
+#SBATCH --job-name=IC1613-lum-reduction
+#SBATCH --output=%j.out
+#SBATCH --error=%j.err
+#SBATCH --mem=50G
+
+module load gnuastro/0.22
+module load astrometry.net/0.94
+module load python
+
+./astrometryCheck.sh
+

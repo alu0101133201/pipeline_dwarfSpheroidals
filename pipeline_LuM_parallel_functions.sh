@@ -51,15 +51,6 @@ getHighestNumberFromFilesInFolder() {
 }
 export -f getHighestNumberFromFilesInFolder
 
-retrieveChosenDecalsBrickForFrame() {
-    frame=$1
-    mapFile=$2
-
-    chosenBrick=$( grep "^$frame:" $mapFile | cut -d ':' -f 2 )
-    echo $chosenBrick
-}
-export -f retrieveChosenDecalsBrickForFrame
-
 writeKeywordToFits() {
     fitsFile=$1
     header=$2
@@ -674,52 +665,6 @@ getParametersFromHalfMaxRadius() {
     echo $median $std $numOfStars
 }
 
-chooseBrickToUse() {
-    bricks=$1
-    brickDir=$2
-    kernel=$3
-    tmpFolder=$4
-    bestBrickRecord=$5
-
-    minStd=9999
-    bestBrick=$( grep "^$bricks:" $bestBrickRecord | cut -d ':' -f 2 )
-
-    # The following conditional is not to compute the same decision twice, so we recover previous brick-decision from "$bestBrickRecord" file
-    if [ -n "$bestBrick" ]; then
-        echo $bestBrick
-    else
-        for i in $bricks; do
-            brickFullName_g=$brickDir/"decal_image_"$i"_g.fits"
-            brickFullName_r=$brickDir/"decal_image_"$i"_r.fits"
-            parameters_g=$(getParametersFromHalfMaxRadius $brickFullName_g "$BDIR/catalogs/"$objectName"_Gaia_eDR3.fits" $kernel $tmpFolder)
-            parameters_r=$(getParametersFromHalfMaxRadius $brickFullName_r "$BDIR/catalogs/"$objectName"_Gaia_eDR3.fits" $kernel $tmpFolder)
-
-            # The following code converts the parameters obtained in the previous lines to the number format needed for numerical comparison
-            # The sed - bc - awk combination is needed because the values are returned in scientific notation and I have not found an easy way of
-            # coverting them. In all likelihood this can be simplified
-
-            read mean_g std_g numStars_g <<< "$parameters_g"
-            mean_g=$( echo $mean_g | sed -E 's/([+-]?[0-9.]+)[eE]\+?(-?)([0-9]+)/(\1*10^\2\3)/g' | bc -l | awk '{printf "%.8f\n", $0}')
-            std_g=$( echo $std_g | sed -E 's/([+-]?[0-9.]+)[eE]\+?(-?)([0-9]+)/(\1*10^\2\3)/g' | bc -l | awk '{printf "%.8f\n", $0}')
-
-            read mean_r std_r numStars_r <<< "$parameters_r"
-            mean_r=$( echo $mean_r | sed -E 's/([+-]?[0-9.]+)[eE]\+?(-?)([0-9]+)/(\1*10^\2\3)/g' | bc -l | awk '{printf "%.8f\n", $0}')
-            std_r=$( echo $std_r | sed -E 's/([+-]?[0-9.]+)[eE]\+?(-?)([0-9]+)/(\1*10^\2\3)/g' | bc -l | awk '{printf "%.8f\n", $0}')
-
-            # ****** Decision note *******
-            # The criteria for selecting the best brick is having at least 50 stars and, from those that fulfill this condition, the lower std
-            # where std is std_r + std_g
-            std=$(echo "$std_g + $std_r" | bc -l )
-            if (( $(echo "$std < $minStd" | bc -l) )) && (( $(echo "$numStars_g > 50" | bc -l) )) && (( $(echo "$numStars_r > 50" | bc -l) )); then
-                minStd=$std
-                bestBrick=$i
-            fi
-        done
-        echo "$bricks:$bestBrick" >> $bestBrickRecord
-        echo $bestBrick
-    fi
-}
-
 downloadDecalsData() {
     referenceImagesForMosaic=$1
     mosaicDir=$2
@@ -781,9 +726,9 @@ buildDecalsMosaic() {
     ra=$4
     dec=$5
     filter=$6
+    swarpedImagesDir=$7
 
-    buildMosaicDone=$mosaicDir/swarped/done_t.xt
-    swarpedImagesDir=$mosaicDir/swarped
+    buildMosaicDone=$swarpedImagesDir/done_t.xt
     if ! [ -d $swarpedImagesDir ]; then mkdir $swarpedImagesDir; fi
     if [ -f $buildMosaicDone ]; then
         echo -e "\nMosaic already built\n"
@@ -792,25 +737,25 @@ buildDecalsMosaic() {
         decalsPxScale=1.048
         mosaicSize=9500
 
-        if [ "$filter" = "lum"]; then
+        if [ "$filter" = "lum" ]; then
             bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
         else
             bricks=$(ls -v $decalsImagesDir/*$filter.fits)
         fi
 
         for a in $bricks; do
-            downSampledImages="$swarpedImagesDir/downSampled_$(basename $a)"
+            downSampledImages="$swarpedImagesDir/originalGrid_$(basename $a)"
             astwarp $a --scale=$scaleFactor -o $downSampledImages
             SWarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/swarp1.fits \
                                 -WEIGHTOUT_NAME $swarpedImagesDir/swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $decalsPxScale -PIXELSCALE_TYPE MANUAL
             astarithmetic $swarpedImagesDir/swarp_w1.fits -h0 set-i i i 0 lt nan where -otemp1.fits
-            astarithmetic $swarpedImagesDir/swarp1.fits -h0 temp1.fits -h1 0 eq nan where -o$swarpedImagesDir/swarped_"$(basename $a)"
-            rm $downSampledImages
+            astarithmetic $swarpedImagesDir/swarp1.fits -h0 temp1.fits -h1 0 eq nan where -o$swarpedImagesDir/commonGrid_"$(basename $a)"
+            
         done
         rm $swarpedImagesDir/swarp_w1.fits $swarpedImagesDir/swarp1.fits ./temp1.fits
 
         sigma=2
-        astarithmetic $(ls -v $swarpedImagesDir/*.fits) $(ls -v $swarpedImagesDir/*.fits | wc -l) -g1 $sigma 0.2 sigclip-median -o $mosaicDir/mosaic.fits
+        astarithmetic $(ls -v $swarpedImagesDir/commonGrid*.fits) $(ls -v $swarpedImagesDir/commonGrid*.fits | wc -l) -g1 $sigma 0.2 sigclip-median -o $mosaicDir/mosaic.fits
         echo done > $buildMosaicDone
     fi
 }
@@ -841,6 +786,46 @@ downloadGaiaCatalogueForField() {
     fi
 }
 
+checkIfSameBricksHaveBeenComputed() {
+    currentBrick=$1
+    bricksToLookFor=$2
+    frameBrickCorrespondenceFile=$3
+
+    # I build an array with the bricks to look for because the function receives an string
+    bricksToLookForArray=()
+    for i in $bricksToLookFor; do
+        bricksToLookForArray+=("$i")
+    done
+
+    while read -r line; do
+        # I read the frame number and its associatd bricks
+        imageNumber=$(echo "$line" | awk -F '[_.]' '{print $2}')
+        string_list=$(echo "$line" | sed -E "s/.*\[(.*)\]/\1/" | tr -d "'")
+        IFS=', ' read -r -a readBricksArray <<< "$string_list"
+
+
+        # Looking for coincidences
+        if [[ ${#readBricksArray[@]} -eq 4 && ${#bricksToLookForArray[@]} -eq 4 ]]; then
+            all_match=true
+
+            for i in "${!bricksToLookForArray[@]}"; do
+                if [[ "${bricksToLookForArray[$i]}" != "${readBricksArray[$i]}" ]]; then
+                    all_match=false
+                    break
+                fi      
+            done
+
+            # I also check if the number is less, because I'm processing the files in numerical order so if is not less is not going to be computed yet
+            if [[ "$all_match" = true && "$imageNumber" -lt "$currentBrick" ]]; then
+                echo $imageNumber
+                exit
+            fi
+        fi
+    done < $frameBrickCorrespondenceFile
+    echo 0
+}
+export -f checkIfSameBricksHaveBeenComputed
+
 selectStarsAndSelectionRangeDecals() {
     framesForCalibrationDir=$1
     mosaicDir=$2
@@ -849,15 +834,14 @@ selectStarsAndSelectionRangeDecals() {
     selectedDecalsStarsDir=$5
     rangeUsedDecalsDir=$6
     filter=$7
+    downSampleDecals=$8
 
     tmpFolder="./tmpFilesForPhotometricCalibration"
     selectDecalsStarsDone=$selectedDecalsStarsDir/automaticSelection_done.txt
-
-    # Code to store clumps catalogue. So I can check the range for the photometric calibration
-    # decalsClumpsCat=$mosaicDir/clumpsCats
-    # if ! [ -d $decalsClumpsCat ]; then mkdir $decalsClumpsCat; fi
+    brickCombinationsDir=$mosaicDir/combinedBricksForImages # I save the combination of the bricks for calibrating each image because I will need it in future steps of the calibration
 
     if ! [ -d $rangeUsedDecalsDir ]; then mkdir $rangeUsedDecalsDir; fi
+    if ! [ -d $brickCombinationsDir ]; then mkdir $brickCombinationsDir; fi
     if ! [ -d $selectedDecalsStarsDir ]; then mkdir $selectedDecalsStarsDir; fi
     if ! [ -d $tmpFolder ]; then mkdir $tmpFolder; fi
 
@@ -871,46 +855,43 @@ selectStarsAndSelectionRangeDecals() {
             echo "Image $a; Bricks $bricks"
 
 
-            # The following conditional is not to compute twice the same decals frame
-
-            # ------- For the moment I ignore this. I'm going step by step remembering the code
-            matchingSelectedStars=$(find $selectedDecalsStarsDir -maxdepth 1 -type f -name "*${chosenBrick}*" | head -n 1)
-            matchingRanges=$(find $rangeUsedDecalsDir -maxdepth 1 -type f -name "*${chosenBrick}*" | head -n 1)
-            if [ -n "$matchingSelectedStars" ]; then
-                cp $matchingSelectedStars $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a"_andBrick_"$chosenBrick".txt
-                cp $matchingRanges $rangeUsedDecalsDir/selected_rangeForFrame_"$a"_andBrick_"$chosenBrick".txt
-            # -------
-
+            # The following conditional is not to compute twice the same decals frames
+            alreadyComputedBrick=$( checkIfSameBricksHaveBeenComputed $a "$bricks" $frameBrickCorrespondenceFile )
+            if [ "$alreadyComputedBrick" -gt 0 ]; then
+                cp $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$alreadyComputedBrick".txt $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt 
+                cp $rangeUsedDecalsDir/selected_rangeForFrame_"$alreadyComputedBrick".txt $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
+                cp $brickCombinationsDir/combinedBricks_"$(basename $alreadyComputedBrick)".fits $brickCombinationsDir/combinedBricks_"$a".fits
             else
+                images=()
                 for currentBrick in $bricks; do # I have to go through all the bricks for each frame
-                    if [ "$filter" = "lum"]; then
-                        decalsImageToUse=$decalsImagesDir/"decal_image_"$currentBrick"_g+r_div2.fits"
+                    # Remark that the ' ' at the end of the strings is needed. Otherwise when calling $images in the SWarp the names are not separated
+                    if [ "$filter" = "lum" ]; then
+                        images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_g+r_div2.fits "
                     else
-                        decalsImageToUse=$decalsImagesDir/"decal_image_"$currentBrick"_$filter.fits"
+                        images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_$filter.fits "
                     fi
-
-                    astconvolve $decalsImageToUse --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
-                    astnoisechisel $decalsImageToUse -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=30,30 --detgrowquant=0.95 --erode=4
-                    astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
-                    astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
-                    astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
-
-
                 done
-                exit 0
 
+                # Combining the downsampled decals image in one
+                SWarp $images -IMAGEOUT_NAME $tmpFolder/swarp1_$a.fits -WEIGHTOUT_NAME $tmpFolder/swarp_w1_$a.fits 
+                astarithmetic $tmpFolder/swarp_w1_$a.fits -h0 set-i i i 0 lt nan where -o$tmpFolder/temp1_$a.fits
+                astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
 
-
+                astconvolve $brickCombinationsDir/combinedBricks_"$(basename $a)".fits --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
+                astnoisechisel $brickCombinationsDir/combinedBricks_"$(basename $a)".fits -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=20,20
+                astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
+                astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
+                astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
 
                 # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
                 # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
-                s=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-                std=$(asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+                s=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+                std=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
                 minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
                 maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
 
-                echo $s $std $minr $maxr > $rangeUsedDecalsDir/selected_rangeForFrame_"$a"_andBrick_"$chosenBrick".txt
-                asttable $tmpFolder/decals_c.txt --range=HALF_MAX_RADIUS,$minr,$maxr -o $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a"_andBrick_"$chosenBrick".txt
+                echo $s $std $minr $maxr > $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
+                asttable $tmpFolder/decals_"$a"_c.txt --range=HALF_MAX_RADIUS,$minr,$maxr -o $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt
                 rm $tmpFolder/*
             fi
         done
@@ -918,9 +899,8 @@ selectStarsAndSelectionRangeDecals() {
         rm ./kernel.fits
         echo done > $selectDecalsStarsDone
     fi
-
-
 }
+export -f selectStarsAndSelectionRangeDecals
 
 prepareDecalsDataForPhotometricCalibration() {
     referenceImagesForMosaic=$1
@@ -947,7 +927,7 @@ prepareDecalsDataForPhotometricCalibration() {
     # in order to obtain the brickname and check if it is already downloaded or no
 
 
-    if [ "$filter" = "lum"]; then
+    if [ "$filter" = "lum" ]; then
         filters="g,r" # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
         downloadDecalsData $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $filters $ringFile
 
@@ -963,7 +943,7 @@ prepareDecalsDataForPhotometricCalibration() {
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration. But we build it anyway to retrieve in an easier way
     # the Gaia data of the whole field.
-    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter
+    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $mosaicDir/downSampled
 
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
     downloadGaiaCatalogueForField $mosaicDir
@@ -973,10 +953,10 @@ prepareDecalsDataForPhotometricCalibration() {
     # They may have been taken at different moments with different conditions so we have to process them one by one
     # CORRECTION. This was our initial though, but actually the bricks and the detectors of decals are not the same, so we are already mixing night conditions
     # Additionally, due to the restricted common range, one brick is not enough for obtaining a reliable calibration so now we use the four bricks
-
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
-    selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter 
+    selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $mosaicDir/downSampled
 }
+export -f prepareDecalsDataForPhotometricCalibration
 
 # Photometric calibration functions
 # The function that is to be used (the 'public' function using OOP terminology)
@@ -1038,19 +1018,20 @@ matchDecalsAndOurData() {
             base="entirecamera_$a.fits"
             out=$matchdir2/match-decals-"$base".cat
 
-            # match the aoutomatics catalogs THIS WAY I SELECT NON SATURATED
+            # match the automatics catalogs THIS WAY I SELECT NON SATURATED
             out_auto=$matchdir2/match-decals-"$base"_automatic.cat
-            astmatch $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a"_*.txt --hdu=1 $mycatdir/selected_"$base"_automatic.txt --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS,bMAGNITUDE,bHALF_MAX_RADIUS -o$out_auto
+            astmatch $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt --hdu=1 $mycatdir/selected_"$base"_automatic.txt --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS,bMAGNITUDE,bHALF_MAX_RADIUS -o$out_auto
         done
         echo done > $matchdir2done
     fi
 }
+export -f matchDecalsAndOurData
 
 buildDecalsCatalogueOfMatchedSources() {
     decalsdir=$1
     rangeUsedDecalsDir=$2
     matchdir2=$3
-    frameChosenBrickMap=$4
+    mosaicDir=$4
     decalsImagesDir=$5
 
     decalsdone=$decalsdir/done__ccd"$h".txt
@@ -1061,21 +1042,20 @@ buildDecalsCatalogueOfMatchedSources() {
         for a in $(seq 1 $totalNumberOfFrames); do
             # I have to take 2 the FWHM (half-max-rad)
             # It is already saved as mean value of the point-like sources
-            r_decals_pix_=$(awk 'NR==1 {printf $1}' $rangeUsedDecalsDir/"selected_rangeForFrame_"$a"_andBrick_"*".txt")
+            r_decals_pix_=$(awk 'NR==1 {printf $1}' $rangeUsedDecalsDir/"selected_rangeForFrame_"$a".txt")
             r_decals_pix=$(astarithmetic $r_decals_pix_ 2. x -q )
 
             base="entirecamera_$a.fits"
             out=$matchdir2/match-decals-"$base"_automatic.cat
-            decalsBrick=$( retrieveChosenDecalsBrickForFrame $base $frameChosenBrickMap )
-            decalsBrick=$decalsImagesDir"/decal_image_"$decalsBrick"_g+r_div2.fits"
 
+            decalsCombinedBricks=$mosaicDir/combinedBricksForImages/combinedBricks_$a.fits
             #This seems extremely inneficient but maybe is the way idk
             asttable $out -hSOURCE_ID -cRA,DEC | awk '!/^#/{print NR, $1, $2, 5, '$r_decals_pix', 0, 0, 1, NR, 1}' > apertures_decals.txt
-            astmkprof apertures_decals.txt --background=$decalsBrick --backhdu=1 \
+            astmkprof apertures_decals.txt --background=$decalsCombinedBricks --backhdu=1 \
                     --clearcanvas --replace --type=int16 --mforflatpix \
                     --mode=wcs --output=apertures_decals.fits
             astmkcatalog apertures_decals.fits -h1 --zeropoint=22.5 \
-                            --valuesfile=$decalsBrick --valueshdu=1 \
+                            --valuesfile=$decalsCombinedBricks --valueshdu=1 \
                             --ids --ra --dec --magnitude --sum \
                             --output=$decalsdir/decals_"$base".cat
             rm apertures_decals.txt
@@ -1159,10 +1139,11 @@ computeAndStoreFactors() {
             asttable $f -h1 --range=MAGNITUDE,$brightLimit,$faintLimit -o$alphatruet
             asttable $alphatruet -h1 -c1,2,3,'arith $4 $6 /' -o$alphatruedir/$base
 
-            mean=$(asttable $alphatruedir/$base -c'ARITH_1'| aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-            std=$(asttable $alphatruedir/$base -c'ARITH_1'| aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+            mean=$(asttable $alphatruedir/$base -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+            std=$(asttable $alphatruedir/$base -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
             echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt
-
+            count=$(asttable $alphatruedir/$base -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
+            echo "$count" > $alphatruedir/numberOfStarsUsedForCalibrate_$a.txt
         done
         echo done > $alphatruedone
     fi
@@ -1173,7 +1154,7 @@ computeCalibrationFactors() {
     imagesForCalibration=$2
     selectedDecalsStarsDir=$3
     rangeUsedDecalsDir=$4
-    frameChosenBrickMap=$5
+    mosaicDir=$5
     decalsImagesDir=$6
     alphatruedir=$7
 
@@ -1197,27 +1178,28 @@ computeCalibrationFactors() {
 
     decalsdir=$BDIR/decals-aperture-catalog_it$iteration
     echo -e "\n ${GREEN} ---Building Decals catalogue for (matched) calibration stars--- ${NOCOLOUR}"
-    buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $frameChosenBrickMap $decalsImagesDir
+    buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir
 
     ourDataCatalogueDir=$BDIR/ourData-catalogs-apertures_it$iteration
     echo -e "\n ${GREEN} ---Building our catalogue for calibration stars--- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $matchdir2 $mycatdir
 
-
+    
     echo -e "\n ${GREEN} ---Matching calibration stars catalogues--- ${NOCOLOUR}"
     matchCalibrationStarsCatalogues $matchdir2 $ourDataCatalogueDir $decalsdir
 
-
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
+
     # ****** Decision note *******
     # The reasonable range is decideed based on the half-max-sum/mag, on the decalsmag/(decalsmag - ourmag)
     # Then we have explored this reasonable range. The bright limit is the one that it is (before saturation)
     # but the faint limit has been explored from 18 to 20. From 18.5 and fainter we do not see any difference
     # on the images or on the std-airmass plot, so we use this range.
-    brightLimit=16.3
+    brightLimit=16
     faintLimit=18.5
     computeAndStoreFactors $alphatruedir $matchdir2 $brightLimit $faintLimit
 }
+export -f computeCalibrationFactors
 
 applyCalibrationFactorsToFrame() {
     a=$1
@@ -1253,6 +1235,7 @@ applyCalibrationFactors() {
         echo done > $muldone
     fi
 }
+export -f applyCalibrationFactors
 
 # Compute the weights o the frames based on the std of the background
 # In order to perform a weighted mean

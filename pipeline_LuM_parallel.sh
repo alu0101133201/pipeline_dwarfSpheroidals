@@ -1122,16 +1122,13 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 decalsImagesDir=$mosaicDir/decalsImages
-
-
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir
-exit 0
+
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $frameChosenBrickMap $decalsImagesDir $alphatruedir
-
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
 
 
 # Checking and removing bad frames based on the FWHM value ------
@@ -1170,7 +1167,7 @@ photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
-
+exit 0
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 
 # Compute rms and of the photometrized frames
@@ -1230,6 +1227,8 @@ fi
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds
 buildCoadd $baseCoaddir $mowdir $moonwdir
+
+exit 0
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
