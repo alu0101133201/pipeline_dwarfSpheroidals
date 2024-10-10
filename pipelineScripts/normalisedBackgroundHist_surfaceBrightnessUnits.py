@@ -107,10 +107,10 @@ def calculateFreedmanBins(data, initialValue = None):
 def saveHistogram(values, imageName):
     valuesToPlot = values[~np.isnan(values)]
     myBins = calculateFreedmanBins(valuesToPlot)
-    myBins = np.linspace(np.nanmin(values), np.nanmax(values), 22)
+    myBins = np.linspace(np.nanmin(values), np.nanmax(values), 10)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    ax.set_ylim(0, 60)
+    # ax.set_ylim(0, 60)
     counts, bins, patches = ax.hist(values, bins=myBins)
     max_bin_height = counts.max() + 10
 
@@ -220,10 +220,10 @@ saveHistogram(np.array(magnitudesPerArcSecSq), destinationFolder + "/magnitudeHi
 # Temporal code, just for checking the relation between background counts and magnitude
 # This gives information of the calibration factors
 
-# x = []
-# x = [i[1] for i in normalisedBackgroundValues]
+x = []
+x = [i[1] for i in normalisedBackgroundValues]
 
-# fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-# ax.set_yscale('log')
-# ax.scatter(magnitudesPerArcSecSq, x)
-# plt.savefig(destinationFolder + "/tmp.png")
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+ax.set_yscale('log')
+ax.scatter(magnitudesPerArcSecSq, x)
+plt.savefig(destinationFolder + "/countsVsMagnitudes.png")

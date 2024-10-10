@@ -1011,6 +1011,7 @@ fi
 cp $sexdir/*.head $astroimadir
 
 
+
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 # Warp the data so we can:
 #     1.- Place it in a proper grid
@@ -1041,7 +1042,6 @@ else
 fi
 
 
-
 # For fornax (around 490 frames). Deimos, 20 cores -> 25 min
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
@@ -1062,10 +1062,10 @@ computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTAN
 
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
+noiseskyctedir=$BDIR/noise-sky_it1_cte
+noiseskyctedone=$noiseskyctedir/done_"$filter"_ccd"$h".txt
 if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"
-  noiseskyctedir=$BDIR/noise-sky_it1_cte
-  noiseskyctedone=$noiseskyctedir/done_"$filter"_ccd"$h".txt
   computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 fi
 
@@ -1086,6 +1086,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
   echo done > $badFilesWarningsDone
 fi
+
 
 rejectedFramesDir=$BDIR/rejectedFrames_background
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
@@ -1130,7 +1131,6 @@ imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
 
-
 # Checking and removing bad frames based on the FWHM value ------
 badFilesWarningsDir=$BDIR/warnings_badFiles
 fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
@@ -1160,14 +1160,12 @@ else
 fi
 python3 $pythonScriptsPath/normalisedBackgroundHist_surfaceBrightnessUnits.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $badFilesWarningsDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
 
-
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
-exit 0
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 
 # Compute rms and of the photometrized frames
@@ -1228,7 +1226,6 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
-exit 0
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1236,7 +1233,6 @@ if [ -f $maskName ]; then
 else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
-
 
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
@@ -1304,7 +1300,6 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
-
 # compute sky with frames masked with global mask
 imagesAreMasked=true
 computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
@@ -1314,7 +1309,7 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $frameChosenBrickMap $decalsImagesDir $alphatruedir
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
@@ -1336,7 +1331,6 @@ computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $s
 
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
-
 wdir=$BDIR/weight-dir_it$iteration
 wdone=$wdir/done_"$k"_ccd"$h".txt
 if ! [ -d $wdir ]; then mkdir $wdir; fi
@@ -1352,8 +1346,6 @@ clippingdone=$clippingdir/done_"$k".txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
 
-
-# Fornax. Around 490 frames. Deimos, 20 cores. Around 1 h and 15 min
 mowdir=$BDIR/weight-dir-no-outliers_it$iteration
 if ! [ -d $mowdir ]; then mkdir $mowdir; fi
 # only weight
@@ -1376,6 +1368,7 @@ fi
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds_it$iteration 
 buildCoadd $baseCoaddir $mowdir $moonwdir
+
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1405,7 +1398,7 @@ find $wonlydir -type f ! -name 'done*' -exec rm {} \;
 find $mowdir -type f ! -name 'done*' -exec rm {} \;
 find $moonwdir -type f ! -name 'done*' -exec rm {} \;
 
-
+exit 0
 
 
 ####### ITERATION 3 ######
@@ -1438,7 +1431,7 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $frameChosenBrickMap $decalsImagesDir $alphatruedir
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration

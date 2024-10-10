@@ -159,6 +159,7 @@ getMedianValueInsideRing() {
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
+            astarithmetic $i -h1 $commonRing -h1 0 eq nan where --quiet -o./tmp/ring_$(basename $i)
             me=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where medianvalue --quiet)
     else
         # Case when we do NOT have one common normalisation ring
@@ -400,7 +401,7 @@ warpImage() {
 
     regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameFullGrid 1)
     read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
-    astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits
+    astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
 
     rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 
 }
@@ -467,7 +468,6 @@ computeSkyForFrame(){
             fi
 
             # Mask the image if needed
-            inputImagesAreMasked=true
             if ! [ "$inputImagesAreMasked" = true ]; then
                 tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
                 tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
@@ -495,7 +495,6 @@ computeSkyForFrame(){
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             echo "$base $me $std" > $noiseskydir/$out
 
-            rm -f $imageToUse 
             rm $ringDir/$tmpRingDefinition
             rm $ringDir/$tmpRingFits
 
@@ -1160,6 +1159,7 @@ computeCalibrationFactors() {
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 
+
     # EXPLANATION AND TO DO
     # The next step performs an analog process to the one applied to decals (selection of stars and saving our star range)
     # But this step here is paralellised. This is because paralellising the step in the decals section is not straight forward
@@ -1174,7 +1174,7 @@ computeCalibrationFactors() {
     matchdir2=$BDIR/match-decals-myData_it$iteration
 
     echo -e "\n ${GREEN} ---Matching our data and Decals--- ${NOCOLOUR}"
-    matchDecalsAndOurData $iteration $selectedDecalsStarsDir $mycatdir $matchdir2
+    matchDecalsAndOurData $iteration $selectedDecalsStarsDir $mycatdir $matchdir2 >> tmp.txt
 
     decalsdir=$BDIR/decals-aperture-catalog_it$iteration
     echo -e "\n ${GREEN} ---Building Decals catalogue for (matched) calibration stars--- ${NOCOLOUR}"
@@ -1381,7 +1381,7 @@ cropAndApplyMaskPerFrame() {
 
     regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameToObtainCropRegion 1)
     read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
-    astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile
+    astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile --quiet
     astarithmetic $frameToMask -h1 $tmpMaskFile -h1 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_$a.fits -q
     rm $tmpMaskFile
 }
