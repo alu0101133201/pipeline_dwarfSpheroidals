@@ -131,12 +131,13 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
             backgroundValue = float(splittedLine[1])
             backgroundStd   = float(splittedLine[2])
         elif (numberOfFields == 1):
-            return(float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
+            return(float('nan'), float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
             raise Exception("Wrong number of fields in the file of background estimation. Expected 3 (constant estimation of the background), got " + str(numberOfFields))
 
     # Then we read the airmass
     airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
+    print(backgroundValue / airmass, backgroundStd)
     return(backgroundValue / airmass, backgroundStd)
 
 HDU_TO_FIND_AIRMASS = 1
@@ -162,8 +163,7 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
 normalisedBackgroundValues = np.array(normalisedBackgroundValues)
 backgroundStds = np.array(backgroundStds)
 
-print(backgroundStds)
-
+print("\n\n")
 # 2.- Obtain the median and std and do the histograms ------------------
 backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
 saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, \
