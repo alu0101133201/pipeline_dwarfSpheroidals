@@ -72,7 +72,7 @@ def saveHistogram(values, median, std, imageName, numOfStd, title):
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     ax.set_title(title)
-    counts, bins, patches = ax.hist(valuesToPlot) #, bins=myBins)
+    counts, bins, patches = ax.hist(valuesToPlot, bins=myBins)
     max_bin_height = counts.max() + 10
     ax.set_ylim(0, max_bin_height)
 
