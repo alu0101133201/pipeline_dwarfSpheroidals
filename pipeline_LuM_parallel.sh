@@ -1101,6 +1101,7 @@ subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noi
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
 
+
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 
@@ -1160,11 +1161,14 @@ else
 fi
 python3 $pythonScriptsPath/normalisedBackgroundHist_surfaceBrightnessUnits.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $badFilesWarningsDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
 
+
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
+
+
 
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 
@@ -1369,6 +1373,7 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds_it$iteration 
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
+exit 0
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1398,7 +1403,6 @@ find $wonlydir -type f ! -name 'done*' -exec rm {} \;
 find $mowdir -type f ! -name 'done*' -exec rm {} \;
 find $moonwdir -type f ! -name 'done*' -exec rm {} \;
 
-exit 0
 
 
 ####### ITERATION 3 ######

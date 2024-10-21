@@ -877,7 +877,7 @@ selectStarsAndSelectionRangeDecals() {
                 astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
 
                 astconvolve $brickCombinationsDir/combinedBricks_"$(basename $a)".fits --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
-                astnoisechisel $brickCombinationsDir/combinedBricks_"$(basename $a)".fits -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=20,20
+                astnoisechisel $brickCombinationsDir/combinedBricks_"$(basename $a)".fits -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=15,15
                 astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
                 astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
                 astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null

@@ -13,10 +13,54 @@ import fnmatch
 import astropy
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
+from astropy.visualization import astropy_mpl_style
 
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
+
+
+
+def setMatplotlibConf():
+    rc_fonts = {
+        "font.family": "serif",
+        "font.size": 14,
+        "font.weight" : "medium",
+        # "text.usetex": True,  # laggs a little when generatin plots in my fedora36
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "xtick.major.size": 8.0,
+        "xtick.major.width": 2.8,
+        "xtick.minor.size": 4.0,
+        "xtick.minor.width": 2.5,
+        "ytick.major.size": 8.0,
+        "ytick.major.width": 1.8,
+        "ytick.minor.size": 4.0,
+        "ytick.minor.width": 1.8,
+        "legend.handlelength": 3.0,
+        "axes.linewidth" : 3.5,
+        "xtick.major.pad" : 6,
+        "ytick.major.pad" : 6,
+        "legend.fancybox" : True,
+        "mathtext.fontset" : "dejavuserif"
+    }
+    mpl.rcParams.update(rc_fonts)
+    return(rc_fonts)
+
+
+def configureAxis(ax, xlabel, ylabel, logScale=True):
+    ax.xaxis.set_minor_locator(MultipleLocator(1000000))
+    ax.yaxis.set_minor_locator(MultipleLocator(1000000))
+    ax.yaxis.set_ticks_position('both')
+    ax.xaxis.set_ticks_position('both')
+    ax.tick_params(axis='x', which='major', labelsize=25, pad=17)
+    ax.tick_params(axis='y', which='major', labelsize=25, pad=17)
+    ax.set_xlabel(xlabel, fontsize=30, labelpad=8)
+    ax.set_ylabel(ylabel, fontsize=30, labelpad=10)
+    if(logScale): ax.set_yscale('log')
+
 
 def obtainNumberFromFrame(currentFile):
     match = re.search(r'entirecamera_(\d+)\.txt', currentFile)
@@ -68,7 +112,11 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
             raise Exception("Wrong number of fields in the file of background estimation. Expected 3 (constant estimation of the background), got " + str(numberOfFields))
 
     # Then we read the airmass
-    airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
+    try:
+        airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
+    except:
+        print("Something went wrong in obtaining the airmass, returning nans (file " + str(currentFile) + ")")
+        return(float('nan'), float('nan')) 
     return(backgroundValue / airmass)
     
 def retrieveCalibrationFactors(currentFile):
@@ -193,6 +241,9 @@ for currentFile in glob.glob(rejectedFramesFWHM + "/*.fits"):
         raise Exception("Error identifying the number of the bad frames (FWHM bad frames)")
 
 
+
+setMatplotlibConf()
+
 # 1.- Obtain the normalised background values ------------------
 normalisedBackgroundValues = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
@@ -221,9 +272,13 @@ saveHistogram(np.array(magnitudesPerArcSecSq), destinationFolder + "/magnitudeHi
 # This gives information of the calibration factors
 
 x = []
-x = [i[1] for i in normalisedBackgroundValues]
+x = [float(i[1]) for i in normalisedBackgroundValues]
 
-fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-ax.set_yscale('log')
-ax.scatter(magnitudesPerArcSecSq, x)
+fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+configureAxis(ax, 'Background (mag/arcsec^2)', 'log(Background) (ADU)', logScale=False)
+ax.set_ylim(np.log10(4570), np.log10(5010))
+ax.set_xlim(21.45, 21.7)
+# ax.set_yscale('log')
+plt.tight_layout(pad=8.0)
+ax.scatter(magnitudesPerArcSecSq, np.log10(x), s=20, color="blue")
 plt.savefig(destinationFolder + "/countsVsMagnitudes.png")

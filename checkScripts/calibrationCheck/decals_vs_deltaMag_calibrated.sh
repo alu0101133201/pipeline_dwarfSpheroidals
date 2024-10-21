@@ -1,10 +1,12 @@
+module load gnuastro/0.22
+
 GALAXY="IC1613"
 
-decalsCatalogue="../../../$GALAXY/build/decals-aperture-catalog_it1"
+decalsCatalogue="../../../$GALAXY/build_i/decals-aperture-catalog_it1"
 
-myCatalogue_nonCalibrated="../../../$GALAXY/build/ourData-catalogs-apertures_it1"
-myFrames_calibrated="../../../$GALAXY/build/photCorrSmallGrid-dir_it1"
-aperturesForMyData_dir="../../../$GALAXY/build/my-catalog-halfmaxradius_it1"
+myCatalogue_nonCalibrated="../../../$GALAXY/build_i/ourData-catalogs-apertures_it1"
+myFrames_calibrated="../../../$GALAXY/build_i/photCorrSmallGrid-dir_it1"
+aperturesForMyData_dir="../../../$GALAXY/build_i/my-catalog-halfmaxradius_it1"
 
 
 numOfCatalogues1=$( ls $myCatalogue_nonCalibrated/*.cat | wc -l)

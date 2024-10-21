@@ -7,10 +7,50 @@ import fnmatch
 import astropy
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
+from matplotlib.ticker import MultipleLocator
+from astropy.visualization import astropy_mpl_style
+
+def setMatplotlibConf():
+    rc_fonts = {
+        "font.family": "serif",
+        "font.size": 14,
+        "font.weight" : "medium",
+        # "text.usetex": True,  # laggs a little when generatin plots in my fedora36
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "xtick.major.size": 8.0,
+        "xtick.major.width": 2.8,
+        "xtick.minor.size": 4.0,
+        "xtick.minor.width": 2.5,
+        "ytick.major.size": 8.0,
+        "ytick.major.width": 1.8,
+        "ytick.minor.size": 4.0,
+        "ytick.minor.width": 1.8,
+        "legend.handlelength": 3.0,
+        "axes.linewidth" : 3.5,
+        "xtick.major.pad" : 6,
+        "ytick.major.pad" : 6,
+        "legend.fancybox" : True,
+        "mathtext.fontset" : "dejavuserif"
+    }
+    mpl.rcParams.update(rc_fonts)
+    return(rc_fonts)
+
+def configureAxis(ax, xlabel, ylabel, logScale=True):
+    ax.xaxis.set_minor_locator(MultipleLocator(1000000))
+    ax.yaxis.set_minor_locator(MultipleLocator(1000000))
+    ax.yaxis.set_ticks_position('both')
+    ax.xaxis.set_ticks_position('both')
+    ax.tick_params(axis='x', which='major', labelsize=25, pad=17)
+    ax.tick_params(axis='y', which='major', labelsize=25, pad=17)
+    ax.set_xlabel(xlabel, fontsize=30, labelpad=8)
+    ax.set_ylabel(ylabel, fontsize=30, labelpad=10)
+    if(logScale): ax.set_yscale('log')
 
 
 def extractNumberFromName(filename):
@@ -66,21 +106,23 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, median, std, imageName, numOfStd, title):
+def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
     valuesToPlot = values[~np.isnan(values)]
     myBins = calculateFreedmanBins(valuesToPlot)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    plt.tight_layout(pad=7)
+    configureAxis(ax, labelX, 'Number of frames', logScale=False)
     ax.set_title(title)
-    counts, bins, patches = ax.hist(valuesToPlot, bins=myBins)
-    max_bin_height = counts.max() + 10
+    counts, bins, patches = ax.hist(valuesToPlot) #, bins=myBins)
+    max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
 
-    ax.vlines(median, ymin=0, ymax=max_bin_height, color="black", linestyle="--", linewidth=2.0, label="Median")
-    ax.vlines(median + numOfStd * std, ymin=0, ymax=max_bin_height, color="red", linestyle="--", linewidth=2.0, label=str(numOfStd) + " std")
-    ax.vlines(median - numOfStd * std, ymin=0, ymax=max_bin_height, color="red", linestyle="--", linewidth=2.0)
+    # ax.vlines(median, ymin=0, ymax=max_bin_height, color="black", linestyle="--", linewidth=2.0, label="Median")
+    # ax.vlines(median + numOfStd * std, ymin=0, ymax=max_bin_height, color="red", linestyle="--", linewidth=2.0, label=str(numOfStd) + " std")
+    # ax.vlines(median - numOfStd * std, ymin=0, ymax=max_bin_height, color="red", linestyle="--", linewidth=2.0)
 
-    ax.legend(fontsize=18)
+    # ax.legend(fontsize=18)
     plt.savefig(imageName)
     return()
 
@@ -112,6 +154,8 @@ def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     fitsFileNamePatter = f"{frameNumber}.fits"
     fitsFilePath = os.path.join(airMassesFolder, fitsFileNamePatter)
 
+    print("file for obtaining airmass: ", fitsFilePath)
+
     airMass = obtainKeyWordFromFits(fitsFilePath, airMassKeyWord)
     return(airMass)
 
@@ -136,8 +180,11 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
             raise Exception("Wrong number of fields in the file of background estimation. Expected 3 (constant estimation of the background), got " + str(numberOfFields))
 
     # Then we read the airmass
-    airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
-    print(backgroundValue / airmass, backgroundStd)
+    try:
+        airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
+    except:
+        print("something went wrong in obtaining the airmass, returning nans")
+        return(float('nan'), float('nan')) 
     return(backgroundValue / airmass, backgroundStd)
 
 HDU_TO_FIND_AIRMASS = 1
@@ -149,11 +196,13 @@ outputFolder                  = sys.argv[4]
 outputFile                    = sys.argv[5]
 numberOfStdForRejecting       = float(sys.argv[6])
 
+setMatplotlibConf()
 
 # 1.- Obtain the normalised background values and std values ------------------
 normalisedBackgroundValues = []
 backgroundStds             = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
+    print("current file: ", currentFile)
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
     currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
@@ -167,11 +216,11 @@ print("\n\n")
 # 2.- Obtain the median and std and do the histograms ------------------
 backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
 saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, \
-                outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass")
+                outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
 
 backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
 saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
-                outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values")
+                outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
 
 
 # 3.- Identify what frames are outside the acceptance region ------------------

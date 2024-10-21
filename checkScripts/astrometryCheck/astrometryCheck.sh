@@ -3,8 +3,8 @@
 # If things change in the future or you want to use this script in another context just modify how to access the data
 GALAXY="IC1613"
 
-myCatalogue="../../../$GALAXY/build/my-catalog-halfmaxradius_it1"
-decalsCatalogue="../../../$GALAXY/build/decals-aperture-catalog_it1"
+myCatalogue="../../../$GALAXY/build_g/my-catalog-halfmaxradius_it1"
+decalsCatalogue="../../../$GALAXY/build_g/decals-aperture-catalog_it1"
 
 numOfCatalogues1=$( ls $myCatalogue/match*.txt | wc -l)
 numOfCatalogues2=$( ls $decalsCatalogue/decals*.cat | wc -l)

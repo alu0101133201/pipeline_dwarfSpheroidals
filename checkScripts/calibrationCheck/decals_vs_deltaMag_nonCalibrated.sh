@@ -1,3 +1,5 @@
+module load gnuastro/0.22
+
 GALAXY="IC1613"
 
 myCatalogue_nonCalibrated="../../../$GALAXY/build/ourData-catalogs-apertures_it1"
