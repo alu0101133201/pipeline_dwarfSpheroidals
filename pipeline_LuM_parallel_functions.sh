@@ -159,7 +159,6 @@ getMedianValueInsideRing() {
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
-            astarithmetic $i -h1 $commonRing -h1 0 eq nan where --quiet -o./tmp/ring_$(basename $i)
             me=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where medianvalue --quiet)
     else
         # Case when we do NOT have one common normalisation ring
@@ -716,8 +715,14 @@ add_gAndr_andDivideByTwo() {
 buildDecalsMosaic() {
     # We only need the mosaic in order to download the gaia catalogue. That's why downgrade the bricks
     # Values for original decals resolution
-    # decalsPxScale=0.262 #arcsec/px
-    # mosaicSize=38000 # For our field
+
+    # decalsPxScale=0.262 # arcsec/px
+    # mosaicSize=38000 # For our field, around 2.5deg
+
+    # Values used when I was just downgrading a factor of 4
+    # scaleFactor=0.25
+    # decalsPxScale=1.048
+    # mosaicSize=9500
 
     mosaicDir=$1
     decalsImagesDir=$2
@@ -726,16 +731,21 @@ buildDecalsMosaic() {
     dec=$5
     filter=$6
     swarpedImagesDir=$7
+    dataPixelScale=$8 # Pixel scale of our data. In order to do realisticly we should downgrade decals data to the same resolution as our data
+    sizeOfOurFieldDegrees=$9 # Estimation of how big is our field
+
+    originalDecalsPxScale=0.262 # arcsec/px
 
     buildMosaicDone=$swarpedImagesDir/done_t.xt
     if ! [ -d $swarpedImagesDir ]; then mkdir $swarpedImagesDir; fi
     if [ -f $buildMosaicDone ]; then
         echo -e "\nMosaic already built\n"
     else
-        scaleFactor=0.25
-        decalsPxScale=1.048
-        mosaicSize=9500
-
+        decalsPxScale=$dataPixelScale
+        mosaicSize=$(echo "($sizeOfOurFieldDegrees * 3600) / $decalsPxScale" | bc)
+        # scaleFactor=$(echo "scale=3; $originalDecalsPxScale / $dataPixelScale" | bc)
+        scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}")
+        
         if [ "$filter" = "lum" ]; then
             bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
         else
@@ -877,7 +887,8 @@ selectStarsAndSelectionRangeDecals() {
                 astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
 
                 astconvolve $brickCombinationsDir/combinedBricks_"$(basename $a)".fits --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
-                astnoisechisel $brickCombinationsDir/combinedBricks_"$(basename $a)".fits -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=15,15
+                # In the following noisechisel I have reduced the tile because with higher tiles it was not finding enough neighbors
+                astnoisechisel $brickCombinationsDir/combinedBricks_"$(basename $a)".fits -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
                 astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
                 astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
                 astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
@@ -910,7 +921,7 @@ prepareDecalsDataForPhotometricCalibration() {
     mosaicDir=$6
     selectedDecalsStarsDir=$7
     rangeUsedDecalsDir=$8
-
+    dataPixelScale=$9
 
     echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
 
@@ -942,7 +953,8 @@ prepareDecalsDataForPhotometricCalibration() {
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration. But we build it anyway to retrieve in an easier way
     # the Gaia data of the whole field.
-    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $mosaicDir/downSampled
+    sizeOfOurFieldDegrees=2.5 # Estimation of the size of the field for building the mosaic
+    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $mosaicDir/downSampled $dataPixelScale $sizeOfOurFieldDegrees
 
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
     downloadGaiaCatalogueForField $mosaicDir
@@ -1408,6 +1420,74 @@ maskPointings() {
         echo done > $maskedPointingsDone 
     fi
 }
+export -f maskPointings
+
+produceAstrometryCheckPlot() {
+    myCatalogue=$1
+    referenceCatalogue=$2
+    pythonScriptsPath=$3
+    outputDir=$4
+    pixelScale=$5
+
+    astrometryTmpDir="./astrometryDiagnosisTmp"
+    if ! [ -d $astrometryTmpDir ]; then mkdir $astrometryTmpDir; fi
+
+    for i in $myCatalogue/match*.txt; do
+        myFrame=$i
+        frameNumber=$(echo "$i" | awk -F '[/]' '{print $(NF)}' | awk -F '[.]' '{print $(1)}' | awk -F '[_]' '{print $(NF)}')
+        referenceFrame=$referenceCatalogue/*_$frameNumber.*
+        astmatch $referenceFrame --hdu=1 $myFrame --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aRA,aDEC,bRA,bDEC -o./$astrometryTmpDir/$frameNumber.cat
+    done
+
+    python3 $pythonScriptsPath/diagnosis_deltaRAdeltaDEC.py $astrometryTmpDir $outputDir/astrometry.png $pixelScale
+    rm -r $astrometryTmpDir
+}
+export -f produceAstrometryCheckPlot
+
+produceCalibrationCheckPlot() {
+    myCatalogue_nonCalibrated=$1
+    myFrames_calibrated=$2
+    aperturesForMyData_dir=$3
+    referenceCatalogueDir=$4
+    pythonScriptsPath=$5
+    outputDir=$6
+
+    calibrationTmpDir="./calibrationDiagnosisTmp"
+    if ! [ -d $calibrationTmpDir ]; then mkdir $calibrationTmpDir; fi
+
+    for i in $myCatalogue_nonCalibrated/*.cat; do
+        myFrame=$i
+        frameNumber=$(echo "$i" | awk -F '[/]' '{print $(NF)}' | awk -F '[.]' '{print $(1)}' | awk -F '[_]' '{print $(NF)}')
+        referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
+
+        myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
+        myNonCalibratedCatalogue=$myCatalogue_nonCalibrated/entirecamera_$frameNumber.fits*
+        fileWithMyApertureData=$aperturesForMyData_dir/range1_entirecamera_$frameNumber*
+
+        r_myData_pix_=$(awk 'NR==1 {printf $1}' $fileWithMyApertureData)
+        r_myData_pix=$(astarithmetic $r_myData_pix_ 2. x -q )
+
+        asttable $myNonCalibratedCatalogue -hSOURCE_ID -cRA,DEC | awk '!/^#/{print NR, $1, $2, 5, '$r_myData_pix', 0, 0, 1, NR, 1}' > $tmpDir/apertures.txt
+        astmkprof $tmpDir/apertures.txt --background=$myCalibratedFrame --backhdu=1 \
+            --clearcanvas --replace --type=int16 --mforflatpix \
+            --mode=wcs --output=$tmpDir/aperture_myData.fits
+            
+        astmkcatalog $tmpDir/aperture_myData.fits -h1 --zeropoint=22.5 \
+                --valuesfile=$myCalibratedFrame --valueshdu=1 \
+                --ids --ra --dec --magnitude --sum \
+                --output=$tmpDir/$frameNumber.cat
+
+        astmatch $referenceCatalogue --hdu=1 $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$calibrationTmpDir/"$frameNumber"_matched.cat
+        rm $tmpDir/apertures.txt
+        rm $tmpDir/aperture_myData.fits
+        rm $tmpDir/$frameNumber.cat
+done
+
+python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibrationTmpDir $outputDir/magVsMagDiff.png
+rm -rf $calibrationTmpDir
+
+}
+export -f produceCalibrationCheckPlot
 
 # Coadd function
 buildCoadd() {

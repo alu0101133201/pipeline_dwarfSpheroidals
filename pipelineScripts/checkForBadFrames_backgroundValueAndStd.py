@@ -113,16 +113,21 @@ def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     plt.tight_layout(pad=7)
     configureAxis(ax, labelX, 'Number of frames', logScale=False)
-    ax.set_title(title)
-    counts, bins, patches = ax.hist(valuesToPlot) #, bins=myBins)
+    ax.set_title(title, fontsize=22, pad=17)
+
+    counts, bins, patches = ax.hist(valuesToPlot, color="teal") #, bins=myBins)
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
 
-    # ax.vlines(median, ymin=0, ymax=max_bin_height, color="black", linestyle="--", linewidth=2.0, label="Median")
-    # ax.vlines(median + numOfStd * std, ymin=0, ymax=max_bin_height, color="red", linestyle="--", linewidth=2.0, label=str(numOfStd) + " std")
-    # ax.vlines(median - numOfStd * std, ymin=0, ymax=max_bin_height, color="red", linestyle="--", linewidth=2.0)
+    ax.text(0.3755, 0.95, "Median: " + str(int(median)), transform=ax.transAxes, 
+        fontsize=20, verticalalignment='top', horizontalalignment='left')
+    ax.text(0.375, 0.9, "Std: " + str(int(std)), transform=ax.transAxes, 
+        fontsize=20, verticalalignment='top', horizontalalignment='left')
 
-    # ax.legend(fontsize=18)
+    # ax.text(0.1, 0.9, 'Mean: ' + "{:.0}".format(median), transform=ax.transAxes, 
+    #     fontsize=18, verticalalignment='top', horizontalalignment='left')
+    # ax.text(0.1, 0.85, 'Std: ' + "{:.0}".format(std), transform=ax.transAxes, 
+    #     fontsize=18, verticalalignment='top', horizontalalignment='left')
     plt.savefig(imageName)
     return()
 
@@ -183,7 +188,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
     try:
         airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
     except:
-        print("something went wrong in obtaining the airmass, returning nans")
+        print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + ")")
         return(float('nan'), float('nan')) 
     return(backgroundValue / airmass, backgroundStd)
 

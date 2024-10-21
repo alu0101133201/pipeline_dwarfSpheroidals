@@ -152,14 +152,16 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, imageName):
+def saveHistogram(values, title, imageName):
     valuesToPlot = values[~np.isnan(values)]
     myBins = calculateFreedmanBins(valuesToPlot)
     myBins = np.linspace(np.nanmin(values), np.nanmax(values), 10)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    # ax.set_ylim(0, 60)
-    counts, bins, patches = ax.hist(values, bins=myBins)
+    ax.set_title(title, fontsize=22, pad=17)
+    plt.tight_layout(pad=7.0)
+    configureAxis(ax, 'Background (mag/arcsec^2)', '', logScale=False)
+    counts, bins, patches = ax.hist(values, bins=myBins, color="teal")
     max_bin_height = counts.max() + 10
 
     plt.savefig(imageName)
@@ -207,6 +209,16 @@ def removeBadFramesFromList(data, badFrames):
             if number not in badFrames:
                 noBadValues.append(i)
     return(noBadValues)
+
+def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, fileName):
+    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+    ax.set_title("If calibration is well-done it should be a straight line", fontsize=20, pad=17)
+    configureAxis(ax, 'Background (mag/arcsec^2)', 'Log(Background) (ADU)', logScale=False)
+    ax.set_ylim(np.log10(4570), np.log10(5010))
+    ax.set_xlim(21.45, 21.7)
+    plt.tight_layout(pad=8.0)
+    ax.scatter(magnitudesPerArcSecSq, np.log10(backgroundCounts), s=25, color="teal")
+    plt.savefig(fileName)
 
 HDU_TO_FIND_AIRMASS = 1
 
@@ -266,19 +278,7 @@ values = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, t
 
 
 magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(values, arcsecPerPx)
-saveHistogram(np.array(magnitudesPerArcSecSq), destinationFolder + "/magnitudeHist.png")
+saveHistogram(np.array(magnitudesPerArcSecSq), "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
 
-# Temporal code, just for checking the relation between background counts and magnitude
-# This gives information of the calibration factors
-
-x = []
 x = [float(i[1]) for i in normalisedBackgroundValues]
-
-fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-configureAxis(ax, 'Background (mag/arcsec^2)', 'log(Background) (ADU)', logScale=False)
-ax.set_ylim(np.log10(4570), np.log10(5010))
-ax.set_xlim(21.45, 21.7)
-# ax.set_yscale('log')
-plt.tight_layout(pad=8.0)
-ax.scatter(magnitudesPerArcSecSq, np.log10(x), s=20, color="blue")
-plt.savefig(destinationFolder + "/countsVsMagnitudes.png")
+scatterPlotCountsVsMagnitudes(x, magnitudesPerArcSecSq, destinationFolder + "/countsVsMagnitudes.png")

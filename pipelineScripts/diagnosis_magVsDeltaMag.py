@@ -1,12 +1,13 @@
+import sys
 import glob
 
-import sys
+import numpy as np
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
 
-import numpy as np
 
 def setMatplotlibConf():
     rc_fonts = {
@@ -48,35 +49,32 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
 
 def read_columns_from_file(file_path):
     data = np.loadtxt(file_path, comments='#')
-    ra1  = np.array(data[:, 0].astype(float).tolist())
-    dec1 = np.array(data[:, 1].astype(float).tolist())
-    ra2  = np.array(data[:, 2].astype(float).tolist())
-    dec2 = np.array(data[:, 3].astype(float).tolist())
-    return ra1, dec1, ra2, dec2
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+    mag1  = np.array(data[:, 0].astype(float).tolist())
+    mag2 = np.array(data[:, 1].astype(float).tolist())
+    return mag1, mag2
 
-raArrays = []
-decArrays = []
 
-for i in glob.glob("*.cat"):
-    ra1, dec1, ra2, dec2 = read_columns_from_file(i)
 
-    raArrays.append(ra1-ra2)
-    decArrays.append(dec1-dec2)
+directoryWithTheCatalogues = sys.argv[1]
+imageName = sys.argv[2]
 
-for i in range(len(raArrays)):
-    raArrays[i] = raArrays[i]*3600
-    decArrays[i] = decArrays[i]*3600
+magDiff = np.array([])
+mag1Total = np.array([])
+
+for i in glob.glob(directoryWithTheCatalogues + "/*.cat"):
+    mag1, mag2 = read_columns_from_file(i)
+    mag1Total = np.append(mag1Total, mag1)
+    magDiff = np.append(magDiff, np.array(mag1 - mag2))
 
 
 setMatplotlibConf()
 
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-plt.tight_layout(pad=8)
-configureAxis(ax, r'$\delta$ ra (arcsec)', r'$\delta$ dec (arcsec)', logScale=False)
-for i in range(len(raArrays)):
-    ax.scatter(raArrays[i], decArrays[i], color="blue", s=50, linewidths=1.5, edgecolor="black")
-ax.set_xlim(-0.5, 0.5)
-ax.set_ylim(-0.5, 0.5)
-ax.hlines(y=0, xmin=-1, xmax=1, color="black", linestyle="--")
-ax.vlines(x=0, ymin=-1, ymax=1, color="black", linestyle="--")
-plt.savefig("deltaRadeltaDec.jpg")
+configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=False)
+ax.set_ylim(-1, 2)
+ax.set_xlim(15, 23)
+ax.hlines(y=0, xmin=15, xmax=23, color="black", lw=1.5, ls="--")
+ax.scatter(mag1Total, magDiff, color="teal", s=7.5)
+plt.savefig(imageName + ".jpg")

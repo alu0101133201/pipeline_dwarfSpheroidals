@@ -1042,6 +1042,7 @@ else
 fi
 
 
+
 # For fornax (around 490 frames). Deimos, 20 cores -> 25 min
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
@@ -1070,10 +1071,10 @@ if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
 fi
 
 # Checking and removing bad frames based on the background value ------
-badFilesWarningsDir=$BDIR/warnings_badFiles
+diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_backgroundValue.txt
-badFilesWarningsDone=$badFilesWarningsDir/done_backgroundValue.txt
-if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_backgroundValue.txt
+if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
@@ -1083,7 +1084,7 @@ else
   else
     tmpDir=$noiseskyctedir
   fi
-  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
+  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
   echo done > $badFilesWarningsDone
 fi
 
@@ -1091,15 +1092,13 @@ fi
 rejectedFramesDir=$BDIR/rejectedFrames_background
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with backgroundValue"
-removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-
+removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
 
 echo -e "\nSubtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-
 
 
 #### PHOTOMETRIC CALIBRATION  ####
@@ -1124,7 +1123,7 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 decalsImagesDir=$mosaicDir/decalsImages
-prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir
+prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale
 
 
 iteration=1
@@ -1133,15 +1132,15 @@ alphatruedir=$BDIR/alpha-stars-true_it$iteration
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
 
 # Checking and removing bad frames based on the FWHM value ------
-badFilesWarningsDir=$BDIR/warnings_badFiles
+diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
 badFilesWarningsFile=identifiedBadFrames_fwhm.txt
-badFilesWarningsDone=$badFilesWarningsDir/done_fwhmValue.txt
-if ! [ -d $badFilesWarningsDir ]; then mkdir $badFilesWarningsDir; fi
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
+if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $badFilesWarningsDir $badFilesWarningsFile $numberOfStdForBadFrames
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
   echo done > $badFilesWarningsDone
 fi
 
@@ -1149,17 +1148,18 @@ fi
 rejectedFramesDir=$BDIR/rejectedFrames_FWHM
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with FWHM"
-removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
-removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $badFilesWarningsDir $badFilesWarningsFile
+removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
 
-# This code just produces the histogram of the background values on magnitudes / arcsec²
+# DIAGNOSIS PLOT
+# Histogram of the background values on magnitudes / arcsec²
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
   tmpDir=$noiseskydir
 else
   tmpDir=$noiseskyctedir
 fi
-python3 $pythonScriptsPath/normalisedBackgroundHist_surfaceBrightnessUnits.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $badFilesWarningsDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
+python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
@@ -1168,6 +1168,14 @@ photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
+
+# DIAGNOSIS PLOT
+# Astrometry
+produceAstrometryCheckPlot $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $pixelScale
+
+# DIAGNOSIS PLOT
+# Calibration
+produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir 
 
 
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
@@ -1229,7 +1237,6 @@ fi
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds
 buildCoadd $baseCoaddir $mowdir $moonwdir
-
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1373,7 +1380,6 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds_it$iteration 
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
-exit 0
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
