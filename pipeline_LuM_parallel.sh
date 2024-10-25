@@ -383,6 +383,7 @@ oneNightPreProcessing() {
     echo done > $skydone
   fi
 
+  
   ########## Subtract master bias and dark ##########
   echo -e "\n ${GREEN} Subtracting master bias/dark-bias ${NOCOLOUR}"
 
@@ -889,11 +890,13 @@ nights=()
 for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
 done
-printf "%s\n" "${nights[@]}" | parallel -j "$num_cpus" oneNightPreProcessing {}
+printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
+
+echo "Parando ejecución para ver que todo funcione"
 
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
@@ -947,7 +950,6 @@ for h in 0; do
   echo "add_path $indexdir" >> $astrocfg
   echo autoindex >> $astrocfg
   
-
 
   astroimadir=$BDIR/astro-ima
   astroimadone=$astroimadir/done_"$filter"_ccd"$h".txt
@@ -1013,7 +1015,6 @@ else
     echo done > $scampdone
 fi
 
-
 # We copy the files for improving the astrometry into the folder of the images that we are going to warp
 cp $sexdir/*.head $astroimadir
 
@@ -1023,8 +1024,6 @@ echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 # Warp the data so we can:
 #     1.- Place it in a proper grid
 #     2.- Improve the astrometry thanks to scamp
-
-# For fornax (around 490 frames). Deimos, 20 cores -> 1h and 20 min
 
 # I lose 4 frames here. Why?
 entiredir_smallGrid=$BDIR/pointings_smallGrid
@@ -1049,8 +1048,6 @@ else
 fi
 
 
-
-# For fornax (around 490 frames). Deimos, 20 cores -> 25 min
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
 noiseskydir=$BDIR/noise-sky_it1
@@ -1129,6 +1126,7 @@ mosaicDir=$DIR/mosaic
 selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
+
 decalsImagesDir=$mosaicDir/decalsImages
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir
 
@@ -1183,7 +1181,6 @@ produceAstrometryCheckPlot $fwhmFolder $BDIR/decals-aperture-catalog_it1 $python
 # DIAGNOSIS PLOT
 # Calibration
 produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir 
-
 
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 
@@ -1252,6 +1249,7 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
+exit 0
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1272,7 +1270,6 @@ if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
   buildCoadd $baseCoaddir $planeSubtractionForCoaddDir $moonwdir
 fi
 
-exit 0
 
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap

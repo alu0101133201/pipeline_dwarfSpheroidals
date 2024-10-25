@@ -62,12 +62,14 @@ imageName = sys.argv[2]
 
 magDiff = np.array([])
 mag1Total = np.array([])
+frameNumber = np.array([])
 
-for i in glob.glob(directoryWithTheCatalogues + "/*.cat"):
-    mag1, mag2 = read_columns_from_file(i)
+currentFrame = 1
+for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
+    mag1, mag2 = read_columns_from_file(file)
     mag1Total = np.append(mag1Total, mag1)
     magDiff = np.append(magDiff, np.array(mag1 - mag2))
-
+    frameNumber = np.append(frameNumber, np.repeat(index, len(mag1)))
 
 setMatplotlibConf()
 
@@ -75,6 +77,11 @@ fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=False)
 ax.set_ylim(-1, 2)
 ax.set_xlim(15, 23)
+
+
 ax.hlines(y=0, xmin=15, xmax=23, color="black", lw=1.5, ls="--")
-ax.scatter(mag1Total, magDiff, color="teal", s=7.5)
+scatter = ax.scatter(mag1Total, magDiff, s=40, c=frameNumber, cmap='viridis', edgecolor="black")
+cbar = plt.colorbar(scatter)
+cbar.set_label('Frame Number', rotation=270, labelpad=15)
+
 plt.savefig(imageName + ".jpg")

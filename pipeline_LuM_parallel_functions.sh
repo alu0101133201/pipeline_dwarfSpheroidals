@@ -394,7 +394,9 @@ warpImage() {
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
     # Resample into the final grid
-    SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE    MANUAL
+    # For some reason in the IAC burros it's called 'swarp' but when I have done the installation in the TST systems 
+    # I have to call it as 'swap'... Be careful with how do you have to call this package
+    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE    MANUAL
     
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
@@ -750,11 +752,10 @@ buildDecalsMosaic() {
         for a in $bricks; do
             downSampledImages="$swarpedImagesDir/originalGrid_$(basename $a)"
             astwarp $a --scale=$scaleFactor -o $downSampledImages
-            SWarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/swarp1.fits \
+            swarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/swarp1.fits \
                                 -WEIGHTOUT_NAME $swarpedImagesDir/swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $decalsPxScale -PIXELSCALE_TYPE MANUAL
             astarithmetic $swarpedImagesDir/swarp_w1.fits -h0 set-i i i 0 lt nan where -otemp1.fits
             astarithmetic $swarpedImagesDir/swarp1.fits -h0 temp1.fits -h1 0 eq nan where -o$swarpedImagesDir/commonGrid_"$(basename $a)"
-            
         done
         rm $swarpedImagesDir/swarp_w1.fits $swarpedImagesDir/swarp1.fits ./temp1.fits
 
@@ -854,6 +855,7 @@ selectStarsAndSelectionRangeDecals() {
             echo -e "\nDecals bricks and stars for doing the photometric calibration are already selected for each frame\n"
     else
         astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o ./kernel.fits 1>/dev/null
+
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_"$a.fits
             bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
@@ -869,7 +871,7 @@ selectStarsAndSelectionRangeDecals() {
             else
                 images=()
                 for currentBrick in $bricks; do # I have to go through all the bricks for each frame
-                    # Remark that the ' ' at the end of the strings is needed. Otherwise when calling $images in the SWarp the names are not separated
+                    # Remark that the ' ' at the end of the strings is needed. Otherwise when calling $images in the swarp the names are not separated
                     if [ "$filter" = "lum" ]; then
                         images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_g+r_div2.fits "
                     else
@@ -878,7 +880,7 @@ selectStarsAndSelectionRangeDecals() {
                 done
 
                 # Combining the downsampled decals image in one
-                SWarp $images -IMAGEOUT_NAME $tmpFolder/swarp1_$a.fits -WEIGHTOUT_NAME $tmpFolder/swarp_w1_$a.fits 
+                swarp $images -IMAGEOUT_NAME $tmpFolder/swarp1_$a.fits -WEIGHTOUT_NAME $tmpFolder/swarp_w1_$a.fits 
                 astarithmetic $tmpFolder/swarp_w1_$a.fits -h0 set-i i i 0 lt nan where -o$tmpFolder/temp1_$a.fits
                 astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
 
@@ -890,10 +892,6 @@ selectStarsAndSelectionRangeDecals() {
                 astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
 
 
-                # Here call python script for generate the half-max-radius vs magnitudes
-                # outputPlotName=$diagnosis_and_badFilesDir/halfMaxRadVsMag_$a.png
-                # python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $tmpFolder/match_decals_gaia_$a.txt $outputPlotName
-
 
                 # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
                 # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
@@ -901,6 +899,11 @@ selectStarsAndSelectionRangeDecals() {
                 std=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
                 minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
                 maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
+
+                # Here call python script for generate the half-max-radius vs magnitudes
+                if ! [ -d $diagnosis_and_badFilesDir/halfMaxRadVsMagPlots ]; then mkdir $diagnosis_and_badFilesDir/halfMaxRadVsMagPlots; fi
+                outputPlotName=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots/halfMaxRadVsMag_$a.png
+                python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $tmpFolder/match_decals_gaia_$a.txt $s $minr $maxr $outputPlotName
 
                 echo $s $std $minr $maxr > $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
                 asttable $tmpFolder/decals_"$a"_c.txt --range=HALF_MAX_RADIUS,$minr,$maxr -o $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt
@@ -1482,7 +1485,7 @@ produceCalibrationCheckPlot() {
 done
 
 python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibrationTmpDir $outputDir/magVsMagDiff.png
-rm -rf $calibrationTmpDir
+# rm -rf $calibrationTmpDir
 
 }
 export -f produceCalibrationCheckPlot

@@ -4,6 +4,15 @@
 
 This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture (around 10/15 cm) and large FOV telescopes (amateur telescopes). The purpose of the pipeline is to reduce and produce low-surface brightness friendly data.
 
+### Software requirements
+
+* gnuastro (currently I'm using 0.22)
+* astrometry (using 0.96)
+* Scamp (using 2.10)
+* Swarp (using 2.41.4)
+* SExtractor (using 2.25) 
+
+* Astropy (using 5.3.4)
 
 ### What do you need to run the pipeline
 

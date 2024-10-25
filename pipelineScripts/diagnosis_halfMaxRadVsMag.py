@@ -36,7 +36,6 @@ def setMatplotlibConf():
     mpl.rcParams.update(rc_fonts)
     return(rc_fonts)
 
-
 def configureAxis(ax, xlabel, ylabel, logScale=True):
     ax.xaxis.set_minor_locator(MultipleLocator(1000000))
     ax.yaxis.set_minor_locator(MultipleLocator(1000000))
@@ -48,13 +47,38 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
     ax.set_ylabel(ylabel, fontsize=30, labelpad=10)
     if(logScale): ax.set_yscale('log')
 
+def readHalfMaxRadAndMag(file, halfMaxRadCol, magnitudeColumn):
+    data = np.loadtxt(file, comments='#', usecols=(halfMaxRadCol, magnitudeColumn))
+    
+    half_max_radius = data[:, 0]
+    magnitude = data[:, 1]
+    
+    return half_max_radius, magnitude
+
 tableFile = sys.argv[1]
-imageOutputName = sys.argv[2]
+meanRad = float(sys.argv[2])
+minRad  = float(sys.argv[3])
+maxRad  = float(sys.argv[4])
+imageOutputName = sys.argv[5]
+
+
+print("table file: ", tableFile)
+print("imageoutputName: ", imageOutputName)
 
 
 setMatplotlibConf()
 
-# fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-# configureAxis(ax, '--', 'magnitude XX', logScale=False)
-# ax.scatter()
-# plt.show()
+halfMaxRad, magnitude = readHalfMaxRadAndMag(tableFile, 2, 3)
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+ax.set_title("DECaLS objects matched with gaia (stars)")
+configureAxis(ax, 'HALF_MAX_RADIUS', 'Magnitude', logScale=False)
+ax.set_xscale('log')
+ax.set_ylim(12, 24)
+ax.set_xlim(0.5, 10)
+ax.scatter(halfMaxRad, magnitude, s=80, color="blue", linewidths=1.5, edgecolor="black")
+ax.vlines(x=meanRad, ymin = 10, ymax = 26, color="black", lw=2.5, ls="--")
+ax.vlines(x=minRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--", label=r"Point-like region $(1\sigma)$")
+ax.vlines(x=maxRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--")
+ax.legend(fontsize=20)
+plt.savefig(imageOutputName)
