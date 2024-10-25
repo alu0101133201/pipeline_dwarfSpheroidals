@@ -214,8 +214,7 @@ def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, fileN
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
     ax.set_title("If calibration is well-done it should be a straight line", fontsize=20, pad=17)
     configureAxis(ax, 'Background (mag/arcsec^2)', 'Log(Background) (ADU)', logScale=False)
-    ax.set_ylim(np.log10(4570), np.log10(5010))
-    ax.set_xlim(21.45, 21.7)
+
     plt.tight_layout(pad=8.0)
     ax.scatter(magnitudesPerArcSecSq, np.log10(backgroundCounts), s=25, color="teal")
     plt.savefig(fileName)

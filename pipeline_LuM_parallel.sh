@@ -126,6 +126,13 @@ export keyWordValueForFirstRing
 export secondRingDefinitionFile
 export keyWordValueForSecondRing
 
+
+
+export calibrationBrightLimit
+export calibrationFaintLimit
+echo -e "\nThe calibration range is from: " $ORANGE $calibrationBrightLimit $NOCOLOUR " to " $ORANGE $calibrationFaintLimit $NOCOLOUR 
+
+
 echo -e "\nA common normalisation ring is going to be used?: " $ORANGE $USE_COMMON_RING $NOCOLOUR
 if [ "$USE_COMMON_RING" = true ]; then
   echo -e "The file which contains the ring definition is: " $ORANGE $commonRingDefinitionFile $NOCOLOUR
@@ -1123,13 +1130,13 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 decalsImagesDir=$mosaicDir/decalsImages
-prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale
+prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir
 
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit
 
 # Checking and removing bad frames based on the FWHM value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1245,6 +1252,28 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
+
+# Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
+if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+  planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd
+  planeEstimationForCoaddDone=$planeEstimationForCoaddDir/done.txt
+  polynomialDegree=1
+  if ! [ -d $planeEstimationForCoaddDir ]; then mkdir $planeEstimationForCoaddDir; fi
+  computeSky $mowdir $planeEstimationForCoaddDir $planeEstimationForCoaddDone false $sky_estimation_method $polynomialDegree false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+
+  planeSubtractionForCoaddDir=$BDIR/planeSubtractionBeforeCoadd
+  if ! [ -d $planeSubtractionForCoaddDir ]; then mkdir $planeSubtractionForCoaddDir; fi
+
+  planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
+  subtractSky $mowdir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
+
+  baseCoaddir=$BDIR/coadds_plane
+  if ! [ -d $baseCoaddir ]; then mkdir $baseCoaddir; fi
+  buildCoadd $baseCoaddir $planeSubtractionForCoaddDir $moonwdir
+fi
+
+exit 0
+
 # # --- Build exposure map
 # exposuremapDir=$baseCoaddir/exposureMap
 # exposuremapdone=$baseCoaddir/done_"$k".txt
@@ -1320,7 +1349,11 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
+
+
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit
+
+
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
@@ -1441,7 +1474,7 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration

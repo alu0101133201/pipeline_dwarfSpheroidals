@@ -70,6 +70,8 @@ checkIfAllVariablesAreSet() {
                 airMassKeyWord \ 
                 dateHeaderKey \
                 coaddSizePx \
+                calibrationBrightLimit \
+                calibrationFaintLimit \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
                 keyWordToDecideRing
@@ -455,16 +457,10 @@ computeSkyForFrame(){
         # Estimate the background within the normalisation ring or using noisechisel
 
         # The problem is that I can't use the same ring/s as in the normalisation because here we have warped and cropped the images... So I create a new normalisation ring from the centre of the images
-        # I cannot even create a common ring all, because they are cropped based on the number of non-nan (depending on the vignetting and how the NAN are distributed), so i create a ring per image
-        # For that reason the subtraction of the background using the ring is only available if a common ring is used.
-        # More logic should be implemented to use the TWO normalisation rings and recover them after the warping and cropping
+        # I cannot even create a common ring for all, because they are cropped based on the number of non-nan (depending on the vignetting and how the NAN are distributed), so i create a ring per image
+        # For that reason the subtraction of the background using the ring is always using a ring centered in the frame
+        # More logic should be implemented to use the normalisation ring(s) and recover them after the warping and cropping
         if [ "$constantSkyMethod" = "ring" ]; then
-            if [ "$useCommonRing" = false ]; then
-                errorNumber=5
-                echo "The background estimation using multiple rings is not supported by the pipeline right now" >&2
-                echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
-                exit $errorNumber
-            fi
 
             # Mask the image if needed
             if ! [ "$inputImagesAreMasked" = true ]; then
@@ -479,7 +475,6 @@ computeSkyForFrame(){
             fi
 
             # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
-
             tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
             tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
 
@@ -490,8 +485,8 @@ computeSkyForFrame(){
             echo "1 $half_naxis1 $half_naxis2 6 1150 1 1 1 1 1" > $ringDir/$tmpRingDefinition
             astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
 
-            me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             echo "$base $me $std" > $noiseskydir/$out
 
             rm $ringDir/$tmpRingDefinition
@@ -530,7 +525,7 @@ computeSkyForFrame(){
             python3 $pythonScriptsPath/surface-fit.py -i $i -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
         fi
 
-        rm -f $noiseskydir/$noiseOutTmp
+        # rm -f $noiseskydir/$noiseOutTmp
         rm -f $noiseskydir/$maskTmp
     fi
 }
@@ -844,6 +839,7 @@ selectStarsAndSelectionRangeDecals() {
     rangeUsedDecalsDir=$6
     filter=$7
     downSampleDecals=$8
+    diagnosis_and_badFilesDir=$9
 
     tmpFolder="./tmpFilesForPhotometricCalibration"
     selectDecalsStarsDone=$selectedDecalsStarsDir/automaticSelection_done.txt
@@ -893,6 +889,12 @@ selectStarsAndSelectionRangeDecals() {
                 astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
                 astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
 
+
+                # Here call python script for generate the half-max-radius vs magnitudes
+                # outputPlotName=$diagnosis_and_badFilesDir/halfMaxRadVsMag_$a.png
+                # python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $tmpFolder/match_decals_gaia_$a.txt $outputPlotName
+
+
                 # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
                 # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
                 s=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
@@ -922,6 +924,7 @@ prepareDecalsDataForPhotometricCalibration() {
     selectedDecalsStarsDir=$7
     rangeUsedDecalsDir=$8
     dataPixelScale=$9
+    diagnosis_and_badFilesDir=${10}
 
     echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
 
@@ -965,7 +968,7 @@ prepareDecalsDataForPhotometricCalibration() {
     # CORRECTION. This was our initial though, but actually the bricks and the detectors of decals are not the same, so we are already mixing night conditions
     # Additionally, due to the restricted common range, one brick is not enough for obtaining a reliable calibration so now we use the four bricks
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
-    selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $mosaicDir/downSampled
+    selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $mosaicDir/downSampled $diagnosis_and_badFilesDir
 }
 export -f prepareDecalsDataForPhotometricCalibration
 
@@ -1168,6 +1171,8 @@ computeCalibrationFactors() {
     mosaicDir=$5
     decalsImagesDir=$6
     alphatruedir=$7
+    brightLimit=$8
+    faintLimit=$9
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 
@@ -1201,14 +1206,7 @@ computeCalibrationFactors() {
     matchCalibrationStarsCatalogues $matchdir2 $ourDataCatalogueDir $decalsdir
 
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
-
-    # ****** Decision note *******
-    # The reasonable range is decideed based on the half-max-sum/mag, on the decalsmag/(decalsmag - ourmag)
-    # Then we have explored this reasonable range. The bright limit is the one that it is (before saturation)
-    # but the faint limit has been explored from 18 to 20. From 18.5 and fainter we do not see any difference
-    # on the images or on the std-airmass plot, so we use this range.
-    brightLimit=16
-    faintLimit=18.5
+    echo computeAndStoreFactors $alphatruedir $matchdir2 $brightLimit $faintLimit
     computeAndStoreFactors $alphatruedir $matchdir2 $brightLimit $faintLimit
 }
 export -f computeCalibrationFactors
