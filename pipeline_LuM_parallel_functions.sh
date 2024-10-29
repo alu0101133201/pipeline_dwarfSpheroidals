@@ -742,8 +742,9 @@ buildDecalsMosaic() {
         decalsPxScale=$dataPixelScale
         mosaicSize=$(echo "($sizeOfOurFieldDegrees * 3600) / $decalsPxScale" | bc)
 
-        # scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}")
+        # This depends if you want to calibrate with the original resolution (recommended) or downgrade it to your data resolution
         scaleFactor=1 # Testing original resolution
+        # scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}")
 
         if [ "$filter" = "lum" ]; then
             bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
