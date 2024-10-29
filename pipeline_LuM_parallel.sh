@@ -175,11 +175,11 @@ export solve_field_u_Param
 
 export numberOfStdForBadFrames
 
+export defaultNumOfCPUs
 checkIfAllVariablesAreSet
 #
 
 
-defaultNumOfCPUs=12
 num_cpus=$SLURM_CPUS_ON_NODE
 if [ -z $num_cpus ]; then
   num_cpus=$defaultNumOfCPUs
@@ -1065,7 +1065,6 @@ ringDir=$BDIR/ring
 
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 
-
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
 noiseskyctedone=$noiseskyctedir/done_"$filter"_ccd"$h".txt
@@ -1130,7 +1129,6 @@ rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 decalsImagesDir=$mosaicDir/decalsImages
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir
 
-
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1176,11 +1174,38 @@ applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
 # DIAGNOSIS PLOT
 # Astrometry
-produceAstrometryCheckPlot $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $pixelScale
+astrometryPlotDone=$diagnosis_and_badFilesDir/done_astrometryPlot.txt
+if [ -f $astrometryPlotDone ]; then
+    echo -e "\nAstrometry diagnosis plot already done\n"
+else
+  produceAstrometryCheckPlot $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $pixelScale
+  echo done > $astrometryPlotDone
+fi
+
 
 # DIAGNOSIS PLOT
 # Calibration
-produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir 
+calibrationPlotDone=$diagnosis_and_badFilesDir/done_calibrationPlot.txt
+if [ -f $calibrationPlotDone ]; then
+  echo -e "\nCalibration diagnosis plot already done\n"
+else
+  produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $calibrationBrightLimit $calibrationFaintLimit
+  echo done > $calibrationPlotDone
+fi
+
+# DIAGNOSIS PLOT
+# Half-Max-Radius vs magnitude plots of our calibrated data
+halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
+halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
+
+if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
+if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
+  echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
+else
+  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus
+  echo done > $halfMaxRadiusVsMagnitudeOurDataDone
+fi
+
 
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 
@@ -1242,6 +1267,8 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds
 buildCoadd $baseCoaddir $mowdir $moonwdir
 
+produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
+
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
@@ -1269,6 +1296,13 @@ if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
   if ! [ -d $baseCoaddir ]; then mkdir $baseCoaddir; fi
   buildCoadd $baseCoaddir $planeSubtractionForCoaddDir $moonwdir
 fi
+
+
+
+
+
+
+
 
 
 # # --- Build exposure map

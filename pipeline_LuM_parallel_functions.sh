@@ -66,6 +66,7 @@ checkIfAllVariablesAreSet() {
     variablesToCheck=(objectName \
                 ra_gal \
                 dec_gal \
+                defaultNumOfCPUs \
                 ROOTDIR \
                 airMassKeyWord \ 
                 dateHeaderKey \
@@ -740,9 +741,10 @@ buildDecalsMosaic() {
     else
         decalsPxScale=$dataPixelScale
         mosaicSize=$(echo "($sizeOfOurFieldDegrees * 3600) / $decalsPxScale" | bc)
-        # scaleFactor=$(echo "scale=3; $originalDecalsPxScale / $dataPixelScale" | bc)
-        scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}")
-        
+
+        # scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}")
+        scaleFactor=1 # Testing original resolution
+
         if [ "$filter" = "lum" ]; then
             bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
         else
@@ -778,13 +780,26 @@ downloadGaiaCatalogueForField() {
         astquery gaia --dataset=edr3 --overlapwith=$ref --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error    -o$BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits
         asttable $BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -otmp.txt
 
-        # Here I demand that the gaia object fulfills simultaneously that:
-        # 1.- Parallax > 3 times its error
-        # 2.- Proper motion (ra) > 3 times its error
-        # 3.- Proper motion (dec) > 3 times its error
+        # I have explored 3 different ways of selecting good stars. 
+        # From the most restrictive to the less restrictive:
+
+        # # Here I demand that the gaia object fulfills simultaneously that:
+        # # 1.- Parallax > 3 times its error
+        # # 2.- Proper motion (ra) > 3 times its error
+        # # 3.- Proper motion (dec) > 3 times its error
+        # asttable tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where'    -otest_.txt
+        # asttable test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -otest1.txt
+        # asttable test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
+
+        # # Here I only demand that the parallax is > 3 times its error
+        # asttable tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -otest.txt
+        # asttable test.txt -c1,2,3 --range=ARITH_2,999,1001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
+
+
+        # Here I  demand that the parallax OR a proper motion is > 3 times its error
         asttable tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where'    -otest_.txt
         asttable test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -otest1.txt
-        asttable test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
+        asttable test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
 
         rm test1.txt tmp.txt $BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits test_.txt
         echo done > $retcatdone
@@ -883,14 +898,26 @@ selectStarsAndSelectionRangeDecals() {
                 swarp $images -IMAGEOUT_NAME $tmpFolder/swarp1_$a.fits -WEIGHTOUT_NAME $tmpFolder/swarp_w1_$a.fits 
                 astarithmetic $tmpFolder/swarp_w1_$a.fits -h0 set-i i i 0 lt nan where -o$tmpFolder/temp1_$a.fits
                 astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
+                imageToFindStarsAndPointLikeParameters=$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
+                
+                # To use only one brick (testing photometry)
+                # imageToFindStarsAndPointLikeParameters=$( echo $images | cut -d ' ' -f 1 )
+                # $( astfits $imageToFindStarsAndPointLikeParameters --copy=1 -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits)
+                
+                astconvolve $imageToFindStarsAndPointLikeParameters --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
 
-                astconvolve $brickCombinationsDir/combinedBricks_"$(basename $a)".fits --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
-                # In the following noisechisel I have reduced the tile because with higher tiles it was not finding enough neighbors
-                astnoisechisel $brickCombinationsDir/combinedBricks_"$(basename $a)".fits -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
+
+                # The following calls to astnoisechisel differ in the --tilesize parameter. The one with 10x10 is for working at reduced resolution (TST rebinned by 3 resolution in my case)
+                # and the 100x100 for working with decals at original resolution. Using 10x10 at decals original resolution just takes soooo long that is not viable. 
+
+                # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
+                astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=100,100
+
+
+
                 astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
                 astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
                 astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
-
 
 
                 # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
@@ -901,13 +928,16 @@ selectStarsAndSelectionRangeDecals() {
                 maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
 
                 # Here call python script for generate the half-max-radius vs magnitudes
-                if ! [ -d $diagnosis_and_badFilesDir/halfMaxRadVsMagPlots ]; then mkdir $diagnosis_and_badFilesDir/halfMaxRadVsMagPlots; fi
-                outputPlotName=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots/halfMaxRadVsMag_$a.png
-                python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $tmpFolder/match_decals_gaia_$a.txt $s $minr $maxr $outputPlotName
+                halfMaxRadVsMagPlots_decalsDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_decals
+                if ! [ -d $halfMaxRadVsMagPlots_decalsDir ]; then mkdir $halfMaxRadVsMagPlots_decalsDir; fi
+                outputPlotName=$halfMaxRadVsMagPlots_decalsDir/halfMaxRadVsMag_$a.png
+                python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $tmpFolder/decals_"$a"_c.txt $tmpFolder/match_decals_gaia_$a.txt $s $minr $maxr $outputPlotName
 
                 echo $s $std $minr $maxr > $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
                 asttable $tmpFolder/decals_"$a"_c.txt --range=HALF_MAX_RADIUS,$minr,$maxr -o $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt
+
                 rm $tmpFolder/*
+
             fi
         done
         rmdir $tmpFolder
@@ -964,7 +994,6 @@ prepareDecalsDataForPhotometricCalibration() {
 
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
     downloadGaiaCatalogueForField $mosaicDir
-
     # First of all remember that we need to do the photometric calibration frame by frame.
     # For each frame of the data, due to its large field, we have multiple (in our case 4 - defined in "downloadBricksForFrame.py") decals bricks
     # They may have been taken at different moments with different conditions so we have to process them one by one
@@ -1179,7 +1208,6 @@ computeCalibrationFactors() {
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 
-
     # EXPLANATION AND TO DO
     # The next step performs an analog process to the one applied to decals (selection of stars and saving our star range)
     # But this step here is paralellised. This is because paralellising the step in the decals section is not straight forward
@@ -1187,12 +1215,9 @@ computeCalibrationFactors() {
     # the same bricks and to paralellise it we need to give it a thought
     # Here we just have to apply the process to every single frame so we can paralellise it easily
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
-    # For fornax (around 490 frames). Deimos, 20 cores -> 40 min
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir
 
-
     matchdir2=$BDIR/match-decals-myData_it$iteration
-
     echo -e "\n ${GREEN} ---Matching our data and Decals--- ${NOCOLOUR}"
     matchDecalsAndOurData $iteration $selectedDecalsStarsDir $mycatdir $matchdir2 >> tmp.txt
 
@@ -1204,7 +1229,6 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Building our catalogue for calibration stars--- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $matchdir2 $mycatdir
 
-    
     echo -e "\n ${GREEN} ---Matching calibration stars catalogues--- ${NOCOLOUR}"
     matchCalibrationStarsCatalogues $matchdir2 $ourDataCatalogueDir $decalsdir
 
@@ -1452,6 +1476,8 @@ produceCalibrationCheckPlot() {
     referenceCatalogueDir=$4
     pythonScriptsPath=$5
     outputDir=$6
+    calibrationBrighLimit=$7
+    calibrationFaintLimit=$8
 
     calibrationTmpDir="./calibrationDiagnosisTmp"
     if ! [ -d $calibrationTmpDir ]; then mkdir $calibrationTmpDir; fi
@@ -1484,11 +1510,54 @@ produceCalibrationCheckPlot() {
         rm $tmpDir/$frameNumber.cat
 done
 
-python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibrationTmpDir $outputDir/magVsMagDiff.png
-# rm -rf $calibrationTmpDir
-
+python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibrationTmpDir $outputDir/magVsMagDiff.png $calibrationBrighLimit $calibrationFaintLimit
+rm -rf $calibrationTmpDir
 }
 export -f produceCalibrationCheckPlot
+
+produceHalfMaxRadVsMagForSingleImage() {
+    image=$1 
+    outputDir=$2
+    gaiaCat=$3
+    toleranceForMatching=$4
+    pythonScriptsPath=$5
+    alternativeIdentifier=$6 # Applied when there is no number in the name
+
+    a=$( echo $image | grep -oP '\d+(?=\.fits)' )
+    if ! [[ -n "$number" ]]; then
+        a=$alternativeIdentifier
+    fi
+
+    astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
+
+    astconvolve $image --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits
+    astnoisechisel $image -h1 -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=30,30
+    astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
+    astmkcatalog $outputDir/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $outputDir/decals_$a.txt --zeropoint=22.5
+    astmatch $outputDir/decals_"$a"_c.txt --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt 1>/dev/null
+
+    python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $outputDir/decals_"$a"_c.txt $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png
+    rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits $outputDir/decals_"$a"_c.txt $outputDir/decals_"$a"_o.txt $outputDir/match_decals_gaia_$a.txt
+}
+export -f produceHalfMaxRadVsMagForSingleImage
+
+
+produceHalfMaxRadVsMagForOurData() {
+    imagesDir=$1
+    outputDir=$2
+    gaiaCat=$3
+    toleranceForMatching=$4
+    pythonScriptsPath=$5
+    num_cpus=$6
+
+    images=()
+    for i in $imagesDir/*.fits; do
+        images+=("$i")
+    done
+    printf "%s\n" "${images[@]}" | parallel --line-buffer -j "$num_cpus" produceHalfMaxRadVsMagForSingleImage {} $outputDir $gaiaCat $toleranceForMatching $pythonScriptsPath
+}
+export -f produceHalfMaxRadVsMagForOurData
+
 
 # Coadd function
 buildCoadd() {

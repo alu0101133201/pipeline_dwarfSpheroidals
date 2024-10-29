@@ -55,10 +55,20 @@ def read_columns_from_file(file_path):
     mag2 = np.array(data[:, 1].astype(float).tolist())
     return mag1, mag2
 
+def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimit):
+    diffMagInRange = []
+
+    for i in range(len(mag)):
+        if ( (mag[i] > brightLimit) and (mag[i] < faintLimit) ):
+            diffMagInRange.append(magDiff[i])
+
+    return(np.nanstd(np.array(diffMagInRange)))
 
 
 directoryWithTheCatalogues = sys.argv[1]
 imageName = sys.argv[2]
+calibrationBrightLimit = float(sys.argv[3])
+calibrationFaintLimit  = float(sys.argv[4])
 
 magDiff = np.array([])
 mag1Total = np.array([])
@@ -71,6 +81,10 @@ for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
     magDiff = np.append(magDiff, np.array(mag1 - mag2))
     frameNumber = np.append(frameNumber, np.repeat(index, len(mag1)))
 
+
+totalScatter = np.nanstd(magDiff)
+scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiff, calibrationFaintLimit, calibrationBrightLimit)
+
 setMatplotlibConf()
 
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -78,10 +92,19 @@ configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=Fa
 ax.set_ylim(-1, 2)
 ax.set_xlim(15, 23)
 
+ax.vlines(x=calibrationBrightLimit, ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--", label="Calibration region")
+ax.vlines(x=calibrationFaintLimit,  ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--")
 
 ax.hlines(y=0, xmin=15, xmax=23, color="black", lw=1.5, ls="--")
-scatter = ax.scatter(mag1Total, magDiff, s=40, c=frameNumber, cmap='viridis', edgecolor="black")
+scatter = ax.scatter(mag1Total, magDiff, s=25, c=frameNumber, cmap='viridis', edgecolor="black")
 cbar = plt.colorbar(scatter)
-cbar.set_label('Frame Number', rotation=270, labelpad=15)
+cbar.set_label('Frame Number', rotation=270, labelpad=20, fontsize=22)
 
+ax.text(0.08, 0.925, r"Total $\sigma$: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
+    fontsize=24, verticalalignment='top', horizontalalignment='left')
+
+ax.text(0.08, 0.875, r"Calibration region $\sigma$: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
+    fontsize=24, verticalalignment='top', horizontalalignment='left')
+
+ax.legend(fontsize=22)
 plt.savefig(imageName + ".jpg")

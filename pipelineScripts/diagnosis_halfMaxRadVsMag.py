@@ -55,30 +55,40 @@ def readHalfMaxRadAndMag(file, halfMaxRadCol, magnitudeColumn):
     
     return half_max_radius, magnitude
 
-tableFile = sys.argv[1]
-meanRad = float(sys.argv[2])
-minRad  = float(sys.argv[3])
-maxRad  = float(sys.argv[4])
-imageOutputName = sys.argv[5]
+wholeTableFile   = sys.argv[1]
+matchedtableFile = sys.argv[2]
+meanRad          = float(sys.argv[3])
+minRad           = float(sys.argv[4])
+maxRad           = float(sys.argv[5])
+imageOutputName  = sys.argv[6]
 
 
-print("table file: ", tableFile)
+print("Table file with all sources: ", wholeTableFile)
+print("Table file with matched sources with gaia (stars): ", matchedtableFile)
 print("imageoutputName: ", imageOutputName)
 
 
 setMatplotlibConf()
+halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 3, 2)
+halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 2, 3)
 
-halfMaxRad, magnitude = readHalfMaxRadAndMag(tableFile, 2, 3)
 
-fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-ax.set_title("DECaLS objects matched with gaia (stars)")
-configureAxis(ax, 'HALF_MAX_RADIUS', 'Magnitude', logScale=False)
+
+fig, ax = plt.subplots(1, 1, figsize=(12, 12))
+plt.tight_layout(pad=7.0)
+ax.set_title("DECaLS objects", fontsize=20, pad=17)
+configureAxis(ax, 'HALF_MAX_RADIUS (px)', 'Magnitude (mag)', logScale=False)
 ax.set_xscale('log')
-ax.set_ylim(12, 24)
-ax.set_xlim(0.5, 10)
-ax.scatter(halfMaxRad, magnitude, s=80, color="blue", linewidths=1.5, edgecolor="black")
-ax.vlines(x=meanRad, ymin = 10, ymax = 26, color="black", lw=2.5, ls="--")
-ax.vlines(x=minRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--", label=r"Point-like region $(1\sigma)$")
-ax.vlines(x=maxRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--")
-ax.legend(fontsize=20)
+ax.set_ylim(13, 28)
+ax.set_xlim(0.5, 40)
+ax.scatter(halfMaxRadAll, magnitudeAll, s=30, color="crimson", alpha=0.85, linewidths=1.5, edgecolor="black", label="All sources")
+ax.scatter(halfMaxRadMatched, magnitudeMatched, s=60, color="blue", linewidths=1.5, edgecolor="black", label="Matched Gaia")
+
+if (meanRad > 0): 
+    ax.vlines(x=meanRad, ymin = 10, ymax = 26, color="black", lw=2.5, ls="--")
+if (minRad > 0): 
+    ax.vlines(x=minRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--", label=r"Point-like region $(1\sigma)$")
+if (maxRad > 0): 
+    ax.vlines(x=maxRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--")
+ax.legend(fontsize=18, shadow=True)
 plt.savefig(imageOutputName)
