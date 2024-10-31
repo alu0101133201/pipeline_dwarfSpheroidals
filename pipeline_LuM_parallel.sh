@@ -97,6 +97,9 @@ else
 fi
 
 
+startTime=$(date +%s)
+echo ${GREEN} "\nStarting pipeline. Start time:  $(date)" ${NOCOLOUR}
+
 ########## Load variables ##########
 # Exporting the variables from .conf file
 echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
@@ -107,8 +110,11 @@ export dec_gal
 
 export ROOTDIR
 
+export saturationThreshold
+echo -e "\nSaturation threshold set to  " $saturationThreshold
+
 export coaddSizePx
-echo -e "The size in px of each side of the coadded image is " $coaddSizePx
+echo -e "\nThe size in px of each side of the coadded image is " $coaddSizePx
 
 export filter
 export detectorWidth
@@ -403,7 +409,7 @@ oneNightPreProcessing() {
       i=$currentINDIR/$base
       out=$mbiascorrdir/$base
       astarithmetic $i -h1 set-i $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits  -h1  set-m \
-                i i 55000 gt i isblank or 2 dilate nan where m -  float32  \
+                i i $saturationThreshold gt i isblank or 2 dilate nan where m -  float32  \
                 -o $out
 
       propagateKeyword $i $airMassKeyWord $out
@@ -896,7 +902,6 @@ totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
 
-echo "Parando ejecución para ver que todo funcione"
 
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
@@ -1266,7 +1271,6 @@ fi
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds
 buildCoadd $baseCoaddir $mowdir $moonwdir
-
 produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
@@ -1276,26 +1280,25 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
-exit 0
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
-if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-  planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd
-  planeEstimationForCoaddDone=$planeEstimationForCoaddDir/done.txt
-  polynomialDegree=1
-  if ! [ -d $planeEstimationForCoaddDir ]; then mkdir $planeEstimationForCoaddDir; fi
-  computeSky $mowdir $planeEstimationForCoaddDir $planeEstimationForCoaddDone false $sky_estimation_method $polynomialDegree false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+# if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+#   planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd
+#   planeEstimationForCoaddDone=$planeEstimationForCoaddDir/done.txt
+#   polynomialDegree=1
+#   if ! [ -d $planeEstimationForCoaddDir ]; then mkdir $planeEstimationForCoaddDir; fi
+#   computeSky $mowdir $planeEstimationForCoaddDir $planeEstimationForCoaddDone false $sky_estimation_method $polynomialDegree false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 
-  planeSubtractionForCoaddDir=$BDIR/planeSubtractionBeforeCoadd
-  if ! [ -d $planeSubtractionForCoaddDir ]; then mkdir $planeSubtractionForCoaddDir; fi
+#   planeSubtractionForCoaddDir=$BDIR/planeSubtractionBeforeCoadd
+#   if ! [ -d $planeSubtractionForCoaddDir ]; then mkdir $planeSubtractionForCoaddDir; fi
 
-  planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
-  subtractSky $mowdir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
+#   planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
+#   subtractSky $mowdir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
 
-  baseCoaddir=$BDIR/coadds_plane
-  if ! [ -d $baseCoaddir ]; then mkdir $baseCoaddir; fi
-  buildCoadd $baseCoaddir $planeSubtractionForCoaddDir $moonwdir
-fi
+#   baseCoaddir=$BDIR/coadds_plane
+#   if ! [ -d $baseCoaddir ]; then mkdir $baseCoaddir; fi
+#   buildCoadd $baseCoaddir $planeSubtractionForCoaddDir $moonwdir
+# fi
 
 
 
@@ -1443,6 +1446,39 @@ fi
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 baseCoaddir=$BDIR/coadds_it$iteration 
 buildCoadd $baseCoaddir $mowdir $moonwdir
+produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2"
+
+endTime=$(date +%s)
+elapsed_time=$((end_time - start_time))
+echo "Time used for the reduction: ${elapsed_time} seconds"
+
+
+
+
+
+
+
+
+
+exit 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits

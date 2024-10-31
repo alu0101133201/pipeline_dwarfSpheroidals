@@ -70,6 +70,7 @@ checkIfAllVariablesAreSet() {
                 ROOTDIR \
                 airMassKeyWord \ 
                 dateHeaderKey \
+                saturationThreshold \
                 coaddSizePx \
                 calibrationBrightLimit \
                 calibrationFaintLimit \
@@ -793,8 +794,8 @@ downloadGaiaCatalogueForField() {
         # asttable test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
 
         # # Here I only demand that the parallax is > 3 times its error
-        # asttable tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -otest.txt
-        # asttable test.txt -c1,2,3 --range=ARITH_2,999,1001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
+        # asttable tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -otest_.txt
+        # asttable test_.txt -c1,2,3 --range=ARITH_2,999,1001 -o $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits
 
 
         # Here I  demand that the parallax OR a proper motion is > 3 times its error
@@ -914,12 +915,9 @@ selectStarsAndSelectionRangeDecals() {
                 # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
                 astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=100,100
 
-
-
                 astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
                 astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
                 astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
-
 
                 # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
                 # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
@@ -941,10 +939,10 @@ selectStarsAndSelectionRangeDecals() {
 
             fi
         done
-        rmdir $tmpFolder
         rm ./kernel.fits
         echo done > $selectDecalsStarsDone
     fi
+    rmdir $tmpFolder
 }
 export -f selectStarsAndSelectionRangeDecals
 
@@ -1220,7 +1218,7 @@ computeCalibrationFactors() {
 
     matchdir2=$BDIR/match-decals-myData_it$iteration
     echo -e "\n ${GREEN} ---Matching our data and Decals--- ${NOCOLOUR}"
-    matchDecalsAndOurData $iteration $selectedDecalsStarsDir $mycatdir $matchdir2 >> tmp.txt
+    matchDecalsAndOurData $iteration $selectedDecalsStarsDir $mycatdir $matchdir2 
 
     decalsdir=$BDIR/decals-aperture-catalog_it$iteration
     echo -e "\n ${GREEN} ---Building Decals catalogue for (matched) calibration stars--- ${NOCOLOUR}"
@@ -1361,6 +1359,7 @@ buildUpperAndLowerLimitsForOutliers() {
             astarithmetic $med_im thresh.fits - -g1 float32 -o $lo_lim
 
             #rm -f $med_im $std_im
+            rm thresh.fits
             echo done > $clippingdone
     fi
 }
@@ -1530,15 +1529,15 @@ produceHalfMaxRadVsMagForSingleImage() {
     fi
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
-
     astconvolve $image --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits
     astnoisechisel $image -h1 -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=30,30
-    astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
+
+    astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0 --minriverlength=3
     astmkcatalog $outputDir/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $outputDir/decals_$a.txt --zeropoint=22.5
     astmatch $outputDir/decals_"$a"_c.txt --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt 1>/dev/null
 
     python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $outputDir/decals_"$a"_c.txt $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png
-    rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits $outputDir/decals_"$a"_c.txt $outputDir/decals_"$a"_o.txt $outputDir/match_decals_gaia_$a.txt
+    # rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits $outputDir/decals_"$a"_c.txt $outputDir/decals_"$a"_o.txt $outputDir/match_decals_gaia_$a.txt
 }
 export -f produceHalfMaxRadVsMagForSingleImage
 
