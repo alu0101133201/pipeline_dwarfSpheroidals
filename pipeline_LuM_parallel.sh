@@ -113,6 +113,9 @@ export ROOTDIR
 export saturationThreshold
 echo -e "\nSaturation threshold set to  " $saturationThreshold
 
+export sizeOfOurFieldDegrees
+echo -e "\nThe size of the field in degrees is " $sizeOfOurFieldDegrees
+
 export coaddSizePx
 echo -e "\nThe size in px of each side of the coadded image is " $coaddSizePx
 
@@ -132,12 +135,9 @@ export keyWordValueForFirstRing
 export secondRingDefinitionFile
 export keyWordValueForSecondRing
 
-
-
 export calibrationBrightLimit
 export calibrationFaintLimit
 echo -e "\nThe calibration range is from: " $ORANGE $calibrationBrightLimit $NOCOLOUR " to " $ORANGE $calibrationFaintLimit $NOCOLOUR 
-
 
 echo -e "\nA common normalisation ring is going to be used?: " $ORANGE $USE_COMMON_RING $NOCOLOUR
 if [ "$USE_COMMON_RING" = true ]; then
@@ -148,8 +148,6 @@ else
   echo -e "The file containing the second ring definition is: " $ORANGE  $secondRingDefinitionFile $NOCOLOUR  " and the value for using this ring is " $keyWordValueForSecondRing
   echo -e "And the treshold for detecting the value is: " $ORANGE $keyWordThreshold $NOCOLOUR
 fi
-
-
 
 echo -e "\nThe running flat is going to be used?: $ORANGE $RUNNING_FLAT $NOCOLOUR"
 export RUNNING_FLAT
@@ -1131,8 +1129,11 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 
+echo -e "\nStarting the prepareDecalsDataForPhotometricCalibration at $(date)"
 decalsImagesDir=$mosaicDir/decalsImages
-prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir
+prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
+echo -e "\nFinishing the prepareDecalsDataForPhotometricCalibration at $(date)"
+
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
@@ -1197,6 +1198,7 @@ else
   produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $calibrationBrightLimit $calibrationFaintLimit
   echo done > $calibrationPlotDone
 fi
+
 
 # DIAGNOSIS PLOT
 # Half-Max-Radius vs magnitude plots of our calibrated data
@@ -1269,9 +1271,23 @@ fi
 
 ### Coadd ###
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-baseCoaddir=$BDIR/coadds
-buildCoadd $baseCoaddir $mowdir $moonwdir
+
+echo -e "\nBuilding coadd"
+coaddDir=$BDIR/coadds
+coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+buildCoadd $coaddDir $coaddName $mowdir $moonwdir
+
+echo -e "\nAdding keywords to the coadd"
+keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
+numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
+addkeywords $coaddName keyWords values
+
+
 produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
+
+exit 0
+
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1295,9 +1311,14 @@ fi
 #   planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
 #   subtractSky $mowdir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
 
-#   baseCoaddir=$BDIR/coadds_plane
-#   if ! [ -d $baseCoaddir ]; then mkdir $baseCoaddir; fi
-#   buildCoadd $baseCoaddir $planeSubtractionForCoaddDir $moonwdir
+#   coaddDir=$BDIR/coadds_plane
+#   coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+
+#   if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
+#   buildCoadd $coaddDir $coaddName $planeSubtractionForCoaddDir $moonwdir
+
+  # echo -e "\nAdding keywords to the coadd"
+  # addkeywords $coaddName keyWords values
 # fi
 
 
@@ -1309,8 +1330,8 @@ fi
 
 
 # # --- Build exposure map
-# exposuremapDir=$baseCoaddir/exposureMap
-# exposuremapdone=$baseCoaddir/done_"$k".txt
+# exposuremapDir=$coaddDir/exposureMap
+# exposuremapdone=$coaddDir/done_"$k".txt
 
 # if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
 # if [ -f $exposuremapdone ]; then
@@ -1328,7 +1349,7 @@ fi
 #     astarithmetic $exposuremapDir/swarp1.fits -h0 temp1.fits -h1 0 eq nan where -o$exposuremapDir/entirecamera_"$a".fits
 #   done
 #   rm $exposuremapDir/swarp_w1.fits $exposuremapDir/swarp1.fits
-#   astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) number -g1 -o$baseCoaddir/exposureMap_NoNans.fits
+#   astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) number -g1 -o$coaddDir/exposureMap_NoNans.fits
 #   rm $exposuremapDir/*.fits
 #   rmdir $exposuremapDir
 
@@ -1444,15 +1465,23 @@ fi
 
 
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-baseCoaddir=$BDIR/coadds_it$iteration 
-buildCoadd $baseCoaddir $mowdir $moonwdir
+
+echo -e "\nBuilding coadd"
+
+coaddDir=$BDIR/coadds_it$iteration 
+coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+buildCoadd $coaddDir $coaddName $mowdir $moonwdir
+
+echo -e "\nAdding keywords to the coadd"
+keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
+numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
+addkeywords $coaddName keyWords values
+
 produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2"
 
-endTime=$(date +%s)
-elapsed_time=$((end_time - start_time))
-echo "Time used for the reduction: ${elapsed_time} seconds"
-
-
+endTime=$(date)
+echo "Pipeline ended at : ${endTime}"
 
 
 
@@ -1461,6 +1490,13 @@ echo "Time used for the reduction: ${elapsed_time} seconds"
 
 
 exit 0
+
+
+
+
+
+
+
 
 
 
@@ -1600,5 +1636,14 @@ fi
 
 
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-baseCoaddir=$BDIR/coadds_it$iteration 
-buildCoadd $baseCoaddir $mowdir $moonwdir
+echo -e "\nBuilding coadd"
+
+coaddDir=$BDIR/coadds_it$iteration 
+coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+buildCoadd $coaddDir $coaddName $mowdir $moonwdir
+
+echo -e "\nAdding keywords to the coadd"
+keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
+numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
+addkeywords $coaddName keyWords values

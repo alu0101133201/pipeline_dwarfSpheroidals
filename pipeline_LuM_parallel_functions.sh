@@ -51,15 +51,6 @@ getHighestNumberFromFilesInFolder() {
 }
 export -f getHighestNumberFromFilesInFolder
 
-writeKeywordToFits() {
-    fitsFile=$1
-    header=$2
-    keyWord=$3
-    value=$4
-
-    astfits --write=$keyWord,$value $fitsFile -h$header
-}
-
 checkIfAllVariablesAreSet() {
     errorNumber=2
     flagToExit=""
@@ -71,6 +62,7 @@ checkIfAllVariablesAreSet() {
                 airMassKeyWord \ 
                 dateHeaderKey \
                 saturationThreshold \
+                sizeOfOurFieldDegrees \
                 coaddSizePx \
                 calibrationBrightLimit \
                 calibrationFaintLimit \
@@ -138,6 +130,16 @@ maskImages() {
 }
 export -f maskImages
 
+writeKeywordToFits() {
+    fitsFile=$1
+    header=$2
+    keyWord=$3
+    value=$4
+
+    astfits --write=$keyWord,$value $fitsFile -h$header
+}
+export -f writeKeywordToFits
+
 propagateKeyword() {
     image=$1
     keyWordToPropagate=$2
@@ -147,6 +149,34 @@ propagateKeyword() {
     eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h1" 
 }
 export -f propagateKeyword
+
+addkeywords() {
+    local fits_file=$1
+    shift
+    local -n keys_array=$1
+    local -n values_array=$2
+
+    if [[ -z "$fits_file" || ${#keys_array[@]} -eq 0 || ${#values_array[@]} -eq 0 ]]; then
+        errorNumber=7
+        echo -e "Error in 'addkeywords', some argument is empty"
+        echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+        exit $errorNumber 
+    fi
+
+    if [[ ${#keys_array[@]} -ne ${#values_array[@]} ]]; then
+        echo -e "Error in 'addkeywords', the length of keys and values does not match"
+        echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+        exit $errorNumber   
+    fi
+
+    for i in "${!keys_array[@]}"; do
+        local key="${keys_array[$i]}"
+        local value="${values_array[$i]}"
+
+        writeKeywordToFits $fits_file 1 "$key" "$value"
+    done
+}
+export -f addkeywords
 
 
 getMedianValueInsideRing() {
@@ -217,7 +247,7 @@ getStdValueInsideRing() {
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
             std=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where stdvalue --quiet)
         else
-            errorNumber=4
+            errorNumber=5
             echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
             echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
             exit $errorNumber 
@@ -902,10 +932,6 @@ selectStarsAndSelectionRangeDecals() {
                 astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
                 imageToFindStarsAndPointLikeParameters=$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
                 
-                # To use only one brick (testing photometry)
-                # imageToFindStarsAndPointLikeParameters=$( echo $images | cut -d ' ' -f 1 )
-                # $( astfits $imageToFindStarsAndPointLikeParameters --copy=1 -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits)
-                
                 astconvolve $imageToFindStarsAndPointLikeParameters --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
 
 
@@ -957,6 +983,7 @@ prepareDecalsDataForPhotometricCalibration() {
     rangeUsedDecalsDir=$8
     dataPixelScale=$9
     diagnosis_and_badFilesDir=${10}
+    sizeOfOurFieldDegrees=${11} 
 
     echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
 
@@ -988,7 +1015,6 @@ prepareDecalsDataForPhotometricCalibration() {
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration. But we build it anyway to retrieve in an easier way
     # the Gaia data of the whole field.
-    sizeOfOurFieldDegrees=2.5 # Estimation of the size of the field for building the mosaic
     buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $mosaicDir/downSampled $dataPixelScale $sizeOfOurFieldDegrees
 
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
@@ -1142,6 +1168,7 @@ buildOurCatalogueOfMatchedSources() {
             # asttable $lbtdir/$base_.fits -h1 --noblank=MAGNITUDE -o$lbtdir/$base.cat
         done
         echo done > $ourDatadone
+        rm aperture_myData.fits apertures.txt
     fi
 }
 
@@ -1505,13 +1532,15 @@ produceCalibrationCheckPlot() {
                 --output=$tmpDir/$frameNumber.cat
 
         astmatch $referenceCatalogue --hdu=1 $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$calibrationTmpDir/"$frameNumber"_matched.cat
+        astmatch $referenceCatalogue --hdu=1 $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aRA,aDEC,aMAGNITUDE,bMAGNITUDE -o$calibrationTmpDir/"$frameNumber"_check.cat
+
         rm $tmpDir/apertures.txt
         rm $tmpDir/aperture_myData.fits
         rm $tmpDir/$frameNumber.cat
 done
 
 python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibrationTmpDir $outputDir/magVsMagDiff.png $calibrationBrighLimit $calibrationFaintLimit
-rm -rf $calibrationTmpDir
+# rm -rf $calibrationTmpDir
 }
 export -f produceCalibrationCheckPlot
 
@@ -1524,7 +1553,7 @@ produceHalfMaxRadVsMagForSingleImage() {
     alternativeIdentifier=$6 # Applied when there is no number in the name
 
     a=$( echo $image | grep -oP '\d+(?=\.fits)' )
-    if ! [[ -n "$number" ]]; then
+    if ! [[ -n "$a" ]]; then
         a=$alternativeIdentifier
     fi
 
@@ -1537,7 +1566,7 @@ produceHalfMaxRadVsMagForSingleImage() {
     astmatch $outputDir/decals_"$a"_c.txt --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt 1>/dev/null
 
     python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $outputDir/decals_"$a"_c.txt $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png
-    # rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits $outputDir/decals_"$a"_c.txt $outputDir/decals_"$a"_o.txt $outputDir/match_decals_gaia_$a.txt
+    rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits $outputDir/decals_"$a"_c.txt $outputDir/decals_"$a"_o.txt $outputDir/match_decals_gaia_$a.txt
 }
 export -f produceHalfMaxRadVsMagForSingleImage
 
@@ -1561,26 +1590,32 @@ export -f produceHalfMaxRadVsMagForOurData
 
 # Coadd function
 buildCoadd() {
-    baseCoaddir=$1
-    mowdir=$2
-    moonwdir=$3
+    coaddir=$1
+    coaddName=$2
+    mowdir=$3
+    moonwdir=$4
 
-    if ! [ -d $baseCoaddir ]; then mkdir $baseCoaddir; fi
 
-    coaddir=$baseCoaddir/stdWeighted
-    coaddName=$coaddir/"$objectName"_coadd1_"$filter".fits
     coaddone=$coaddir/done_"$k".txt
     if ! [ -d $coaddir ]; then mkdir $coaddir; fi
     if [ -f $coaddone ]; then
             echo -e "\nThe first weighted (based upon std) mean of the images already done\n"
     else
             astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_wx.fits
-            astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits    | wc -l) sum -g1 -o$coaddir/"$k"_w.fits
+            astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_w.fits
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
 
-            # Useful keywords for the final image
-            numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
-            writeKeywordToFits $coaddName 1 "FRAMESCOMBINED" $numberOfFramesUsed
+            # # Useful keywords for the final image
+            # numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
+            # writeKeywordToFits $coaddName 1 "FRAMES_COMBINED" $numberOfFramesUsed
+            # writeKeywordToFits $coaddName 1 "FILTER" $filter
+            # writeKeywordToFits $coaddName 1 "SATURATION_THRESHOLD" $saturationThreshold
+            # writeKeywordToFits $coaddName 1 "CALIBRATION_BRIGHTLIMIT" $calibrationBrightLimit
+            # writeKeywordToFits $coaddName 1 "CALIBRATION_FAINTLIMIT" $calibrationFaintLimit
+            # writeKeywordToFits $coaddName 1 "RUNNING_FLAT" $RUNNING_FLAT
+            # writeKeywordToFits $coaddName 1 "WINDOW_SIZE" $windowSize
+            # writeKeywordToFits $coaddName 1 "STD_FOR_BAD_FRAMES" $numberOfStdForBadFrames
+
             echo done > $coaddone
     fi
 }
