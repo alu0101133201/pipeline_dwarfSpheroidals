@@ -1,20 +1,5 @@
 #!/bin/bash
 
-# Information of the instruments used for adquiring the data
-
-# Vicente's Telescope
-
-# Montura Astro-physics, modelo mach one
-# Telescopio f5 , apertura 130 mm y largo focal 655 mm de la marca
-# Stellarvue SVS 130.
-# Camara fotografica ASI ZWO 1600GT monocromática con filtros RGB+L (bit depth of 12bits, seems to have been multiplied to 2⁴ to obtain a typical 0-2^16 range)
-# PIXEL 3,8UM
-# Resolucion 1,2"/pixel (after astrometrising it seems to be 0.164"/pixel)
-# SQM 20,9 - 21,0
-# Bortle 3
-# Filtro de luminancia, marca Astrodon
-
-
 # The functions needed for the pipeline are declared in another file (currently called "pipeline_LuM_parallel_functions.sh")
 # This file is expected to be in the same directory as the pipeline
 # The scripts that are used by the pipeline are expected to be in the directory "pipelineScripts" (value stored in pythonScriptsPath variable)
@@ -53,8 +38,13 @@ export NOCOLOUR
 ########## Loading modules ##########
 echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
-module load gnuastro/0.22
-module load astrometry.net/0.94
+gnuastroModuleName="gnuastro/0.22"
+echo -e "\tLoading $gnuastroModuleName"
+module load $gnuastroModuleName
+
+astrometryModuleName="astrometry.net/0.94"
+echo -e "\tLoading $astrometryModuleName"
+module load $astrometryModuleName
 
 
 ########## Loading functions ##########
@@ -85,7 +75,6 @@ done
 
 
 confFile=$1
-echo $confFile
 if [[ -f $confFile ]]; then 
   source $confFile
   echo -e "Variables loaded from $confFile file\n"
@@ -98,9 +87,10 @@ fi
 
 
 startTime=$(date +%s)
-echo ${GREEN} "\nStarting pipeline. Start time:  $(date)" ${NOCOLOUR}
+echo ${GREEN} "\nStarting pipeline. Start time:  $(date +%D-%T)" ${NOCOLOUR}
 
 ########## Load variables ##########
+
 # Exporting the variables from .conf file
 echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
 
@@ -203,19 +193,32 @@ echo -e "\t·Detector width: ${ORANGE} ${detectorHeight} ${NOCOLOUR}"
 # ****** Decision note *******
 # These parameters have been selected in order to obtain an aggresive mask
 # Maybe they are not the best, I am not really used to use noisechisel so be careful
-noisechisel_param="--tilesize=25,25  \
-                    --meanmedqdiff=0.01 \
-                    --detgrowquant=0.7 \
-                    --detgrowmaxholesize=1000 \
-                    --qthresh=0.25 \
-                    --snquant=0.99 \
+
+
+# I have tried with different set of parameters but the default ones work just fine with amateur data an rebinned TST data
+# I think it's because with these big pixels it's easier to detect signal
+# I just decreasing the erode and increasing the detgrowmaxholesize to be more conservative
+noisechisel_param="--tilesize=35,35 \
+                    --erode=1 \
+                    --detgrowmaxholesize=5000 \
                     --rawoutput"
+
+# These paremeters are oriented to TST data at original resolution. 
+# In the nominal TST resolution the default parameters work really bad.
+# I have modified them to detect fainter signal, since the pixel size is smaller I think it's harder an requires fine-tuning to detect more
+# noisechisel_param="--tilesize=200,200
+#                     --meanmedqdiff=0.01 \
+#                     --detgrowquant=0.7 \
+#                     --qthresh=0.25 \
+#                     --snquant=0.98 \
+#                     --erode=1 \
+#                     --detgrowmaxholesize=5000
+#                     --rawoutput"
+
 export noisechisel_param
 
 echo -e "\n-Noisechisel parameters used for masking:"
 echo -e "\t" $noisechisel_param
-
-
 
 
 ########## Prepare data ##########
@@ -524,6 +527,7 @@ oneNightPreProcessing() {
   fi
 
 
+  
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
 
@@ -541,10 +545,11 @@ oneNightPreProcessing() {
           base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
           frameNames+=("$base")
       done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1imadir $noiseit2dir $noisechisel_param
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1imadir $noiseit2dir "'$noisechisel_param'"
       echo done > $noiseit2done
     fi
   fi
+
 
   # Obtain a mask using noisechisel on the whole night flat images
   noiseit2WholeNightDir=$BDIR/noise-it2-WholeNight_n$currentNight
@@ -558,7 +563,7 @@ oneNightPreProcessing() {
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
       frameNames+=("$base")
     done
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir $noisechisel_param
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir "'$noisechisel_param'"
     echo done > $noiseit2WholeNightdone
   fi
 
@@ -586,6 +591,7 @@ oneNightPreProcessing() {
     echo done > $maskedit2WholeNightdone
   fi
 
+  
   # Normalising masked images (running flat)
   if $RUNNING_FLAT; then
     normit2dir=$BDIR/norm-it2-Running-images_n$currentNight
@@ -635,6 +641,7 @@ oneNightPreProcessing() {
     echo "done" >> $flatit2WholeNightdone
   fi
 
+  
   # Dividing the science image by the it2 flat
   if $RUNNING_FLAT; then
     flatit2imadir=$BDIR/flat-it2-Running-ima_n$currentNight
@@ -659,6 +666,8 @@ oneNightPreProcessing() {
   fi
 
 
+
+
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
@@ -675,7 +684,7 @@ oneNightPreProcessing() {
           base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
           frameNames+=("$base")
       done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2imadir $noiseit3dir $noisechisel_param
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2imadir $noiseit3dir "'$noisechisel_param'"
       echo done > $noiseit3done
     fi
   fi
@@ -693,7 +702,7 @@ oneNightPreProcessing() {
       frameNames+=("$base")
 
     done
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2WholeNightimaDir $noiseit3WholeNightDir $noisechisel_param
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2WholeNightimaDir $noiseit3WholeNightDir "'$noisechisel_param'"
     echo done > $noiseit3WholeNightdone
   fi
 
@@ -867,16 +876,17 @@ oneNightPreProcessing() {
     echo "done" > $framesForCommonReductionDone
   fi
 
-  # Removing everything but the final frames
+  # Removing intermediate information to save space
   rm -rf $BDIR/bias-corrected_n$currentNight
   rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/masterdark_n$currentNight
   rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
   rm -rf $BDIR/flat-it3-ima_n$currentNight
   for a in $(seq 1 3); do
-    rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
+    # I comment the following two lines in order to keep the final flats used
+    # rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
+    # rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
     rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
-    rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
     rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
     rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
     rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
@@ -899,7 +909,6 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo $totalNumberOfFrames
-
 
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
@@ -1129,10 +1138,10 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 
-echo -e "\nStarting the prepareDecalsDataForPhotometricCalibration at $(date)"
+echo -e "\nStarting the prepareDecalsDataForPhotometricCalibration at $(date +%D%T)"
 decalsImagesDir=$mosaicDir/decalsImages
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
-echo -e "\nFinishing the prepareDecalsDataForPhotometricCalibration at $(date)"
+echo -e "\nFinishing the prepareDecalsDataForPhotometricCalibration at $(date +%D%T)"
 
 
 iteration=1
@@ -1286,14 +1295,12 @@ addkeywords $coaddName keyWords values
 
 produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
 
-exit 0
-
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param -o $maskName
+  astnoisechisel $coaddName "'$noisechisel_param'" -o $maskName
 fi
 
 
@@ -1480,7 +1487,7 @@ addkeywords $coaddName keyWords values
 
 produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2"
 
-endTime=$(date)
+endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"
 
 
@@ -1521,7 +1528,7 @@ maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param -o $maskName
+  astnoisechisel $coaddName "'$noisechisel_param'" -o $maskName
 fi
 
 # Remove intermediate folders to save some space

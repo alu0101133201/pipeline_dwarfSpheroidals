@@ -384,6 +384,7 @@ noiseChiselParams=$4
 
 imageToUse=$inputFileDir/$baseName
 output=$outputDir/$baseName
+echo astnoisechisel $imageToUse $noiseChiselParams -o $output
 astnoisechisel $imageToUse $noiseChiselParams -o $output
 }
 export -f runNoiseChiselOnFrame
