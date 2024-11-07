@@ -744,26 +744,28 @@ downloadDecalsData() {
     fi
 }
 
-add_gAndr_andDivideByTwo() {
+addTwoFiltersAndDivideByTwo() {
     decalsImagesDir=$1
+    filter1=$2
+    filter2=$3
 
     addBricksDone=$mosaicDir/decalsImages/done_adding.txt
     if [ -f $addBricksDone ]; then
-        echo -e "\nDecals 'g' and 'r' bricks are already added\n"
+        echo -e "\nDecals '$filter1' and '$filter2' bricks are already added\n"
     else
-        for file in "$decalsImagesDir"/*_g.fits; do
+        for file in "$decalsImagesDir"/*_$filter1.fits; do
             # The following lines depend on the name of the decals images, which is defined in the python script "./decals_GetAndDownloadBricks.py"
             brickName=$(basename "$file" | cut -d '_' -f3)
-            gFile="decal_image_"$brickName"_g.fits"
-            rFile="decal_image_"$brickName"_r.fits"
+            filter1File="decal_image_"$brickName"_$filter1.fits"
+            filter2File="decal_image_"$brickName"_$filter2.fits"
 
-            echo -e "Adding the files " $gFile " and the file " $rFile
-            astarithmetic $decalsImagesDir/$gFile -h1 $decalsImagesDir/$rFile -h1 + 2 / -o$decalsImagesDir/"decal_image_"$brickName"_g+r_div2.fits"
+            echo -e "Adding the files " $filter1File " and the file " $filter2File
+            astarithmetic $decalsImagesDir/$filter1File -h1 $decalsImagesDir/$filter2File -h1 + 2 / -o$decalsImagesDir/"decal_image_"$brickName"_"$filter1"+"$filter2"_div2.fits"
         done
         echo done > $addBricksDone
     fi
-
 }
+export -f addTwoFiltersAndDivideByTwo
 
 warpDecalsBrick() {
     a=$1
@@ -820,6 +822,8 @@ buildDecalsMosaic() {
 
         if [ "$filter" = "lum" ]; then
             bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
+        elif [ "$filter" = "i" ]; then
+            bricks=$(ls -v $decalsImagesDir/*_r+z_div2.fits)
         else
             bricks=$(ls -v $decalsImagesDir/*$filter.fits)
         fi
@@ -992,7 +996,10 @@ selectStarsAndSelectionRangeDecals() {
     else
         astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o ./kernel.fits 1>/dev/null
 
-
+        # The idea here is to take all the different set of bricks and parallelise its computation
+        # Then loop through all the frames and copy the result of its specific set of bricks to it
+        # This is done this way because if I parallelise directly I will compute multiple times the same set of bricks
+        
         # while IFS= read -r line; do
         #     filename=$(echo "$line" | awk '{print $1}')
         #     echo $filename
@@ -1016,6 +1023,8 @@ selectStarsAndSelectionRangeDecals() {
                     # Remark that the ' ' at the end of the strings is needed. Otherwise when calling $images in the swarp the names are not separated
                     if [ "$filter" = "lum" ]; then
                         images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_g+r_div2.fits "
+                    elif [ "$filter" = "i" ]; then
+                        images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_r+z_div2.fits "
                     else
                         images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_$filter.fits "
                     fi
@@ -1092,8 +1101,6 @@ prepareDecalsDataForPhotometricCalibration() {
     # If the images are donwloaded but the done.txt file is no present, the images won't be donwloaded again but
     # the step takes a while even if the images are already downloaded because we have to do a query to the database
     # in order to obtain the brickname and check if it is already downloaded or no
-
-
     if [ "$filter" = "lum" ]; then
         filters="g,r" # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
         downloadDecalsData $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $filters $ringFile
@@ -1102,11 +1109,17 @@ prepareDecalsDataForPhotometricCalibration() {
         # The division by 2 is because in AB system we work with Janskys, which are W Hz^-1 m^-2. So we have to give a flux per wavelenght
         # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
         # practically the same wavelenght width, so dividing by 2 is enough
-        add_gAndr_andDivideByTwo $decalsImagesDir
+        addTwoFiltersAndDivideByTwo $decalsImagesDir "g" "r"
+
+    elif [ "$filter" = "i" ]; then
+        filters="r,z" # We download 'r' and 'z' because filter 'i' is not in all DECaLs
+        downloadDecalsData $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $filters $ringFile
+        addTwoFiltersAndDivideByTwo $decalsImagesDir "r" "z"
     else 
         filters=$filter
         downloadDecalsData $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $filters $ringFile
     fi
+
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration. But we build it anyway to retrieve in an easier way
     # the Gaia data of the whole field.
@@ -1121,7 +1134,6 @@ prepareDecalsDataForPhotometricCalibration() {
     # CORRECTION. This was our initial though, but actually the bricks and the detectors of decals are not the same, so we are already mixing night conditions
     # Additionally, due to the restricted common range, one brick is not enough for obtaining a reliable calibration so now we use the four bricks
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
-
     selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $mosaicDir/downSampled $diagnosis_and_badFilesDir
 }
 export -f prepareDecalsDataForPhotometricCalibration
