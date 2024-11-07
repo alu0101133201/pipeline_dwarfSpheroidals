@@ -29,9 +29,9 @@ load_module() {
     module load "$moduleName"
 
     if [[ $? -eq 0 ]]; then
-        cho -e "\t$moduleName loaded successfully"
+        echo -e "$moduleName loaded successfully"
     else
-        echo -e "\tFailed to load $moduleName"
+        echo -e "Failed to load $moduleName"
         # return 1 # I comment this because in the ICR that I'm running they are already loaded so...
     fi
 }
@@ -443,8 +443,7 @@ warpImage() {
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
     # Resample into the final grid
-    # For some reason in the IAC burros it's called 'swarp' but when I have done the installation in the TST systems 
-    # I have to call it as 'swap'... Be careful with how do you have to call this package
+    # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
     swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE    MANUAL
     
     # Mask bad pixels
@@ -513,7 +512,7 @@ computeSkyForFrame(){
         # More logic should be implemented to use the normalisation ring(s) and recover them after the warping and cropping
         if [ "$constantSkyMethod" = "ring" ]; then
 
-            # Mask the image if needed
+            # Mask the image if they are not already masked
             if ! [ "$inputImagesAreMasked" = true ]; then
                 tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
                 tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
@@ -709,6 +708,7 @@ getParametersFromHalfMaxRadius() {
     echo $median $std $numOfStars
 }
 
+
 downloadDecalsData() {
     referenceImagesForMosaic=$1
     mosaicDir=$2
@@ -727,6 +727,13 @@ downloadDecalsData() {
         echo -e "\nMosaic images already downloaded\n"
     else
         rm $frameBrickCorrespondenceFile # Remove the brick map. This is done to avoid problems with files of previous executions
+
+        # Note about paralellisation on this step
+        # Each frame has 4 DECaLS bricks associated to download. If I paralellise I will download (or try to download) the same brick
+        # multiple times. The donwloadBricksForFrame has implemented the logic for not downloading a brick already downloaded, but I'm afraid
+        # of race conditions that could occur. Instead, what is being done right now is that the 4 bricks of each frame are downloaded 
+        # using multithreads because we are sure that these 4 are different.
+
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_$a".fits
             echo "Downloading decals bricks for image: " $base " for filters: " $filters
@@ -758,17 +765,34 @@ add_gAndr_andDivideByTwo() {
 
 }
 
+warpDecalsBrick() {
+    a=$1
+    swarpedImagesDir=$2
+    decalsImagesDir=$3
+    scaleFactor=$4
+    swarpcfg=$5
+    ra=$6
+    dec=$7
+    mosaicSize=$8
+    decalsPxScale=$9
+
+    decalsImage=$decalsImagesDir/$a
+    downSampledImages="$swarpedImagesDir/originalGrid_$(basename $a)"
+
+    astwarp $decalsImage --scale=$scaleFactor -o $downSampledImages
+
+    swarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/"$a"_swarp1.fits \
+                        -WEIGHTOUT_NAME $swarpedImagesDir/"$a"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $decalsPxScale -PIXELSCALE_TYPE MANUAL
+    astarithmetic $swarpedImagesDir/"$a"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$swarpedImagesDir/"$a"_temp1.fits
+    astarithmetic $swarpedImagesDir/"$a"_swarp1.fits -h0 $swarpedImagesDir/"$a"_temp1.fits -h1 0 eq nan where -o$swarpedImagesDir/commonGrid_"$(basename $a)"
+
+    rm $swarpedImagesDir/"$a"_swarp_w1.fits $swarpedImagesDir/"$a"_swarp1.fits $swarpedImagesDir/"$a"_temp1.fits
+}
+export -f warpDecalsBrick
+
 buildDecalsMosaic() {
     # We only need the mosaic in order to download the gaia catalogue. That's why downgrade the bricks
-    # Values for original decals resolution
-
-    # decalsPxScale=0.262 # arcsec/px
-    # mosaicSize=38000 # For our field, around 2.5deg
-
-    # Values used when I was just downgrading a factor of 4
-    # scaleFactor=0.25
-    # decalsPxScale=1.048
-    # mosaicSize=9500
+    # Values for original decals resolution. As a reminder decals original pxScale 0.2626 arcsec/px
 
     mosaicDir=$1
     decalsImagesDir=$2
@@ -791,8 +815,8 @@ buildDecalsMosaic() {
         mosaicSize=$(echo "($sizeOfOurFieldDegrees * 3600) / $decalsPxScale" | bc)
 
         # This depends if you want to calibrate with the original resolution (recommended) or downgrade it to your data resolution
-        scaleFactor=1 # Testing original resolution
-        # scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}")
+        # scaleFactor=1 # Original resolution
+        scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}") # Your data resolution
 
         if [ "$filter" = "lum" ]; then
             bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
@@ -800,15 +824,11 @@ buildDecalsMosaic() {
             bricks=$(ls -v $decalsImagesDir/*$filter.fits)
         fi
 
+        brickList=()
         for a in $bricks; do
-            downSampledImages="$swarpedImagesDir/originalGrid_$(basename $a)"
-            astwarp $a --scale=$scaleFactor -o $downSampledImages
-            swarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/swarp1.fits \
-                                -WEIGHTOUT_NAME $swarpedImagesDir/swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $decalsPxScale -PIXELSCALE_TYPE MANUAL
-            astarithmetic $swarpedImagesDir/swarp_w1.fits -h0 set-i i i 0 lt nan where -otemp1.fits
-            astarithmetic $swarpedImagesDir/swarp1.fits -h0 temp1.fits -h1 0 eq nan where -o$swarpedImagesDir/commonGrid_"$(basename $a)"
+            brickList+=("$( basename $a )")
         done
-        rm $swarpedImagesDir/swarp_w1.fits $swarpedImagesDir/swarp1.fits ./temp1.fits
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" warpDecalsBrick {} $swarpedImagesDir $decalsImagesDir $scaleFactor $swarpcfg $ra $dec $mosaicSize $decalsPxScale
 
         sigma=2
         astarithmetic $(ls -v $swarpedImagesDir/commonGrid*.fits) $(ls -v $swarpedImagesDir/commonGrid*.fits | wc -l) -g1 $sigma 0.2 sigclip-median -o $mosaicDir/mosaic.fits
@@ -854,6 +874,58 @@ downloadGaiaCatalogueForField() {
         echo done > $retcatdone
     fi
 }
+
+downloadIndex() {
+    re=$1
+    catdir=$2
+    objectName=$3
+    indexdir=$4
+
+    build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
+                            -P $re \
+                            -S phot_g_mean_mag \
+                            -E -A RA -D  DEC\
+                            -o $indexdir/index_$re.fits;
+}
+export -f downloadIndex
+
+solveField() {
+    i=$1
+    solve_field_L_Param=$2
+    solve_field_H_Param=$3
+    solve_field_u_Param=$4
+    ra_gal=$5
+    dec_gal=$6
+    astrocfg=$7
+    astroimadir=$8
+
+    base=$( basename $i)
+
+    # The default sextractor parameter file is used.
+    # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
+    # Maybe a bug? I have not managed to make it work
+    solve-field $i --no-plots \
+    -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
+    --ra=$ra_gal --dec=$dec_gal --radius=3. \
+    --overwrite --extension 1 --config $astrocfg --no-verify -E 3 -c 0.03 \
+    --odds-to-solve 1e7 \
+    --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
+    -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
+}
+export -f solveField
+
+runSextractorOnImage() {
+    a=$1
+    sexcfg=$2
+    sexparam=$3
+    sexconv=$4
+    astroimadir=$5
+    sexdir=$6
+
+    i=$astroimadir/"$a".fits
+    source-extractor $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat
+}
+export -f runSextractorOnImage
 
 checkIfSameBricksHaveBeenComputed() {
     currentBrick=$1
@@ -920,6 +992,12 @@ selectStarsAndSelectionRangeDecals() {
     else
         astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o ./kernel.fits 1>/dev/null
 
+
+        # while IFS= read -r line; do
+        #     filename=$(echo "$line" | awk '{print $1}')
+        #     echo $filename
+        # done < $frameBrickCorrespondenceFile
+
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_"$a.fits
             bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
@@ -944,6 +1022,7 @@ selectStarsAndSelectionRangeDecals() {
                 done
 
                 # Combining the downsampled decals image in one
+
                 swarp $images -IMAGEOUT_NAME $tmpFolder/swarp1_$a.fits -WEIGHTOUT_NAME $tmpFolder/swarp_w1_$a.fits 
                 astarithmetic $tmpFolder/swarp_w1_$a.fits -h0 set-i i i 0 lt nan where -o$tmpFolder/temp1_$a.fits
                 astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
@@ -953,10 +1032,9 @@ selectStarsAndSelectionRangeDecals() {
 
 
                 # The following calls to astnoisechisel differ in the --tilesize parameter. The one with 10x10 is for working at reduced resolution (TST rebinned by 3 resolution in my case)
-                # and the 100x100 for working with decals at original resolution. Using 10x10 at decals original resolution just takes soooo long that is not viable. 
-
-                # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
-                astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=100,100
+                # and the bigger for working with decals at original resolution. Using 10x10 at decals original resolution just takes soooo long that is not viable. 
+                astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=15,15
+                # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=200,200
 
                 astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
                 astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
@@ -1034,6 +1112,7 @@ prepareDecalsDataForPhotometricCalibration() {
     # the Gaia data of the whole field.
     buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $mosaicDir/downSampled $dataPixelScale $sizeOfOurFieldDegrees
 
+
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
     downloadGaiaCatalogueForField $mosaicDir
     # First of all remember that we need to do the photometric calibration frame by frame.
@@ -1042,6 +1121,7 @@ prepareDecalsDataForPhotometricCalibration() {
     # CORRECTION. This was our initial though, but actually the bricks and the detectors of decals are not the same, so we are already mixing night conditions
     # Additionally, due to the restricted common range, one brick is not enough for obtaining a reliable calibration so now we use the four bricks
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
+
     selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $mosaicDir/downSampled $diagnosis_and_badFilesDir
 }
 export -f prepareDecalsDataForPhotometricCalibration

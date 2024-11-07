@@ -3,6 +3,7 @@
 
 
 import sys
+import threading 
 
 import numpy as np
 
@@ -26,7 +27,7 @@ def getRingRadiusFromFile(path):
         if (len(values) >= 5):
             return int(values[4])
         else:
-            raise Exception ("Error in 'getRingRadiusFromFile'. The ring file is not as expectec.")
+            raise Exception ("Error in 'getRingRadiusFromFile'. The ring file is not as expected.")
     return()
 
 
@@ -41,8 +42,6 @@ downloadDestination = sys.argv[4]
 radius = getRingRadiusFromFile(ringPath)
 data, shape, wcs = getImageData(framePath, 1)
 dataCentrePx = (int(shape[1]/2), int(shape[0]/2))
-
-# dataCentreWcs = wcs.pixel_to_world(dataCentrePx[0], dataCentrePx[1])
 
 dataLocation1Px = (dataCentrePx[0], dataCentrePx[1] - radius)
 dataLocation2Px = (dataCentrePx[0], dataCentrePx[1] + radius)
@@ -59,8 +58,15 @@ decList = [dataLocation1Wcs.dec.deg, dataLocation2Wcs.dec.deg, dataLocation3Wcs.
 
 brickNames = getBrickNamesFromCoords(raList, decList)
 
+threadList = []
 for i in brickNames:
-    downloadBrick(i, filters, downloadDestination, overWrite=False)
+    threadList.append(threading.Thread(target=downloadBrick, args=(i, filters, downloadDestination, False)))
+
+for i in threadList:
+    i.start()
+
+for i in threadList:
+    i.join()
 
 # This print is to be able to recover the bricknames from the bash pipeline
 print(brickNames)

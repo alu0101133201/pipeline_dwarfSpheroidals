@@ -58,6 +58,9 @@ load_module $gnuastroModuleName
 astrometryModuleName="astrometry.net/0.94"
 load_module $astrometryModuleName
 
+# Needed if using the SIE software
+pythonModuleName="python"
+load_module $pythonModuleName
 
 
 ########## Handling options and arguments ##########
@@ -76,7 +79,7 @@ done
 confFile=$1
 if [[ -f $confFile ]]; then 
   source $confFile
-  echo -e "Variables loaded from $confFile file\n"
+  echo -e "\nVariables loaded from $confFile file\n"
 else
   errorNumber=1
   echo -e "\nA configuration file has to be provided in order to run the pipeline"  >&2
@@ -914,7 +917,7 @@ echo $totalNumberOfFrames
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
-# Now, all the frames are "equall" so we do no distinction between nights.
+# Now, all the frames are "equal" so we do no distinction between nights.
 # All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
 
 echo -e "${ORANGE} ------ ASTROMETRY AND BACKGROUND-SUBTRACTION ------ ${NOCOLOUR}\n"
@@ -941,17 +944,15 @@ for h in 0; do
   else
     # Here we build the indices for different index scales
     # The index defines the scale on which the stars are selected
-    # For images of 1 degree across the recommended value is around 6
     # It is recommended to build a range of scales
+    indexes=()
     for re in $(seq $lowestScaleForIndex $highestScaleForIndex); do
-      build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
-                              -P $re \
-                              -S phot_g_mean_mag \
-                              -E -A RA -D  DEC\
-                              -o $indexdir/index_$re.fits;
+        indexes+=("$re")
     done
+    printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catdir $objectName $indexdir
     echo done > $indexdone
   fi
+
 
   sexcfg=$CDIR/default.sex
   # Solving the images
@@ -963,30 +964,23 @@ for h in 0; do
   echo "add_path $indexdir" >> $astrocfg
   echo autoindex >> $astrocfg
   
-
   astroimadir=$BDIR/astro-ima
   astroimadone=$astroimadir/done_"$filter"_ccd"$h".txt
   if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
   if [ -f $astroimadone ]; then
     echo -e "\nImages are already astrometrized for extension $h\n"
   else
+    frameNames=()
     for a in $(seq 1 $totalNumberOfFrames); do
         base=$a.fits
         i=$framesForCommonReductionDir/$base
-        solve-field $i --no-plots \
-        -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
-        --ra=$ra_gal --dec=$dec_gal --radius=3. \
-        --overwrite --extension 1 --config $astrocfg --no-verify -E 3 -c 0.03 \
-        --odds-to-solve 1e7 \
-        --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
-        -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
-
-        # --source-extractor-config=./config/default.sex \
-        # AQUÍ HAY ALGO RARO - cuando uso la configuración por defecto de sextractor funciona. cuando uso la configuración del ./config no...
+        frameNames+=("$i")
     done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $astrocfg $astroimadir
     echo done > $astroimadone
   fi
 done
+
 
 
 # scamp swarp
@@ -994,6 +988,7 @@ CDIR=$ROOTDIR/"$objectName"/config
 
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
+
 
 # Making sex catalogs
 sexcfg=$CDIR/default.sex
@@ -1005,13 +1000,14 @@ if ! [ -d $sexdir ]; then mkdir $sexdir; fi
 if [ -f $sexdone ]; then
     echo -e "\nSex catalogs are already done for extension $h\n"
 else
+    frameNames=()
     for a in $(seq 1 $totalNumberOfFrames); do
-        base="$a".fits
-        i=$astroimadir/$base
-        source-extractor $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat
+        frameNames+=("$a")
     done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir
     echo done > $sexdone
 fi
+
 
 
 # Making scamp headers
@@ -1031,8 +1027,6 @@ fi
 
 # We copy the files for improving the astrometry into the folder of the images that we are going to warp
 cp $sexdir/*.head $astroimadir
-
-
 
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 # Warp the data so we can:
@@ -1079,6 +1073,7 @@ ringDir=$BDIR/ring
 
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 
+
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
 noiseskyctedone=$noiseskyctedir/done_"$filter"_ccd"$h".txt
@@ -1086,6 +1081,7 @@ if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"
   computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 fi
+
 
 # Checking and removing bad frames based on the background value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1140,11 +1136,8 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 
-echo -e "\nStarting the prepareDecalsDataForPhotometricCalibration at $(date +%D%T)"
 decalsImagesDir=$mosaicDir/decalsImages
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
-echo -e "\nFinishing the prepareDecalsDataForPhotometricCalibration at $(date +%D%T)"
-
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
