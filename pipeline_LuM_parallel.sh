@@ -35,22 +35,10 @@ export GREEN
 export NOCOLOUR
 
 
-########## Loading modules ##########
-echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
-gnuastroModuleName="gnuastro/0.22"
-echo -e "\tLoading $gnuastroModuleName"
-module load $gnuastroModuleName
+echo -e "\n ${GREEN} ---Loading pipeline Functions--- ${NOCOLOUR}"
 
-astrometryModuleName="astrometry.net/0.94"
-echo -e "\tLoading $astrometryModuleName"
-module load $astrometryModuleName
-
-
-########## Loading functions ##########
-echo -e "\n ${GREEN} ---Loading Functions--- ${NOCOLOUR}"
-
-# The path from which the pipeline is unknown. The functions for the pipeline are expected
+# The path from which the pipeline is called is unknown. The functions for the pipeline are expected
 # to be in the same folder as the pipeline, so we retrieve the path in order to run the functions file
 pipelinePath=`dirname "$0"`
 pipelinePath=`( cd "$pipelinePath" && pwd )`
@@ -58,7 +46,19 @@ pythonScriptsPath=$pipelinePath/pipelineScripts
 export pipelinePath
 export pythonScriptsPath
 
+# Load the file with all the needed functions
 source "$pipelinePath/pipeline_LuM_parallel_functions.sh"
+
+
+echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
+
+gnuastroModuleName="gnuastro/0.22"
+load_module $gnuastroModuleName
+
+astrometryModuleName="astrometry.net/0.94"
+load_module $astrometryModuleName
+
+
 
 ########## Handling options and arguments ##########
 OPTSTRING=":h"
@@ -72,7 +72,6 @@ while getopts ${OPTSTRING} opt; do
       exit 1;;
   esac
 done
-
 
 confFile=$1
 if [[ -f $confFile ]]; then 
@@ -89,7 +88,6 @@ fi
 startTime=$(date +%s)
 echo ${GREEN} "\nStarting pipeline. Start time:  $(date +%D-%T)" ${NOCOLOUR}
 
-########## Load variables ##########
 
 # Exporting the variables from .conf file
 echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
@@ -170,10 +168,13 @@ export solve_field_u_Param
 export numberOfStdForBadFrames
 
 export defaultNumOfCPUs
+
 checkIfAllVariablesAreSet
 #
 
-
+# The following lines are responsible of the cpu's used for paralellise
+# If it is running in a system with slurm it takes the number of cpu's from the slurm job
+# Otherwise it takes it from the provided configuration file
 num_cpus=$SLURM_CPUS_ON_NODE
 if [ -z $num_cpus ]; then
   num_cpus=$defaultNumOfCPUs
@@ -307,7 +308,7 @@ oneNightPreProcessing() {
 
   # ****** Decision note *******
   # In the following, the data from "INDIRo/nightX" is placed in "INDIR/nightX". Additionally they are
-  # sorted and renamed based in an objetive criteria es the time in which the frame was taken
+  # sorted and renamed based on an objetive criteria as is the time in which the frame was taken
   # otherwise if the files are selected just by default (using glob for example) the order is OS-dependant.
 
   # The name of the files contains the patter nX and fY, standing for "night number X" and "frame number Y"
@@ -987,6 +988,7 @@ for h in 0; do
   fi
 done
 
+
 # scamp swarp
 CDIR=$ROOTDIR/"$objectName"/config
 
@@ -1293,15 +1295,17 @@ values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibration
 addkeywords $coaddName keyWords values
 
 
-produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
+# produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
 
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName "'$noisechisel_param'" -o $maskName
+  astnoisechisel $coaddName $noisechisel_param -o $maskName
+
 fi
+
 
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
@@ -1393,6 +1397,7 @@ smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 
 maskPointings $entiredir_smallGrid  $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
+
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 

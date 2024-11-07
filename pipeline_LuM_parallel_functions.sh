@@ -15,11 +15,27 @@ help() {
 }
 export -f help
 
-measureTime() {
-    time=$(date +%s)
-    echo $time
+
+load_module() {
+    local moduleName="$1"  
+    errorNumber=8
+
+    if [[ -z "$moduleName" ]]; then
+        echo "Error: No module name provided"
+        return $errorNumber
+    fi
+
+    echo -e "\nLoading $moduleName"
+    module load "$moduleName"
+
+    if [[ $? -eq 0 ]]; then
+        cho -e "\t$moduleName loaded successfully"
+    else
+        echo -e "\tFailed to load $moduleName"
+        # return 1 # I comment this because in the ICR that I'm running they are already loaded so...
+    fi
 }
-export -f measureTime
+export -f load_module
 
 escapeSpacesFromString() {
     local input="$1"
@@ -1105,6 +1121,10 @@ buildDecalsCatalogueOfMatchedSources() {
     matchdir2=$3
     mosaicDir=$4
     decalsImagesDir=$5
+
+    # this function has to be paralellised so we can save some time
+    # Be careful when paralellising because now the common file "apertures_decals" is used, but this will have to be changed
+    # to an individual frame (with different name) so it is successfully parallelised
 
     decalsdone=$decalsdir/done__ccd"$h".txt
     if ! [ -d $decalsdir ]; then mkdir $decalsdir; fi
