@@ -1779,9 +1779,6 @@ produceHalfMaxRadVsMagForOurData() {
 }
 export -f produceHalfMaxRadVsMagForOurData
 
-
-
-
 # Coadd function
 buildCoadd() {
     coaddir=$1
@@ -1801,3 +1798,15 @@ buildCoadd() {
             echo done > $coaddone
     fi
 }
+
+subtractCoaddToFrames() {
+    dirWithFrames=$1
+    coadd=$2
+    destinationDir=$3
+
+    for i in $dirWithFrames/*.fits; do
+        astarithmetic $i $coadd - -o$destinationDir/$( basename $i ) -g1
+    done
+}
+export -f subtractCoaddToFrames
+

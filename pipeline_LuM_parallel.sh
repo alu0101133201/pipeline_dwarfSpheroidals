@@ -1244,15 +1244,14 @@ if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
 # We provide the fullGrid because we are going to combine then now
 computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskydir $iteration
 
+
 echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
 # Remove outliers before the final coadd by using sigclip-median and sigclip-std
 # This is particularly important to remove cosmic rays
 
 sigmaForStdSigclip=2
-
 clippingdir=$BDIR/clipping-outliers
 clippingdone=$clippingdir/done_"$k".txt
-
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
 mowdir=$BDIR/weight-dir-no-outliers
@@ -1277,26 +1276,37 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 
 echo -e "\nBuilding coadd"
 coaddDir=$BDIR/coadds
-coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir
 
 echo -e "\nAdding keywords to the coadd"
 keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
-addkeywords $coaddName keyWords values
+# addkeywords $coaddName keyWords values
 
 # produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
-
 
 maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
-
 fi
 
+
+framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
+framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
+if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+if [ -f $framesWithCoaddSubtractedDone ]; then
+    echo -e "\nFrames with coadd subtracted already generated\n"
+else
+  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub.fits
+  subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
+  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
+  echo done > $framesWithCoaddSubtractedDone 
+
+fi
 
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
@@ -1314,7 +1324,7 @@ fi
 #   subtractSky $mowdir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
 
 #   coaddDir=$BDIR/coadds_plane
-#   coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+#   coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 
 #   if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
 #   buildCoadd $coaddDir $coaddName $planeSubtractionForCoaddDir $moonwdir
@@ -1370,6 +1380,7 @@ find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/decals-aperture-catalog_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/ourData-catalogs-apertures_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/framesWithCoaddSubtractedDir -type f ! -name 'done*' -exec rm {} \;
 
 find $wdir -type f ! -name 'done*' -exec rm {} \;
 find $wonlydir -type f ! -name 'done*' -exec rm {} \;
@@ -1472,7 +1483,7 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 echo -e "\nBuilding coadd"
 
 coaddDir=$BDIR/coadds_it$iteration 
-coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir
 
 echo -e "\nAdding keywords to the coadd"
@@ -1482,6 +1493,21 @@ values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibration
 addkeywords $coaddName keyWords values
 
 produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2"
+
+
+
+framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
+if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+
+if [ -f $framesWithCoaddSubtractedDone ]; then
+    echo -e "\nFrames with coadd subtracted already generated\n"
+else
+  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_it$iteration.fits
+  subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
+  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
+fi
+
 
 endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"
@@ -1539,6 +1565,7 @@ find $BDIR/my-catalog-halfmaxradius_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/decals-aperture-catalog_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/ourData-catalogs-apertures_it2 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/framesWithCoaddSubtractedDir_it2 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/pointings_smallGrid_masked_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/photCorrSmallGrid_masked_it2 -type f ! -name 'done*' -exec rm {} \;
@@ -1642,7 +1669,7 @@ echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 echo -e "\nBuilding coadd"
 
 coaddDir=$BDIR/coadds_it$iteration 
-coaddName=$coaddDir/"$objectName"_coadd1_"$filter".fits
+coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir
 
 echo -e "\nAdding keywords to the coadd"
@@ -1650,3 +1677,12 @@ keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTL
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
 addkeywords $coaddName keyWords values
+
+
+if [ -f $framesWithCoaddSubtractedDone ]; then
+    echo -e "\nFrames with coadd subtracted already generated\n"
+else
+  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_it$iteration.fits
+  subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
+  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
+fi
