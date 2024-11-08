@@ -444,7 +444,7 @@ warpImage() {
 
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE    MANUAL
+    SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE    MANUAL
     
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
@@ -686,6 +686,7 @@ getBricksWhichCorrespondToFrame() {
     done
     echo "${array[@]}"
 }
+export -f getBricksWhichCorrespondToFrame
 
 getParametersFromHalfMaxRadius() {
     image=$1
@@ -783,7 +784,7 @@ warpDecalsBrick() {
 
     astwarp $decalsImage --scale=$scaleFactor -o $downSampledImages
 
-    swarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/"$a"_swarp1.fits \
+    SWarp -c $swarpcfg $downSampledImages -CENTER $ra,$dec -IMAGE_SIZE $mosaicSize,$mosaicSize -IMAGEOUT_NAME $swarpedImagesDir/"$a"_swarp1.fits \
                         -WEIGHTOUT_NAME $swarpedImagesDir/"$a"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $decalsPxScale -PIXELSCALE_TYPE MANUAL
     astarithmetic $swarpedImagesDir/"$a"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$swarpedImagesDir/"$a"_temp1.fits
     astarithmetic $swarpedImagesDir/"$a"_swarp1.fits -h0 $swarpedImagesDir/"$a"_temp1.fits -h1 0 eq nan where -o$swarpedImagesDir/commonGrid_"$(basename $a)"
@@ -817,8 +818,8 @@ buildDecalsMosaic() {
         mosaicSize=$(echo "($sizeOfOurFieldDegrees * 3600) / $decalsPxScale" | bc)
 
         # This depends if you want to calibrate with the original resolution (recommended) or downgrade it to your data resolution
-        scaleFactor=1 # Original resolution
-        # scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}") # Your data resolution
+        # scaleFactor=1 # Original resolution
+        scaleFactor=$(awk "BEGIN {print $originalDecalsPxScale / $dataPixelScale}") # Your data resolution
 
         if [ "$filter" = "lum" ]; then
             bricks=$(ls -v $decalsImagesDir/*_g+r_div2.fits)
@@ -942,17 +943,21 @@ checkIfSameBricksHaveBeenComputed() {
         bricksToLookForArray+=("$i")
     done
 
+
     while read -r line; do
-        # I read the frame number and its associatd bricks
+        # I read the frame number and its associated bricks
         imageNumber=$(echo "$line" | awk -F '[_.]' '{print $2}')
         string_list=$(echo "$line" | sed -E "s/.*\[(.*)\]/\1/" | tr -d "'")
         IFS=', ' read -r -a readBricksArray <<< "$string_list"
 
+        # I sort them because we don't care about the order
+        readBricksArray=($(printf '%s\n' "${readBricksArray[@]}" | sort))
+        bricksToLookForArray=($(printf '%s\n' "${bricksToLookForArray[@]}" | sort))
 
         # Looking for coincidences
         if [[ ${#readBricksArray[@]} -eq 4 && ${#bricksToLookForArray[@]} -eq 4 ]]; then
-            all_match=true
 
+            all_match=true
             for i in "${!bricksToLookForArray[@]}"; do
                 if [[ "${bricksToLookForArray[$i]}" != "${readBricksArray[$i]}" ]]; then
                     all_match=false
@@ -960,8 +965,7 @@ checkIfSameBricksHaveBeenComputed() {
                 fi      
             done
 
-            # I also check if the number is less, because I'm processing the files in numerical order so if is not less is not going to be computed yet
-            if [[ "$all_match" = true && "$imageNumber" -lt "$currentBrick" ]]; then
+            if [[ "$all_match" = true  ]]; then
                 echo $imageNumber
                 exit
             fi
@@ -970,6 +974,82 @@ checkIfSameBricksHaveBeenComputed() {
     echo 0
 }
 export -f checkIfSameBricksHaveBeenComputed
+
+
+selectStarsAndSelectionRangeDecalsForFrame() {
+    a=$1
+    framesForCalibrationDir=$2
+    mosaicDir=$3
+    decalsImagesDir=$4
+    frameBrickCorrespondenceFile=$5
+    selectedDecalsStarsDir=$6
+    rangeUsedDecalsDir=$7
+    filter=$8
+    downSampleDecals=$9
+    diagnosis_and_badFilesDir=${10}
+    brickCombinationsDir=${11}
+    tmpFolderParent=${12}
+
+    base="entirecamera_"$a.fits
+    bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
+
+    # Why do we need each process to go into its own folder? 
+    # Even if all the temporary files have a unique name (whatever_$a...), SWarp generates tmp files in the working directory
+    # So, if two different sets of bricks are being processed at the same time and they have some common brick, it might fail
+    # (two process with temporary files with the same name in the same directory). That's why every process go into its own folder
+    tmpFolder=$tmpFolderParent/$a
+    if ! [ -d $tmpFolder ]; then mkdir $tmpFolder; fi   
+    cd $tmpFolder
+
+    images=()
+    for currentBrick in $bricks; do # I have to go through all the bricks for each frame
+        # Remark that the ' ' at the end of the strings is needed. Otherwise when calling $images in the SWarp the names are not separated
+        if [ "$filter" = "lum" ]; then
+            images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_g+r_div2.fits "
+        elif [ "$filter" = "i" ]; then
+            images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_r+z_div2.fits "
+        else
+            images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_$filter.fits "
+        fi
+    done
+
+    # Combining the downsampled decals image in one
+    SWarp $images -IMAGEOUT_NAME $tmpFolder/swarp1_$a.fits -WEIGHTOUT_NAME $tmpFolder/swarp_w1_$a.fits 
+    astarithmetic $tmpFolder/swarp_w1_$a.fits -h0 set-i i i 0 lt nan where -o$tmpFolder/temp1_$a.fits
+    astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
+
+    imageToFindStarsAndPointLikeParameters=$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
+    astconvolve $imageToFindStarsAndPointLikeParameters --kernel=$tmpFolderParent/kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
+
+    # The following calls to astnoisechisel differ in the --tilesize parameter. The one with 10x10 is for working at reduced resolution (TST rebinned by 3 resolution in my case)
+    # and the bigger for working with decals at original resolution. Using 10x10 at decals original resolution just takes soooo long that is not viable. 
+    astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
+    # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=150,150
+
+    astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
+    astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
+    astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
+
+    # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
+    # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
+    s=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    std=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+    minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
+    maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
+
+    # Here call python script for generate the half-max-radius vs magnitudes
+    halfMaxRadVsMagPlots_decalsDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_decals
+    if ! [ -d $halfMaxRadVsMagPlots_decalsDir ]; then mkdir $halfMaxRadVsMagPlots_decalsDir; fi
+    outputPlotName=$halfMaxRadVsMagPlots_decalsDir/halfMaxRadVsMag_$a.png
+    python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $tmpFolder/decals_"$a"_c.txt $tmpFolder/match_decals_gaia_$a.txt $s $minr $maxr $outputPlotName
+
+    echo $s $std $minr $maxr > $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
+    asttable $tmpFolder/decals_"$a"_c.txt --range=HALF_MAX_RADIUS,$minr,$maxr -o $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt
+
+    rm -rf $tmpFolder
+}
+export -f selectStarsAndSelectionRangeDecalsForFrame
+
 
 selectStarsAndSelectionRangeDecals() {
     framesForCalibrationDir=$1
@@ -982,7 +1062,7 @@ selectStarsAndSelectionRangeDecals() {
     downSampleDecals=$8
     diagnosis_and_badFilesDir=$9
 
-    tmpFolder="./tmpFilesForPhotometricCalibration"
+    tmpFolder="$mosaicDir/tmpFilesForPhotometricCalibration"
     selectDecalsStarsDone=$selectedDecalsStarsDir/automaticSelection_done.txt
     brickCombinationsDir=$mosaicDir/combinedBricksForImages # I save the combination of the bricks for calibrating each image because I will need it in future steps of the calibration
 
@@ -994,82 +1074,50 @@ selectStarsAndSelectionRangeDecals() {
     if [ -f $selectDecalsStarsDone ]; then
             echo -e "\nDecals bricks and stars for doing the photometric calibration are already selected for each frame\n"
     else
-        astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o ./kernel.fits 1>/dev/null
+        astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $tmpFolder/kernel.fits 1>/dev/null
 
+        # A lot of frames will have the same set of bricks becase they will be in the same sky region (same pointing)
         # The idea here is to take all the different set of bricks and parallelise its computation
-        # Then loop through all the frames and copy the result of its specific set of bricks to it
+        # Then loop through all the frames and copy the result (of that set of bricks) already calculated 
         # This is done this way because if I parallelise directly I will compute multiple times the same set of bricks
-        
-        # while IFS= read -r line; do
-        #     filename=$(echo "$line" | awk '{print $1}')
-        #     echo $filename
-        # done < $frameBrickCorrespondenceFile
+        declare -A unique_sets
+        framesWithDifferentSets=()
 
+        while IFS= read -r line; do
+            filename=$(echo "$line" | awk '{print $1}' | awk -F'_' '{print $2}' | awk -F'.' '{print $1}')
+            ids=$(echo "$line" | sed -n 's/.*\[\(.*\)\].*/\1/p' | tr -d " '")
+            sorted_ids=$(echo "$ids" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
+
+            if [[ -z "${unique_sets[$sorted_ids]}" ]]; then
+                unique_sets[$sorted_ids]=$filename
+                framesWithDifferentSets+=("$filename")
+            fi
+        done < $frameBrickCorrespondenceFile
+
+        printf "%s\n" "${framesWithDifferentSets[@]}" | parallel -j "$num_cpus" selectStarsAndSelectionRangeDecalsForFrame {} $framesForCalibrationDir $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile \
+                                                        $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $downSampleDecals $diagnosis_and_badFilesDir $brickCombinationsDir $tmpFolder
+
+        
+        # Now we loop through all the frames. Every set should be already computed so it should go into the first clause of the if
+        # I just add the else in case that some fails unexpectedly and the set of bricks of a frame are not already computed
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_"$a.fits
             bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
-            echo "Image $a; Bricks $bricks"
+            imageToCopy=$( checkIfSameBricksHaveBeenComputed $a "$bricks" $frameBrickCorrespondenceFile )
 
-
-            # The following conditional is not to compute twice the same decals frames
-            alreadyComputedBrick=$( checkIfSameBricksHaveBeenComputed $a "$bricks" $frameBrickCorrespondenceFile )
-            if [ "$alreadyComputedBrick" -gt 0 ]; then
-                cp $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$alreadyComputedBrick".txt $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt 
-                cp $rangeUsedDecalsDir/selected_rangeForFrame_"$alreadyComputedBrick".txt $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
-                cp $brickCombinationsDir/combinedBricks_"$(basename $alreadyComputedBrick)".fits $brickCombinationsDir/combinedBricks_"$a".fits
-            else
-                images=()
-                for currentBrick in $bricks; do # I have to go through all the bricks for each frame
-                    # Remark that the ' ' at the end of the strings is needed. Otherwise when calling $images in the swarp the names are not separated
-                    if [ "$filter" = "lum" ]; then
-                        images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_g+r_div2.fits "
-                    elif [ "$filter" = "i" ]; then
-                        images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_r+z_div2.fits "
-                    else
-                        images+=$downSampleDecals/"originalGrid_decal_image_"$currentBrick"_$filter.fits "
-                    fi
-                done
-
-                # Combining the downsampled decals image in one
-
-                swarp $images -IMAGEOUT_NAME $tmpFolder/swarp1_$a.fits -WEIGHTOUT_NAME $tmpFolder/swarp_w1_$a.fits 
-                astarithmetic $tmpFolder/swarp_w1_$a.fits -h0 set-i i i 0 lt nan where -o$tmpFolder/temp1_$a.fits
-                astarithmetic $tmpFolder/swarp1_$a.fits -h0 $tmpFolder/temp1_$a.fits -h1 0 eq nan where -o$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
-                imageToFindStarsAndPointLikeParameters=$brickCombinationsDir/combinedBricks_"$(basename $a)".fits
-                
-                astconvolve $imageToFindStarsAndPointLikeParameters --kernel=./kernel.fits --domain=spatial --output=$tmpFolder/convolved_$a.fits
-
-
-                # The following calls to astnoisechisel differ in the --tilesize parameter. The one with 10x10 is for working at reduced resolution (TST rebinned by 3 resolution in my case)
-                # and the bigger for working with decals at original resolution. Using 10x10 at decals original resolution just takes soooo long that is not viable. 
-                # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=15,15
-                astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=150,150
-
-                astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
-                astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
-                astmatch $tmpFolder/decals_"$a"_c.txt --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia_$a.txt 1>/dev/null
-
-                # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
-                # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
-                s=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-                std=$(asttable $tmpFolder/match_decals_gaia_$a.txt -h1 -c3 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
-                minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
-                maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
-
-                # Here call python script for generate the half-max-radius vs magnitudes
-                halfMaxRadVsMagPlots_decalsDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_decals
-                if ! [ -d $halfMaxRadVsMagPlots_decalsDir ]; then mkdir $halfMaxRadVsMagPlots_decalsDir; fi
-                outputPlotName=$halfMaxRadVsMagPlots_decalsDir/halfMaxRadVsMag_$a.png
-                python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $tmpFolder/decals_"$a"_c.txt $tmpFolder/match_decals_gaia_$a.txt $s $minr $maxr $outputPlotName
-
-                echo $s $std $minr $maxr > $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
-                asttable $tmpFolder/decals_"$a"_c.txt --range=HALF_MAX_RADIUS,$minr,$maxr -o $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt
-
-                rm $tmpFolder/*
-
+            if [[ ("$imageToCopy" -gt 0) && ($imageToCopy != $a) ]]; then
+                cp $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$imageToCopy".txt $selectedDecalsStarsDir/selected_decalsStarsForFrame_"$a".txt 
+                cp $rangeUsedDecalsDir/selected_rangeForFrame_"$imageToCopy".txt $rangeUsedDecalsDir/selected_rangeForFrame_"$a".txt
+                cp $brickCombinationsDir/combinedBricks_"$(basename $imageToCopy)".fits $brickCombinationsDir/combinedBricks_"$a".fits
+            elif [ $imageToCopy == $a ]; then
+                : # A brick with itself (the firsts bricks with different sets of bricks, already computated. Simply pass)
+            else 
+                errorNumber=9
+                echo Something went wrong in "selectStarsAndSelectionRangeDecals. Exiting with error number $errorNumber"
+                exit $errorNumber
             fi
         done
-        rm ./kernel.fits
+        rm $tmpFolder/kernel.fits
         echo done > $selectDecalsStarsDone
     fi
     rmdir $tmpFolder
@@ -1123,8 +1171,7 @@ prepareDecalsDataForPhotometricCalibration() {
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration. But we build it anyway to retrieve in an easier way
     # the Gaia data of the whole field.
-    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $mosaicDir/downSampled $dataPixelScale $sizeOfOurFieldDegrees
-
+    buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $mosaicDir/downSampled $dataPixelScale $sizeOfOurFieldDegrees   
 
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
     downloadGaiaCatalogueForField $mosaicDir
@@ -1134,6 +1181,7 @@ prepareDecalsDataForPhotometricCalibration() {
     # CORRECTION. This was our initial though, but actually the bricks and the detectors of decals are not the same, so we are already mixing night conditions
     # Additionally, due to the restricted common range, one brick is not enough for obtaining a reliable calibration so now we use the four bricks
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
+
     selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $mosaicDir/downSampled $diagnosis_and_badFilesDir
 }
 export -f prepareDecalsDataForPhotometricCalibration
@@ -1150,7 +1198,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     i=$framesForCalibrationDir/$base
 
     astnoisechisel $i -h1 -o det_"$a".fits
-    astsegment det_"$a".fits -o seg_"$a".fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
+    astsegment det_"$a".fits -o seg_"$a".fits --snquant=0.1 --gthresh=-10 --objbordersn=0  --minriverlength=3
     astmkcatalog seg_"$a".fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $mycatdir/"$base".txt
     astmatch $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 $mycatdir/"$base"_c.txt --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aRA,aDEC,bMAGNITUDE,bHALF_MAX_RADIUS -o$mycatdir/match_"$base"_my_gaia.txt
 
@@ -1207,6 +1255,38 @@ matchDecalsAndOurData() {
 }
 export -f matchDecalsAndOurData
 
+buildDecalsCatalogueOfMatchedSourcesForFrame() {
+    a=$1
+    decalsdir=$2
+    rangeUsedDecalsDir=$3
+    matchdir2=$4
+    mosaicDir=$5
+    decalsImagesDir=$6
+
+
+    # I have to take 2 the FWHM (half-max-rad)
+    # It is already saved as mean value of the point-like sources
+    r_decals_pix_=$(awk 'NR==1 {printf $1}' $rangeUsedDecalsDir/"selected_rangeForFrame_"$a".txt")
+    r_decals_pix=$(astarithmetic $r_decals_pix_ 2. x -q )
+
+    base="entirecamera_$a.fits"
+    out=$matchdir2/match-decals-"$base"_automatic.cat
+
+    decalsCombinedBricks=$mosaicDir/combinedBricksForImages/combinedBricks_$a.fits
+
+    asttable $out -hSOURCE_ID -cRA,DEC | awk '!/^#/{print NR, $1, $2, 5, '$r_decals_pix', 0, 0, 1, NR, 1}' > $decalsdir/apertures_decals_$a.txt
+    astmkprof $decalsdir/apertures_decals_$a.txt --background=$decalsCombinedBricks --backhdu=1 \
+            --clearcanvas --replace --type=int16 --mforflatpix \
+            --mode=wcs --output=$decalsdir/apertures_decals_$a.fits
+    astmkcatalog $decalsdir/apertures_decals_$a.fits -h1 --zeropoint=22.5 \
+                    --valuesfile=$decalsCombinedBricks --valueshdu=1 \
+                    --ids --ra --dec --magnitude --sum \
+                    --output=$decalsdir/decals_"$base".cat
+    rm $decalsdir/apertures_decals_$a.txt
+    rm $decalsdir/apertures_decals_$a.fits
+}
+export -f buildDecalsCatalogueOfMatchedSourcesForFrame
+
 buildDecalsCatalogueOfMatchedSources() {
     decalsdir=$1
     rangeUsedDecalsDir=$2
@@ -1223,31 +1303,45 @@ buildDecalsCatalogueOfMatchedSources() {
     if [ -f $decalsdone ]; then
         echo -e "\nDecals: catalogue for the calibration stars already built\n"
     else
+        framesToUse=()
         for a in $(seq 1 $totalNumberOfFrames); do
-            # I have to take 2 the FWHM (half-max-rad)
-            # It is already saved as mean value of the point-like sources
-            r_decals_pix_=$(awk 'NR==1 {printf $1}' $rangeUsedDecalsDir/"selected_rangeForFrame_"$a".txt")
-            r_decals_pix=$(astarithmetic $r_decals_pix_ 2. x -q )
-
-            base="entirecamera_$a.fits"
-            out=$matchdir2/match-decals-"$base"_automatic.cat
-
-            decalsCombinedBricks=$mosaicDir/combinedBricksForImages/combinedBricks_$a.fits
-            #This seems extremely inneficient but maybe is the way idk
-            asttable $out -hSOURCE_ID -cRA,DEC | awk '!/^#/{print NR, $1, $2, 5, '$r_decals_pix', 0, 0, 1, NR, 1}' > apertures_decals.txt
-            astmkprof apertures_decals.txt --background=$decalsCombinedBricks --backhdu=1 \
-                    --clearcanvas --replace --type=int16 --mforflatpix \
-                    --mode=wcs --output=apertures_decals.fits
-            astmkcatalog apertures_decals.fits -h1 --zeropoint=22.5 \
-                            --valuesfile=$decalsCombinedBricks --valueshdu=1 \
-                            --ids --ra --dec --magnitude --sum \
-                            --output=$decalsdir/decals_"$base".cat
-            rm apertures_decals.txt
-            rm apertures_decals.fits
+            framesToUse+=("$a")
         done
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildDecalsCatalogueOfMatchedSourcesForFrame {} $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir
         echo done > $decalsdone
     fi
 }
+
+buildOurCatalogueOfMatchedSourcesForFrame() {
+    a=$1
+    ourDatadir=$2
+    framesForCalibrationDir=$3
+    matchdir2=$4
+    mycatdir=$5
+
+    base="entirecamera_$a.fits"
+    i=$framesForCalibrationDir/$base
+    out=$matchdir2/match-decals-"$base"_automatic.cat
+
+    r_myData_pix_=$(awk 'NR==1 {printf $1}' $mycatdir/range1_"$base".txt)
+    r_myData_pix=$(astarithmetic $r_myData_pix_ 2. x -q )
+
+    echo $ourDatadir
+
+    asttable $out -hSOURCE_ID -cRA,DEC | awk '!/^#/{print NR, $1, $2, 5, '$r_myData_pix', 0, 0, 1, NR, 1}' > $ourDatadir/apertures_$a.txt
+    
+    astmkprof $ourDatadir/apertures_$a.txt --background=$i --backhdu=1 \
+            --clearcanvas --replace --type=int16 --mforflatpix \
+            --mode=wcs --output=$ourDatadir/aperture_myData_$a.fits
+    astmkcatalog $ourDatadir/aperture_myData_$a.fits -h1 --zeropoint=0 \
+                    --valuesfile=$i --valueshdu=1 \
+                    --ids --ra --dec --magnitude --sum \
+                    --output=$ourDatadir/$base.cat
+    # asttable $lbtdir/$base_.fits -h1 --noblank=MAGNITUDE -o$lbtdir/$base.cat
+    rm $ourDatadir/apertures_$a.txt $ourDatadir/aperture_myData_$a.fits
+
+}
+export -f buildOurCatalogueOfMatchedSourcesForFrame
 
 buildOurCatalogueOfMatchedSources() {
     ourDatadir=$1
@@ -1260,28 +1354,12 @@ buildOurCatalogueOfMatchedSources() {
     if [ -f $ourDatadone ]; then
         echo -e "\nAperture catalogs in our data done\n"
     else
+        framesToUse=()
         for a in $(seq 1 $totalNumberOfFrames); do
-            base="entirecamera_$a.fits"
-            i=$framesForCalibrationDir/$base
-            out=$matchdir2/match-decals-"$base"_automatic.cat
-
-            r_myData_pix_=$(awk 'NR==1 {printf $1}' $mycatdir/range1_"$base".txt)
-            r_myData_pix=$(astarithmetic $r_myData_pix_ 2. x -q )
-
-
-            asttable $out -hSOURCE_ID -cRA,DEC | awk '!/^#/{print NR, $1, $2, 5, '$r_myData_pix', 0, 0, 1, NR, 1}' > apertures.txt
-            astmkprof apertures.txt --background=$i --backhdu=1 \
-                    --clearcanvas --replace --type=int16 --mforflatpix \
-                    --mode=wcs --output=aperture_myData.fits
-
-            astmkcatalog aperture_myData.fits -h1 --zeropoint=0 \
-                            --valuesfile=$i --valueshdu=1 \
-                            --ids --ra --dec --magnitude --sum \
-                            --output=$ourDatadir/$base.cat
-            # asttable $lbtdir/$base_.fits -h1 --noblank=MAGNITUDE -o$lbtdir/$base.cat
+            framesToUse+=("$a")
         done
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $matchdir2 $mycatdir
         echo done > $ourDatadone
-        rm aperture_myData.fits apertures.txt
     fi
 }
 
@@ -1362,6 +1440,7 @@ computeCalibrationFactors() {
 
     decalsdir=$BDIR/decals-aperture-catalog_it$iteration
     echo -e "\n ${GREEN} ---Building Decals catalogue for (matched) calibration stars--- ${NOCOLOUR}"
+
     buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir
 
     ourDataCatalogueDir=$BDIR/ourData-catalogs-apertures_it$iteration
@@ -1371,8 +1450,8 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Matching calibration stars catalogues--- ${NOCOLOUR}"
     matchCalibrationStarsCatalogues $matchdir2 $ourDataCatalogueDir $decalsdir
 
+    
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
-    echo computeAndStoreFactors $alphatruedir $matchdir2 $brightLimit $faintLimit
     computeAndStoreFactors $alphatruedir $matchdir2 $brightLimit $faintLimit
 }
 export -f computeCalibrationFactors
@@ -1701,6 +1780,8 @@ produceHalfMaxRadVsMagForOurData() {
 export -f produceHalfMaxRadVsMagForOurData
 
 
+
+
 # Coadd function
 buildCoadd() {
     coaddir=$1
@@ -1717,18 +1798,6 @@ buildCoadd() {
             astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_wx.fits
             astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_w.fits
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
-
-            # # Useful keywords for the final image
-            # numberOfFramesUsed=$(ls $mowdir/*.fits | wc -l)
-            # writeKeywordToFits $coaddName 1 "FRAMES_COMBINED" $numberOfFramesUsed
-            # writeKeywordToFits $coaddName 1 "FILTER" $filter
-            # writeKeywordToFits $coaddName 1 "SATURATION_THRESHOLD" $saturationThreshold
-            # writeKeywordToFits $coaddName 1 "CALIBRATION_BRIGHTLIMIT" $calibrationBrightLimit
-            # writeKeywordToFits $coaddName 1 "CALIBRATION_FAINTLIMIT" $calibrationFaintLimit
-            # writeKeywordToFits $coaddName 1 "RUNNING_FLAT" $RUNNING_FLAT
-            # writeKeywordToFits $coaddName 1 "WINDOW_SIZE" $windowSize
-            # writeKeywordToFits $coaddName 1 "STD_FOR_BAD_FRAMES" $numberOfStdForBadFrames
-
             echo done > $coaddone
     fi
 }

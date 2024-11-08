@@ -1197,10 +1197,10 @@ fi
 # Calibration
 calibrationPlotDone=$diagnosis_and_badFilesDir/done_calibrationPlot.txt
 if [ -f $calibrationPlotDone ]; then
-  echo -e "\nCalibration diagnosis plot already done\n"
+    echo -e "\nCalibration diagnosis plot already done\n"
 else
-  produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $calibrationBrightLimit $calibrationFaintLimit
-  echo done > $calibrationPlotDone
+    produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $calibrationBrightLimit $calibrationFaintLimit
+    echo done > $calibrationPlotDone
 fi
 
 
@@ -1211,10 +1211,10 @@ halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_hal
 
 if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
 if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
-  echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
+    echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
 else
-  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus
-  echo done > $halfMaxRadiusVsMagnitudeOurDataDone
+    produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus
+    echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
 
@@ -1255,7 +1255,6 @@ clippingdone=$clippingdir/done_"$k".txt
 
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
-# Fornax. Around 490 frames. Deimos, 20 cores. Around 1 h and 15 min
 mowdir=$BDIR/weight-dir-no-outliers
 moonwdir=$BDIR/only-weight-dir-no-outliers
 mowdone=$mowdir/done_"$k"_ccd"$h".txt
@@ -1265,12 +1264,12 @@ if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 if [ -f $mowdone ]; then
     echo -e "\nOutliers of the weighted images already masked\n"
 else
-  framesToRemoveOutliers=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-    framesToRemoveOutliers+=("$a")
-  done
-  printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $moonwdir $clippingdir $wdir $wonlydir
-  echo done > $mowdone 
+    framesToRemoveOutliers=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+        framesToRemoveOutliers+=("$a")
+    done
+    printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $moonwdir $clippingdir $wdir $wonlydir
+    echo done > $mowdone 
 fi
 
 ### Coadd ###
@@ -1286,7 +1285,6 @@ keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTL
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
 addkeywords $coaddName keyWords values
-
 
 # produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
 
