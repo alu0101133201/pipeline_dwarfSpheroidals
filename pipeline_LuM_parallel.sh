@@ -1055,6 +1055,7 @@ else
   echo done > $entiredone
 fi
 
+exit 0
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
@@ -1192,7 +1193,6 @@ else
   echo done > $astrometryPlotDone
 fi
 
-
 # DIAGNOSIS PLOT
 # Calibration
 calibrationPlotDone=$diagnosis_and_badFilesDir/done_calibrationPlot.txt
@@ -1202,7 +1202,6 @@ else
     produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $calibrationBrightLimit $calibrationFaintLimit
     echo done > $calibrationPlotDone
 fi
-
 
 # DIAGNOSIS PLOT
 # Half-Max-Radius vs magnitude plots of our calibrated data
@@ -1218,8 +1217,8 @@ else
 fi
 
 
-echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 
+echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 # Compute rms and of the photometrized frames
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
@@ -1271,7 +1270,7 @@ else
     echo done > $mowdone 
 fi
 
-### Coadd ###
+
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 
 echo -e "\nBuilding coadd"
@@ -1283,16 +1282,17 @@ echo -e "\nAdding keywords to the coadd"
 keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
-# addkeywords $coaddName keyWords values
+addkeywords $coaddName keyWords values
 
-# produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
+produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
 
-maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
+maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
+
 
 
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
@@ -1479,7 +1479,6 @@ fi
 
 
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-
 echo -e "\nBuilding coadd"
 
 coaddDir=$BDIR/coadds_it$iteration 
@@ -1494,8 +1493,6 @@ addkeywords $coaddName keyWords values
 
 produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2"
 
-
-
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
 if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
@@ -1508,14 +1505,8 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
 fi
 
-
 endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"
-
-
-
-
-
 
 
 exit 0
@@ -1546,7 +1537,7 @@ exit 0
 
 
 
-maskName=$coaddir/"$objectName"_coadd1_"$filter"_mask.fits
+maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
