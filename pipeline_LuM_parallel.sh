@@ -1055,7 +1055,6 @@ else
   echo done > $entiredone
 fi
 
-exit 0
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR}"
 
@@ -1273,6 +1272,7 @@ fi
 
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 
+
 echo -e "\nBuilding coadd"
 coaddDir=$BDIR/coadds
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
@@ -1284,7 +1284,7 @@ numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
 addkeywords $coaddName keyWords values
 
-produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
+# produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
 
 maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1292,6 +1292,7 @@ if [ -f $maskName ]; then
 else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
+
 
 
 
@@ -1305,10 +1306,9 @@ else
   subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo done > $framesWithCoaddSubtractedDone 
-
 fi
 
-
+exit 0
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd

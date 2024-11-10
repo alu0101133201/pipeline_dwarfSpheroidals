@@ -1024,7 +1024,7 @@ selectStarsAndSelectionRangeDecalsForFrame() {
     # The following calls to astnoisechisel differ in the --tilesize parameter. The one with 10x10 is for working at reduced resolution (TST rebinned by 3 resolution in my case)
     # and the bigger for working with decals at original resolution. Using 10x10 at decals original resolution just takes soooo long that is not viable. 
     # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
-    astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=150,150
+    astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=100,100
 
     astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
     astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
@@ -1088,21 +1088,24 @@ selectStarsAndSelectionRangeDecals() {
             ids=$(echo "$line" | sed -n 's/.*\[\(.*\)\].*/\1/p' | tr -d " '")
             sorted_ids=$(echo "$ids" | tr ',' '\n' | sort | tr '\n' ',' | sed 's/,$//')
 
-            if [[ -z "${unique_sets[$sorted_ids]}" ]]; then
+            if [[ -n "$sorted_ids" && -z "${unique_sets[$sorted_ids]}" ]]; then
                 unique_sets[$sorted_ids]=$filename
                 framesWithDifferentSets+=("$filename")
             fi
         done < $frameBrickCorrespondenceFile
 
-        printf "%s\n" "${framesWithDifferentSets[@]}" | parallel -j "$num_cpus" selectStarsAndSelectionRangeDecalsForFrame {} $framesForCalibrationDir $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile \
-                                                        $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $downSampleDecals $diagnosis_and_badFilesDir $brickCombinationsDir $tmpFolder
+        # printf "%s\n" "${framesWithDifferentSets[@]}" | parallel -j "$num_cpus" selectStarsAndSelectionRangeDecalsForFrame {} $framesForCalibrationDir $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile \
+        #                                                 $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $downSampleDecals $diagnosis_and_badFilesDir $brickCombinationsDir $tmpFolder
 
-        
+
         # Now we loop through all the frames. Every set should be already computed so it should go into the first clause of the if
         # I just add the else in case that some fails unexpectedly and the set of bricks of a frame are not already computed
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_"$a.fits
             bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
+            if ! [[ -n "$bricks" ]]; then
+              continue
+            fi
             imageToCopy=$( checkIfSameBricksHaveBeenComputed $a "$bricks" $frameBrickCorrespondenceFile )
 
             if [[ ("$imageToCopy" -gt 0) && ($imageToCopy != $a) ]]; then
@@ -1181,7 +1184,6 @@ prepareDecalsDataForPhotometricCalibration() {
     # CORRECTION. This was our initial though, but actually the bricks and the detectors of decals are not the same, so we are already mixing night conditions
     # Additionally, due to the restricted common range, one brick is not enough for obtaining a reliable calibration so now we use the four bricks
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
-
     selectStarsAndSelectionRangeDecals $referenceImagesForMosaic $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $mosaicDir/downSampled $diagnosis_and_badFilesDir
 }
 export -f prepareDecalsDataForPhotometricCalibration
