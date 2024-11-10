@@ -1308,7 +1308,6 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-exit 0
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd
