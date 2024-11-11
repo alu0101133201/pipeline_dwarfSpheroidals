@@ -1094,8 +1094,8 @@ selectStarsAndSelectionRangeDecals() {
             fi
         done < $frameBrickCorrespondenceFile
 
-        # printf "%s\n" "${framesWithDifferentSets[@]}" | parallel -j "$num_cpus" selectStarsAndSelectionRangeDecalsForFrame {} $framesForCalibrationDir $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile \
-        #                                                 $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $downSampleDecals $diagnosis_and_badFilesDir $brickCombinationsDir $tmpFolder
+        printf "%s\n" "${framesWithDifferentSets[@]}" | parallel -j "$num_cpus" selectStarsAndSelectionRangeDecalsForFrame {} $framesForCalibrationDir $mosaicDir $decalsImagesDir $frameBrickCorrespondenceFile \
+                                                        $selectedDecalsStarsDir $rangeUsedDecalsDir $filter $downSampleDecals $diagnosis_and_badFilesDir $brickCombinationsDir $tmpFolder
 
 
         # Now we loop through all the frames. Every set should be already computed so it should go into the first clause of the if
@@ -1103,8 +1103,9 @@ selectStarsAndSelectionRangeDecals() {
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_"$a.fits
             bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
+            
             if ! [[ -n "$bricks" ]]; then
-              continue
+              continue # Case when this frame has been rejected/lost
             fi
             imageToCopy=$( checkIfSameBricksHaveBeenComputed $a "$bricks" $frameBrickCorrespondenceFile )
 
@@ -1812,3 +1813,37 @@ subtractCoaddToFrames() {
 }
 export -f subtractCoaddToFrames
 
+changeNonNansOfFrameToOnes() {
+  a=$1
+  framesDir=$2
+  outputDir=$3
+
+  frame=$framesDir/entirecamera_$a.fits
+  output=$outputDir/exposure_tmp_$a.fits
+
+  astarithmetic $frame $frame 0 gt 1 where --output=$output -g1
+}
+export -f changeNonNansOfFrameToOnes
+
+computeExposureMap() {
+    framesDir=$1
+    exposureMapDir=$2
+    exposureMapDone=$3
+
+    if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
+    if [ -f $exposuremapdone ]; then
+        echo -e "\nThe first weighted (based upon std) mean of the images already done\n"
+    else
+      framesDir=$BDIR/pointings_fullGrid
+      framesToProcess=()
+      for a in $(seq 1 $totalNumberOfFrames); do
+        framesToProcess+=("$a")
+      done
+      
+      # printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
+      astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1 -o$coaddDir/exposureMap.fits
+      rm -rf $exposuremapDir
+      echo done > $exposuremapdone
+    fi
+}
+export -f computeExposureMap

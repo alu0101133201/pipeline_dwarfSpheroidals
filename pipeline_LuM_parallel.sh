@@ -207,9 +207,9 @@ noisechisel_param="--tilesize=35,35 \
                     --detgrowmaxholesize=5000 \
                     --rawoutput"
 
-# These paremeters are oriented to TST data at original resolution. 
-# In the nominal TST resolution the default parameters work really bad.
-# I have modified them to detect fainter signal, since the pixel size is smaller I think it's harder an requires fine-tuning to detect more
+# # These paremeters are oriented to TST data at original resolution. 
+# # In the nominal TST resolution the default parameters work really bad.
+# # I have modified them to detect fainter signal, since the pixel size is smaller I think it's harder an requires fine-tuning to detect more
 # noisechisel_param="--tilesize=200,200
 #                     --meanmedqdiff=0.01 \
 #                     --detgrowquant=0.7 \
@@ -1334,57 +1334,30 @@ fi
 
 
 
+exposuremapDir=$coaddDir/"$objectName"_exposureMap
+exposuremapdone=$exposuremapDir/done_exposureMap.txt
+computeExposureMap $framesDir $exposuremapDir $exposuremapdone
 
 
 
 
+# # Remove intermediate folders to save some space
+# find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
+# find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/decals-aperture-catalog_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/ourData-catalogs-apertures_it1 -type f ! -name 'done*' -exec rm {} \;
+# find $BDIR/framesWithCoaddSubtractedDir -type f ! -name 'done*' -exec rm {} \;
 
-# # --- Build exposure map
-# exposuremapDir=$coaddDir/exposureMap
-# exposuremapdone=$coaddDir/done_"$k".txt
-
-# if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
-# if [ -f $exposuremapdone ]; then
-#     echo -e "\nThe first weighted (based upon std) mean of the images already done\n"
-# else
-#   #There should be more efficient way of doing this...
-#   # Maybe in the warp of the pointings. Do a matrix of 1 and 0 and just add them
-#   # Pure exposure map
-#   framesDir=$BDIR/pointings_smallGrid
-#   for a in $(seq 1 $totalNumberOfFrames); do
-#     i=$framesDir/entirecamera_$a.fits
-#     astarithmetic $i set-i i i i eq 1 where i isblank 1 where -g1 --output="./tmp.fits"
-#     SWarp -c $swarpcfg "./tmp.fits" -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $exposuremapDir/swarp1.fits -WEIGHTOUT_NAME $exposuremapDir/swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE 1.164 -PIXELSCALE_TYPE  MANUAL
-#     astarithmetic $exposuremapDir/swarp_w1.fits -h0 set-i i i 0 lt nan where -otemp1.fits
-#     astarithmetic $exposuremapDir/swarp1.fits -h0 temp1.fits -h1 0 eq nan where -o$exposuremapDir/entirecamera_"$a".fits
-#   done
-#   rm $exposuremapDir/swarp_w1.fits $exposuremapDir/swarp1.fits
-#   astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) number -g1 -o$coaddDir/exposureMap_NoNans.fits
-#   rm $exposuremapDir/*.fits
-#   rmdir $exposuremapDir
-
-#   echo done > $exposuremapdone
-# fi
-
-
-# Remove intermediate folders to save some space
-find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
-
-find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/decals-aperture-catalog_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/ourData-catalogs-apertures_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/framesWithCoaddSubtractedDir -type f ! -name 'done*' -exec rm {} \;
-
-find $wdir -type f ! -name 'done*' -exec rm {} \;
-find $wonlydir -type f ! -name 'done*' -exec rm {} \;
-find $mowdir -type f ! -name 'done*' -exec rm {} \;
-find $moonwdir -type f ! -name 'done*' -exec rm {} \;
+# find $wdir -type f ! -name 'done*' -exec rm {} \;
+# find $wonlydir -type f ! -name 'done*' -exec rm {} \;
+# find $mowdir -type f ! -name 'done*' -exec rm {} \;
+# find $moonwdir -type f ! -name 'done*' -exec rm {} \;
 
 
 ####### ITERATION 2 ######
