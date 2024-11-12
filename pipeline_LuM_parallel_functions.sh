@@ -1840,7 +1840,7 @@ computeExposureMap() {
         framesToProcess+=("$a")
       done
       
-      # printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
+      printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
       astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1 -o$coaddDir/exposureMap.fits
       rm -rf $exposuremapDir
       echo done > $exposuremapdone

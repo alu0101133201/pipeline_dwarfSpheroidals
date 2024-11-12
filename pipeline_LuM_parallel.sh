@@ -1335,10 +1335,8 @@ fi
 
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
-exposuremapdone=$exposuremapDir/done_exposureMap.txt
+exposuremapdone=$coaddDir/done_exposureMap.txt
 computeExposureMap $framesDir $exposuremapDir $exposuremapdone
-
-
 
 
 # # Remove intermediate folders to save some space
