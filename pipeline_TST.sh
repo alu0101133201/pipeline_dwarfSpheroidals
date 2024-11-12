@@ -202,22 +202,22 @@ echo -e "\t·Detector width: ${ORANGE} ${detectorHeight} ${NOCOLOUR}"
 # I have tried with different set of parameters but the default ones work just fine with amateur data an rebinned TST data
 # I think it's because with these big pixels it's easier to detect signal
 # I just decreasing the erode and increasing the detgrowmaxholesize to be more conservative
-noisechisel_param="--tilesize=35,35 \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
+# noisechisel_param="--tilesize=35,35 \
+#                     --erode=1 \
+#                     --detgrowmaxholesize=5000 \
+#                     --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 # # In the nominal TST resolution the default parameters work really bad.
 # # I have modified them to detect fainter signal, since the pixel size is smaller I think it's harder an requires fine-tuning to detect more
-# noisechisel_param="--tilesize=200,200
-#                     --meanmedqdiff=0.01 \
-#                     --detgrowquant=0.7 \
-#                     --qthresh=0.25 \
-#                     --snquant=0.98 \
-#                     --erode=1 \
-#                     --detgrowmaxholesize=5000
-#                     --rawoutput"
+noisechisel_param="--tilesize=200,200
+                    --meanmedqdiff=0.01 \
+                    --detgrowquant=0.7 \
+                    --qthresh=0.25 \
+                    --snquant=0.98 \
+                    --erode=1 \
+                    --detgrowmaxholesize=5000
+                    --rawoutput"
 
 export noisechisel_param
 
@@ -1135,7 +1135,6 @@ mosaicDir=$DIR/mosaic
 selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
-
 decalsImagesDir=$mosaicDir/decalsImages
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
 
@@ -1211,11 +1210,9 @@ if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagn
 if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
     echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
 else
-    produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus
+    produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30
     echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
-
-
 
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 # Compute rms and of the photometrized frames
@@ -1271,8 +1268,6 @@ fi
 
 
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-
-
 echo -e "\nBuilding coadd"
 coaddDir=$BDIR/coadds
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
@@ -1284,7 +1279,14 @@ numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
 addkeywords $coaddName keyWords values
 
-# produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1"
+
+halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
+if [ -f $halfMaxRadForCoaddName ]; then
+  echo "The Half-Max-Rad vs Magnitude has been already generate for the coadd"
+else
+  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1" 100
+fi
+
 
 maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1292,9 +1294,6 @@ if [ -f $maskName ]; then
 else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
-
-
-
 
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
@@ -1307,6 +1306,9 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo done > $framesWithCoaddSubtractedDone 
 fi
+
+
+# This is under development yet.
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1461,7 +1463,7 @@ numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
 addkeywords $coaddName keyWords values
 
-produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2"
+produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2" 100
 
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
@@ -1486,27 +1488,7 @@ exit 0
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# The following code is for doing a third iteration. But from my experience 2 is enough
 maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"

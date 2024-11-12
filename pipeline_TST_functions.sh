@@ -1024,7 +1024,7 @@ selectStarsAndSelectionRangeDecalsForFrame() {
     # The following calls to astnoisechisel differ in the --tilesize parameter. The one with 10x10 is for working at reduced resolution (TST rebinned by 3 resolution in my case)
     # and the bigger for working with decals at original resolution. Using 10x10 at decals original resolution just takes soooo long that is not viable. 
     # astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=10,10
-    astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=100,100
+    astnoisechisel $imageToFindStarsAndPointLikeParameters -h1 -o $tmpFolder/det_$a.fits --convolved=$tmpFolder/convolved_$a.fits --tilesize=70,70 --meanmedqdiff=0.02
 
     astsegment $tmpFolder/det_$a.fits -o $tmpFolder/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3
     astmkcatalog $tmpFolder/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals_$a.txt --zeropoint=22.5
@@ -1746,6 +1746,7 @@ produceHalfMaxRadVsMagForSingleImage() {
     toleranceForMatching=$4
     pythonScriptsPath=$5
     alternativeIdentifier=$6 # Applied when there is no number in the name
+    tileSize=$7
 
     a=$( echo $image | grep -oP '\d+(?=\.fits)' )
     if ! [[ -n "$a" ]]; then
@@ -1754,14 +1755,16 @@ produceHalfMaxRadVsMagForSingleImage() {
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
     astconvolve $image --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits
-    astnoisechisel $image -h1 -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=30,30
 
-    astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0 --minriverlength=3
+    astnoisechisel $image -h1 -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=$tileSize,$tileSize
+
+    astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --gthresh=-15
+    # astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --snquant=0.1 --gthresh=-10 --objbordersn=0 --minriverlength=3
     astmkcatalog $outputDir/seg_$a.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $outputDir/decals_$a.txt --zeropoint=22.5
     astmatch $outputDir/decals_"$a"_c.txt --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt 1>/dev/null
 
     python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $outputDir/decals_"$a"_c.txt $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png
-    rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits $outputDir/decals_"$a"_c.txt $outputDir/decals_"$a"_o.txt $outputDir/match_decals_gaia_$a.txt
+    # rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits $outputDir/decals_"$a"_c.txt $outputDir/decals_"$a"_o.txt $outputDir/match_decals_gaia_$a.txt
 }
 export -f produceHalfMaxRadVsMagForSingleImage
 
@@ -1773,12 +1776,14 @@ produceHalfMaxRadVsMagForOurData() {
     toleranceForMatching=$4
     pythonScriptsPath=$5
     num_cpus=$6
+    tileSize=$7
+
 
     images=()
     for i in $imagesDir/*.fits; do
         images+=("$i")
     done
-    printf "%s\n" "${images[@]}" | parallel --line-buffer -j "$num_cpus" produceHalfMaxRadVsMagForSingleImage {} $outputDir $gaiaCat $toleranceForMatching $pythonScriptsPath
+    printf "%s\n" "${images[@]}" | parallel --line-buffer -j "$num_cpus" produceHalfMaxRadVsMagForSingleImage {} $outputDir $gaiaCat $toleranceForMatching $pythonScriptsPath "-" $tileSize
 }
 export -f produceHalfMaxRadVsMagForOurData
 
