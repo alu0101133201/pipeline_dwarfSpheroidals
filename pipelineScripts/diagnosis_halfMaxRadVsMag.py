@@ -61,6 +61,11 @@ meanRad          = float(sys.argv[3])
 minRad           = float(sys.argv[4])
 maxRad           = float(sys.argv[5])
 imageOutputName  = sys.argv[6]
+plotXLowerLimit  = float(sys.argv[7])
+plotXHigherLimit = float(sys.argv[8])
+plotYLowerLimit  = float(sys.argv[9])
+plotYHigherLimit = float(sys.argv[10])
+
 
 
 print("Table file with all sources: ", wholeTableFile)
@@ -69,18 +74,15 @@ print("imageoutputName: ", imageOutputName)
 
 
 setMatplotlibConf()
-halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 3, 2)
-halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 2, 3)
-
-
+halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 5, 4)
+halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 4, 5)
 
 fig, ax = plt.subplots(1, 1, figsize=(12, 12))
 plt.tight_layout(pad=7.0)
-ax.set_title("DECaLS objects", fontsize=20, pad=17)
 configureAxis(ax, 'HALF_MAX_RADIUS (px)', 'Magnitude (mag)', logScale=False)
 ax.set_xscale('log')
-ax.set_ylim(13, 23)
-ax.set_xlim(1, 10)
+ax.set_xlim(plotXLowerLimit, plotXHigherLimit)
+ax.set_ylim(plotYLowerLimit, plotYHigherLimit)
 ax.scatter(halfMaxRadAll, magnitudeAll, s=30, color="crimson", alpha=0.85, linewidths=1.5, edgecolor="black", label="All sources")
 ax.scatter(halfMaxRadMatched, magnitudeMatched, s=60, color="blue", linewidths=1.5, edgecolor="black", label="Matched Gaia")
 

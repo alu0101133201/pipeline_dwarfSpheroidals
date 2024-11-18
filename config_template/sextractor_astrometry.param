@@ -8,12 +8,12 @@ ERRBWIN_IMAGE            #RMS windowed pos error along minor axis  [pixel]
 FLAGS                    #Extraction flags
 FLAGS_WEIGHT             #Weighted extraction flags
 ELONGATION               #A_IMAGE/B_IMAGE
+FLUX_RADIUS              # Fraction-of-light radii                                   [pixel]
+   
 
 # Parameters for photometric calibration
-MAG_APER                 #Fixed aperture magnitude vector [mag]
-MAGERR_APER              #RMS error vector for fixed aperture mag. [mag]
-MAG_PETRO                #Petrosian-like elliptical aperture magnitude[mag]
-MAGERR_PETRO             #RMS error for PETROsian
+MAG_AUTO                 # Kron-like elliptical aperture magnitude                   [mag]
+MAGERR_AUTO              # RMS error for AUTO magnitude                              [mag]
 X_WORLD                  #Barycenter position along world x axis [deg]
 Y_WORLD                  #Barycenter position along world y axis       [deg]
 
@@ -32,7 +32,6 @@ Y_WORLD                  #Barycenter position along world y axis       [deg]
 #FLUXERR_APER             RMS error vector for aperture flux(es)                    [count]
 #MAG_APER                 Fixed aperture magnitude vector                           [mag]
 #MAGERR_APER              RMS error vector for fixed aperture mag.                  [mag]
-#MAG_AUTO                 Kron-like elliptical aperture magnitude                   [mag]
 #MAGERR_AUTO              RMS error for AUTO magnitude                              [mag]
 #FLUX_PETRO               Flux within a Petrosian-like elliptical aperture          [count]
 #FLUXERR_PETRO            RMS error for PETROsian flux                              [count]
@@ -223,7 +222,6 @@ Y_WORLD                  #Barycenter position along world y axis       [deg]
 #FLUX_GROWTHSTEP          Step for growth-curves                                    [pixel]
 #MAG_GROWTH               Cumulated magnitude growth-curve                          [mag]
 #MAG_GROWTHSTEP           Step for growth-curves                                    [pixel]
-#FLUX_RADIUS              Fraction-of-light radii                                   [pixel]
 #FWHMPSF_IMAGE            FWHM of the local PSF model                               [pixel]
 #FWHMPSF_WORLD            FWHM of the local PSF model (world units)                 [deg]
 #XPSF_IMAGE               X coordinate from PSF-fitting                             [pixel]
@@ -358,8 +356,7 @@ Y_WORLD                  #Barycenter position along world y axis       [deg]
 #THETAMODEL_SKY           Model position angle (east of north) (native)             [deg]
 #THETAMODEL_J2000         Model position angle (east of north) (J2000)              [deg]
 #THETAMODEL_B1950         Model position angle (east of north) (B1950)              [deg]
-#SPREAD_MODEL             Spread parameter from model-fitting                      
-#SPREADERR_MODEL          Spread parameter error from model-fitting                
+          
 #NOISEAREA_MODEL          Equivalent noise area of the fitted model                 [pixel**2]
 #FLUX_BACKOFFSET          Background offset from fitting                            [count]
 #FLUXERR_BACKOFFSET       RMS error on fitted background offset                     [count]

@@ -34,7 +34,8 @@ export ORANGE
 export GREEN
 export NOCOLOUR
 
-
+# In this file the time at which the main steps start are stored
+fileForTimeStamps="./pipelineTimeStamps.txt" 
 
 echo -e "\n ${GREEN} ---Loading pipeline Functions--- ${NOCOLOUR}"
 
@@ -47,8 +48,7 @@ export pipelinePath
 export pythonScriptsPath
 
 # Load the file with all the needed functions
-source "$pipelinePath/pipeline_LuM_parallel_functions.sh"
-
+source "$pipelinePath/pipeline_TST_functions.sh"
 
 echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
@@ -87,10 +87,7 @@ else
   exit $errorNumber
 fi
 
-
-startTime=$(date +%s)
-echo ${GREEN} "\nStarting pipeline. Start time:  $(date +%D-%T)" ${NOCOLOUR}
-
+writeTimeOfStepToFile "Starting pipeline" $fileForTimeStamps
 
 # Exporting the variables from .conf file
 echo -e "\n ${GREEN} ---Loading variables from conf file --- ${NOCOLOUR}"
@@ -202,22 +199,26 @@ echo -e "\t·Detector width: ${ORANGE} ${detectorHeight} ${NOCOLOUR}"
 # I have tried with different set of parameters but the default ones work just fine with amateur data an rebinned TST data
 # I think it's because with these big pixels it's easier to detect signal
 # I just decreasing the erode and increasing the detgrowmaxholesize to be more conservative
-# noisechisel_param="--tilesize=35,35 \
-#                     --erode=1 \
-#                     --detgrowmaxholesize=5000 \
-#                     --rawoutput"
+tileSize=35
+noisechisel_param="--tilesize=$tileSize,$tileSize \
+                    --erode=1 \
+                    --detgrowmaxholesize=5000 \
+                    --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 # # In the nominal TST resolution the default parameters work really bad.
 # # I have modified them to detect fainter signal, since the pixel size is smaller I think it's harder an requires fine-tuning to detect more
-noisechisel_param="--tilesize=200,200
-                    --meanmedqdiff=0.01 \
-                    --detgrowquant=0.7 \
-                    --qthresh=0.25 \
-                    --snquant=0.98 \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000
-                    --rawoutput"
+# astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
+# tileSize=200
+# noisechisel_param="--tilesize=$tileSize,$tileSize \
+#                     --meanmedqdiff=0.01 \
+#                     --detgrowquant=0.7 \
+#                     --qthresh=0.25 \
+#                     --snquant=0.98 \
+#                     --erode=1 \
+#                     --detgrowmaxholesize=5000 \
+#                     --kernel=$ROOTDIR/"$objectName"/kernel.fits \
+#                     --rawoutput"
 
 export noisechisel_param
 
@@ -429,15 +430,10 @@ oneNightPreProcessing() {
   fi
 
 
-  # until here everything is corrected of bias and renamed
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
-
-  #now flat
   echo -e "${GREEN} --- Flat iteration 1 --- ${NOCOLOUR}"
 
-
   ########## Creating the ring mask ##########
-
   # Since the ring possibilities are quite flexible (using one common ring or two rings depending on the angle) I always clean and rebuild the rings (It doesn't cost almost time so is worth it)
   ringdir=$BDIR/ring
   rm -rf $ringdir
@@ -534,8 +530,6 @@ oneNightPreProcessing() {
   
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
-
-
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
@@ -553,7 +547,6 @@ oneNightPreProcessing() {
       echo done > $noiseit2done
     fi
   fi
-
 
   # Obtain a mask using noisechisel on the whole night flat images
   noiseit2WholeNightDir=$BDIR/noise-it2-WholeNight_n$currentNight
@@ -670,8 +663,6 @@ oneNightPreProcessing() {
   fi
 
 
-
-
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
@@ -785,7 +776,6 @@ oneNightPreProcessing() {
     echo "done" >> $flatit3WholeNightdone
   fi
 
-
   # Correct the running flats using the whole night flat
   if $RUNNING_FLAT; then
     flatit3dir=$BDIR/flat-it3-Running_n$currentNight
@@ -831,7 +821,6 @@ oneNightPreProcessing() {
   ########## Masking the vignetting zones ##########
   # Enmascarando las esquinas
   echo -e "${GREEN} --- Masking vignetting zones --- ${NOCOLOUR}"
-
 
   maskedcornerdir=$BDIR/masked-corner_n$currentNight
   maskedcornerdone=$maskedcornerdir/done_"$filter"_ccd"$h".txt
@@ -880,29 +869,31 @@ oneNightPreProcessing() {
     echo "done" > $framesForCommonReductionDone
   fi
 
-  # Removing intermediate information to save space
-  rm -rf $BDIR/bias-corrected_n$currentNight
-  rm -rf $BDIR/masked-corner_n$currentNight
-  rm -rf $BDIR/masterdark_n$currentNight
-  rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
-  rm -rf $BDIR/flat-it3-ima_n$currentNight
-  for a in $(seq 1 3); do
-    # I comment the following two lines in order to keep the final flats used
-    # rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
-    # rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
-    rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
-    rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
-    rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
-    rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
-    rm -rf $BDIR/noise-it"$a"-Running_n$currentNight
-    rm -rf $BDIR/noise-it"$a"-WholeNight_n$currentNight
-    rm -rf $BDIR/norm-it"$a"-images_n$currentNight
-    rm -rf $BDIR/norm-it"$a"-Running-images_n$currentNight
-    rm -rf $BDIR/norm-it"$a"-WholeNight-images_n$currentNight
-  done
+  # # Removing intermediate information to save space
+  # rm -rf $BDIR/bias-corrected_n$currentNight
+  # rm -rf $BDIR/masked-corner_n$currentNight
+  # rm -rf $BDIR/masterdark_n$currentNight
+  # rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
+  # rm -rf $BDIR/flat-it3-ima_n$currentNight
+  # for a in $(seq 1 3); do
+  #   # I comment the following two lines in order to keep the final flats used
+  #   # rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
+  #   # rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
+  #   rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
+  #   rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
+  #   rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
+  #   rm -rf $BDIR/masked-it"$a"-WholeNight_n$currentNight
+  #   rm -rf $BDIR/noise-it"$a"-Running_n$currentNight
+  #   rm -rf $BDIR/noise-it"$a"-WholeNight_n$currentNight
+  #   rm -rf $BDIR/norm-it"$a"-images_n$currentNight
+  #   rm -rf $BDIR/norm-it"$a"-Running-images_n$currentNight
+  #   rm -rf $BDIR/norm-it"$a"-WholeNight-images_n$currentNight
+  # done
 
 }
 export -f oneNightPreProcessing
+
+writeTimeOfStepToFile "Process the individual nights" $fileForTimeStamps
 
 nights=()
 for currentNight in $(seq 1 $numberOfNights); do
@@ -921,21 +912,39 @@ echo $totalNumberOfFrames
 # All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
 
 echo -e "${ORANGE} ------ ASTROMETRY AND BACKGROUND-SUBTRACTION ------ ${NOCOLOUR}\n"
+
 for h in 0; do
   echo -e "${GREEN} --- Astrometry --- ${NOCOLOUR}"
 
-  query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=3.1 --column=ra,dec,phot_g_mean_mag"
+
+  # NOTE: TO DO THING # 
+  # The following step is duplicated in the pipeline. It is done here for the astrometry and then for the calibration is also done
+  # The difference is that here we provide a radius (3.1 right now) for downloading the catalogue and in the calibration the 
+  # field of the DECaLS mosaic is done for downloading the catalog. 
+  # This should be refactorised when possible.
+
+  writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
+  query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=3.1 --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
   catdir=$BDIR/catalogs
-  catdone=$catdir/"$objectName"_Gaia_eDR3.fits
+  catdone=$catdir/done.txt
   if ! [ -d $catdir ]; then mkdir $catdir; fi
   if [ -f $catdone ]; then
     echo -e "\nCatalog is already downloaded\n"
   else
-    astquery $query_param -o $catdir/"$objectName"_Gaia_eDR3.fits
+    astquery $query_param -o $catdir/"$objectName"_Gaia_eDR3_tmp.fits
+    asttable $catdir/"$objectName"_Gaia_eDR3_tmp.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -o$catdir/tmp.txt
+    # Here we demand that the parallax OR a proper motion is > 3 times its error
+    asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
+    asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
+    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o$catdir/"$objectName"_Gaia_eDR3.fits
+
+    rm $catdir/test1.txt $catdir/tmp.txt $catdir/"$objectName"_Gaia_eDR3_tmp.fits $catdir/test_.txt
+    echo "done" > $catdone
   fi
 
 
   # Making the indexes
+  writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
   indexdir=$BDIR/indexes
   indexdone=$indexdir/done_"$filter".txt
   if ! [ -d $indexdir ]; then mkdir $indexdir; fi
@@ -956,6 +965,7 @@ for h in 0; do
 
   sexcfg=$CDIR/default.sex
   # Solving the images
+  writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
   astrocfg=$CDIR/astrometry_$objectName.cfg
   
   rm $astrocfg
@@ -991,8 +1001,10 @@ echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
 
 # Making sex catalogs
-sexcfg=$CDIR/default.sex
-sexparam=$CDIR/default.param
+writeTimeOfStepToFile "Making sextractor catalogues" $fileForTimeStamps
+
+sexcfg=$CDIR/sextractor_astrometry.sex
+sexparam=$CDIR/sextractor_astrometry.param
 sexconv=$CDIR/default.conv
 sexdir=$BDIR/sex-it1
 sexdone=$sexdir/done_"$filter"_ccd"$h".txt
@@ -1009,8 +1021,9 @@ else
 fi
 
 
-
 # Making scamp headers
+writeTimeOfStepToFile "Making Scamp headers" $fileForTimeStamps
+
 scampcfg=$CDIR/scamp.cfg
 scampdir=$BDIR/scamp-it1
 scampres=$scampdir/results_Decals-"$filter"_ccd"$h"
@@ -1025,6 +1038,7 @@ else
     echo done > $scampdone
 fi
 
+
 # We copy the files for improving the astrometry into the folder of the images that we are going to warp
 cp $sexdir/*.head $astroimadir
 
@@ -1034,6 +1048,8 @@ echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 #     2.- Improve the astrometry thanks to scamp
 
 # I lose 4 frames here. Why?
+writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
+
 entiredir_smallGrid=$BDIR/pointings_smallGrid
 entiredir_fullGrid=$BDIR/pointings_fullGrid
 entiredone=$entiredir_smallGrid/done_.txt
@@ -1071,6 +1087,7 @@ echo -e "Modelling the background for subtracting it"
 imagesAreMasked=false
 ringDir=$BDIR/ring
 
+writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 
 
@@ -1116,12 +1133,15 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
+writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
 ### PARAMETERS ###
 toleranceForMatching=2 #arcsec
 sigmaForPLRegion=1 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
 export sigmaForPLRegion
+
+
 
 # Parameters for performing the sigma clipping to the different samples in aststatistics
 sigmaForStdSigclip=2
@@ -1136,12 +1156,17 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 
 decalsImagesDir=$mosaicDir/decalsImages
+
+
+writeTimeOfStepToFile "DECaLs data processing" $fileForTimeStamps
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit
+
+writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize
 
 # Checking and removing bad frames based on the FWHM value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1183,23 +1208,23 @@ applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
 # DIAGNOSIS PLOT
 # Astrometry
-astrometryPlotDone=$diagnosis_and_badFilesDir/done_astrometryPlot.txt
-if [ -f $astrometryPlotDone ]; then
+astrometryPlotName=$diagnosis_and_badFilesDir/astrometry.png
+if [ -f $astrometryPlotName ]; then
     echo -e "\nAstrometry diagnosis plot already done\n"
 else
-  produceAstrometryCheckPlot $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $pixelScale
-  echo done > $astrometryPlotDone
+  produceAstrometryCheckPlot $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $astrometryPlotName $pixelScale
 fi
+
 
 # DIAGNOSIS PLOT
 # Calibration
-calibrationPlotDone=$diagnosis_and_badFilesDir/done_calibrationPlot.txt
-if [ -f $calibrationPlotDone ]; then
+calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
+if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
-    produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $diagnosis_and_badFilesDir $calibrationBrightLimit $calibrationFaintLimit
-    echo done > $calibrationPlotDone
+    produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit
 fi
+
 
 # DIAGNOSIS PLOT
 # Half-Max-Radius vs magnitude plots of our calibrated data
@@ -1210,9 +1235,11 @@ if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagn
 if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
     echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
 else
-    produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30
-    echo done > $halfMaxRadiusVsMagnitudeOurDataDone
+  
+  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30
+  echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
+
 
 echo -e "${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 # Compute rms and of the photometrized frames
@@ -1227,7 +1254,7 @@ python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $no
 
 ### Calculate the weights for the images based on the minimum rms ###
 echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-
+writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
 
 wdir=$BDIR/weight-dir
 wdone=$wdir/done_"$k"_ccd"$h".txt
@@ -1241,6 +1268,7 @@ computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskyd
 
 
 echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
 # Remove outliers before the final coadd by using sigclip-median and sigclip-std
 # This is particularly important to remove cosmic rays
 
@@ -1266,8 +1294,9 @@ else
     echo done > $mowdone 
 fi
 
-
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
+
 echo -e "\nBuilding coadd"
 coaddDir=$BDIR/coadds
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
@@ -1295,6 +1324,7 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
+writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
 if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
@@ -1306,6 +1336,7 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo done > $framesWithCoaddSubtractedDone 
 fi
+
 
 
 # This is under development yet.
@@ -1387,33 +1418,24 @@ computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CO
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
-
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
-
-
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit
-
-
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
-
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
-
 
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
-
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done_"$k"_ccd"$h".txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
-
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration
 
 wdir=$BDIR/weight-dir_it$iteration

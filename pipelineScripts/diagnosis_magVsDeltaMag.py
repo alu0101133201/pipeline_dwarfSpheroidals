@@ -7,7 +7,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
-
+from scipy.stats import sigmaclip
 
 def setMatplotlibConf():
     rc_fonts = {
@@ -62,7 +62,7 @@ def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimi
         if ( (mag[i] > brightLimit) and (mag[i] < faintLimit) ):
             diffMagInRange.append(magDiff[i])
 
-    return(np.nanstd(np.array(diffMagInRange)))
+    return(np.sqrt(np.mean(np.array(diffMagInRange)**2)))
 
 
 directoryWithTheCatalogues = sys.argv[1]
@@ -71,19 +71,20 @@ calibrationBrightLimit = float(sys.argv[3])
 calibrationFaintLimit  = float(sys.argv[4])
 
 magDiff = np.array([])
+magDiffAbs = np.array([])
 mag1Total = np.array([])
 frameNumber = np.array([])
 
-currentFrame = 1
 for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
     mag1, mag2 = read_columns_from_file(file)
     mag1Total = np.append(mag1Total, mag1)
-    magDiff = np.append(magDiff, np.array(mag1 - mag2))
+    magDiff = np.append(magDiff, np.array((mag1 - mag2)))
+    magDiffAbs = np.append(magDiffAbs, np.array(np.abs(mag1 - mag2)))
     frameNumber = np.append(frameNumber, np.repeat(index, len(mag1)))
 
 
-totalScatter = np.nanstd(magDiff)
-scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiff, calibrationFaintLimit, calibrationBrightLimit)
+totalScatter = np.sqrt(np.mean(magDiffAbs**2))
+scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
 
 setMatplotlibConf()
 
@@ -100,10 +101,10 @@ scatter = ax.scatter(mag1Total, magDiff, s=25, c=frameNumber, cmap='viridis', ed
 cbar = plt.colorbar(scatter)
 cbar.set_label('Frame Number', rotation=270, labelpad=20, fontsize=22)
 
-ax.text(0.08, 0.925, r"Total $\sigma$: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
+ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
     fontsize=24, verticalalignment='top', horizontalalignment='left')
 
-ax.text(0.08, 0.875, r"Calibration region $\sigma$: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
+ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
     fontsize=24, verticalalignment='top', horizontalalignment='left')
 
 ax.legend(fontsize=22)
