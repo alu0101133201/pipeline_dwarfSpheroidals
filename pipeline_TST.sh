@@ -96,13 +96,6 @@ fi
 echo "Number of CPUs allocated: $num_cpus"
 export num_cpus
 
-echo -e "\n-Variables defined"
-echo -e "\t·Object name: ${ORANGE} ${objectName} ${NOCOLOUR}"
-echo -e "\t·Filter: ${ORANGE} ${filter} ${NOCOLOUR}"
-echo -e "\t·Ra: ${ORANGE} ${ra_gal} ${NOCOLOUR}"
-echo -e "\t·Dec: ${ORANGE} ${dec_gal} ${NOCOLOUR}"
-echo -e "\t·Detector width: ${ORANGE} ${detectorWidth} ${NOCOLOUR}"
-echo -e "\t·Detector width: ${ORANGE} ${detectorHeight} ${NOCOLOUR}"
 
 # ****** Decision note *******
 # These parameters have been selected in order to obtain an aggresive mask
@@ -431,7 +424,6 @@ oneNightPreProcessing() {
   fi
 
 
-  
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
   # Obtain a mask using noisechisel on the running flat images
