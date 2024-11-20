@@ -1636,13 +1636,15 @@ computeWeightForFrame() {
     photCorrDir=$4
     noiseskydir=$5 
     iteration=$6
+    minRmsFileName=$7
+
     h=0
 
     base=entirecamera_"$a".fits
     basetmp=entirecamera_"$a"_tmp.fits
 
     f=$photCorrDir/$base
-    rms_min=$(awk 'NR=='1'{print $1}' $BDIR/rms_min_val-1_ccd"$h"_it$iteration.txt)
+    rms_min=$(awk 'NR=='1'{print $1}' $BDIR/$minRmsFileName)
     rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
 
     weight=$(astarithmetic $rms_min $rms_f / --quiet)
@@ -1673,6 +1675,7 @@ computeWeights() {
     photCorrDir=$5
     noiseskydir=$6 
     iteration=$7
+    minRmsFileName=$8
 
     if [ -f $wdone ]; then
         echo -e "\n\tWeights computation done for extension $h\n"
@@ -1681,7 +1684,7 @@ computeWeights() {
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToComputeWeight+=("$a")
         done
-        printf "%s\n" "${framesToComputeWeight[@]}" | parallel -j "$num_cpus" computeWeightForFrame {} $wdir $wonlydir $photCorrDir $noiseskydir $iteration
+        printf "%s\n" "${framesToComputeWeight[@]}" | parallel -j "$num_cpus" computeWeightForFrame {} $wdir $wonlydir $photCorrDir $noiseskydir $iteration $minRmsFileName
         echo done > $wdone
         echo done > $wonlydone
     fi
@@ -1745,6 +1748,27 @@ removeOutliersFromFrame(){
 }
 export -f removeOutliersFromFrame
 
+removeOutliersFromWeightedFrames () {
+  mowdone=$1
+  totalNumberOfFrames=$2
+  mowdir=$3
+  moonwdir=$4
+  clippingdir=$5
+  wdir=$6
+  wonlydir=$7
+
+  if [ -f $mowdone ]; then
+      echo -e "\n\tOutliers of the weighted images already masked\n"
+  else
+      framesToRemoveOutliers=()
+      for a in $(seq 1 $totalNumberOfFrames); do
+          framesToRemoveOutliers+=("$a")
+      done
+      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $moonwdir $clippingdir $wdir $wonlydir
+      echo done > $mowdone 
+  fi
+}
+export -f removeOutliersFromWeightedFrames
 
 # Functions for applying the mask of the coadd for a second iteration
 cropAndApplyMaskPerFrame() {
@@ -1919,9 +1943,9 @@ buildCoadd() {
     coaddName=$2
     mowdir=$3
     moonwdir=$4
+    coaddone=$5
 
 
-    coaddone=$coaddir/done.txt
     if ! [ -d $coaddir ]; then mkdir $coaddir; fi
     if [ -f $coaddone ]; then
             echo -e "\n\tThe first weighted (based upon std) mean of the images already done\n"
@@ -1963,7 +1987,7 @@ computeExposureMap() {
 
     if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
     if [ -f $exposuremapdone ]; then
-        echo -e "\nThe first weighted (based upon std) mean of the images already done\n"
+        echo -e "\n\tThe exposure map is already done\n"
     else
       framesDir=$BDIR/pointings_fullGrid
       framesToProcess=()

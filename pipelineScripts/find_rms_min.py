@@ -39,6 +39,7 @@ h              = str(sys.argv[4])
 noiseFilesPath = str(sys.argv[5])
 rootDir        = str(sys.argv[6])
 iteration      = str(sys.argv[7])
+outputFile     = str(sys.argv[8])
 
 rms = []
 
@@ -57,6 +58,6 @@ for file in noiseFiles:
 
 rms_min = np.nanmin(rms)
 
-file = open(rootDir + '/build/rms_min_val-1_ccd' + h + '_it' + str(iteration) + '.txt', "w")
+file = open(rootDir + '/build/' + outputFile, "w")
 file.write(str(rms_min))
 
