@@ -47,12 +47,20 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
     if(logScale): ax.set_yscale('log')
 
 def read_columns_from_file(file_path):
-    data = np.loadtxt(file_path, comments='#')
-    ra1  = np.array(data[:, 0].astype(float).tolist())
-    dec1 = np.array(data[:, 1].astype(float).tolist())
-    ra2  = np.array(data[:, 2].astype(float).tolist())
-    dec2 = np.array(data[:, 3].astype(float).tolist())
-    return ra1, dec1, ra2, dec2
+    try:
+        data = np.loadtxt(file_path, comments='#')
+        if (data.size == 0):
+            raise Exception("File: " + file_path + " is empty")
+
+        ra1  = np.array(data[:, 0].astype(float).tolist())
+        dec1 = np.array(data[:, 1].astype(float).tolist())
+        ra2  = np.array(data[:, 2].astype(float).tolist())
+        dec2 = np.array(data[:, 3].astype(float).tolist())
+        return ra1, dec1, ra2, dec2
+
+    except Exception as e:
+        print(f"Tried to load an empty file: {e}")
+        return np.array([]), np.array([]), np.array([]), np.array([]), 
 
 
 cataloguesDir = sys.argv[1]
@@ -62,15 +70,19 @@ pixelScale    = sys.argv[3]
 raArrays = []
 decArrays = []
 
+count=0
+
 for i in glob.glob(cataloguesDir + "/*.cat"):
     ra1, dec1, ra2, dec2 = read_columns_from_file(i)
 
     raArrays.append(ra1-ra2)
     decArrays.append(dec1-dec2)
 
+
 for i in range(len(raArrays)):
     raArrays[i] = raArrays[i]*3600
     decArrays[i] = decArrays[i]*3600
+
 
 
 setMatplotlibConf()
@@ -80,9 +92,23 @@ ax.set_title("Checking astrometry. The data pixel scale is " + str(pixelScale) +
 plt.tight_layout(pad=8)
 configureAxis(ax, r'$\delta$ ra (arcsec)', r'$\delta$ dec (arcsec)', logScale=False)
 for i in range(len(raArrays)):
-    ax.scatter(raArrays[i], decArrays[i], color="teal", s=50, linewidths=1.5, edgecolor="black")
-ax.set_xlim(-1.5, 1.5)
-ax.set_ylim(-1.5, 1.5)
-ax.hlines(y=0, xmin=-1.5, xmax=1.5, color="black", linestyle="--")
-ax.vlines(x=0, ymin=-1.5, ymax=1.5, color="black", linestyle="--")
+    ax.scatter(raArrays[i], decArrays[i], s=50, linewidths=1.5, edgecolor="black", label=str(i))
+ax.set_xlim(-2, 2)
+ax.set_ylim(-2, 2)
+ax.hlines(y=0, xmin=-2, xmax=2, color="black", linestyle="--")
+ax.vlines(x=0, ymin=-2, ymax=2, color="black", linestyle="--")
+# plt.legend(fontsize=15)
 plt.savefig(imageName)
+
+
+# for i in range(len(raArrays)):
+#     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+#     ax.set_title("Checking astrometry. The data pixel scale is " + str(pixelScale) + " (arcsec/px)", fontsize=22, pad=17)
+#     plt.tight_layout(pad=8)
+#     configureAxis(ax, r'$\delta$ ra (arcsec)', r'$\delta$ dec (arcsec)', logScale=False)
+#     ax.scatter(raArrays[i], decArrays[i], color="teal", s=50, linewidths=1.5, edgecolor="black")
+#     ax.set_xlim(-1.5, 1.5)
+#     ax.set_ylim(-1.5, 1.5)
+#     ax.hlines(y=0, xmin=-1.5, xmax=1.5, color="black", linestyle="--")
+#     ax.vlines(x=0, ymin=-1.5, ymax=1.5, color="black", linestyle="--")
+#     plt.savefig(str(i) + "_astrometry.png")

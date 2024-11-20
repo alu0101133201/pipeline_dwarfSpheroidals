@@ -61,7 +61,6 @@ def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimi
     for i in range(len(mag)):
         if ( (mag[i] > brightLimit) and (mag[i] < faintLimit) ):
             diffMagInRange.append(magDiff[i])
-
     return(np.sqrt(np.mean(np.array(diffMagInRange)**2)))
 
 
@@ -80,7 +79,18 @@ for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
     mag1Total = np.append(mag1Total, mag1)
     magDiff = np.append(magDiff, np.array((mag1 - mag2)))
     magDiffAbs = np.append(magDiffAbs, np.array(np.abs(mag1 - mag2)))
+
+    tmp = np.array(np.abs(mag1 - mag2))
+    mask1 = tmp > 0.3
+    mask2 = mag1 < 17.5
+    finalMask = (mask1 & mask2)
+    
+    print("\nfile: ", file)
+    print(mag1[finalMask])
+    print(tmp[finalMask])
+
     frameNumber = np.append(frameNumber, np.repeat(index, len(mag1)))
+
 
 
 totalScatter = np.sqrt(np.mean(magDiffAbs**2))
@@ -108,4 +118,4 @@ ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((scatterInRan
     fontsize=24, verticalalignment='top', horizontalalignment='left')
 
 ax.legend(fontsize=22)
-plt.savefig(imageName + ".jpg")
+plt.savefig(imageName)

@@ -55,7 +55,7 @@ for file in noiseFiles:
 
 
 
-rms_min = np.nanmin(rms[1:])
+rms_min = np.nanmin(rms)
 
 file = open(rootDir + '/build/rms_min_val-1_ccd' + h + '_it' + str(iteration) + '.txt', "w")
 file.write(str(rms_min))

@@ -45,6 +45,104 @@ writeTimeOfStepToFile() {
 }
 export -f writeTimeToFile
 
+loadVariablesFromFile() {
+  file=$1
+  initialShellVariables=$(compgen -v)
+
+  if [[ -f $confFile ]]; then 
+    source $confFile
+    echo -e "\nVariables loaded from $confFile file"
+  else
+    errorNumber=1
+    echo -e "\nA configuration file has to be provided in order to run the pipeline"  >&2
+    echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+    exit $errorNumber
+  fi
+
+  allShellVariablesAfterLoadingConfFile=$(compgen -v)
+  
+  # This code exports only the variables of the configuration file
+  for var in $allShellVariablesAfterLoadingConfFile; do
+    if ! grep -q "^$var$" <<< "$initialShellVariables"; then
+      export "$var"
+    fi
+  done
+  return 0
+}
+export -f loadVariablesFromFile
+
+outputConfigurationVariablesInformation() {
+    data=(
+        "·Object name:$objectName"
+        "·Right ascension:$ra_gal:[deg]"
+        "·Declination:$dec_gal:[deg]"
+        "·Keyword for the airmass:$airMassKeyWord"
+        "·Keyword for date:$dateHeaderKey"
+        "·Root directory to perform the reduction:$ROOTDIR"
+        "·Calibration range"
+        "  Bright limit:$calibrationBrightLimit:[mag]"
+        "  Faint limit:$calibrationFaintLimit:[mag]"
+        "·Saturation threshold:$saturationThreshold:[ADU]"
+        "·Approximately size of the field:$sizeOfOurFieldDegrees:[deg]"
+        "·Size of the coadd:$coaddSizePx:[px]"
+        " "
+        "·Common normalisation ring:$USE_COMMON_RING"
+        "  If so, the file with the ring specification is:$commonRingDefinitionFile"
+        ""
+        " Otherwise, parameters for using multiple normalisation rings"
+        "  KeyWord to decide the ring to use:$keyWordToDecideRing"
+        "  Threshold to decide the ring to use:$keyWordThreshold"
+        "  File with the first ring specification:$firstRingDefinitionFile"
+        "  Value of the keyword for using the first ring:$keyWordValueForFirstRing"
+
+        "  File with the second ring specification:$secondRingDefinitionFile"
+        "  Value of the keyword for using the second ring:$keyWordValueForSecondRing"
+        " "
+        "·Running flat:$RUNNING_FLAT"
+        "  If so, the window size is:$windowSize:[frames]"
+        " "
+        "·The background is modelled as a constant:$MODEL_SKY_AS_CONSTANT"
+        "  If so, the sky estimation method is:$sky_estimation_method"
+        "  Otherwise, the polynomial degree is:$polynomialDegree"
+        " "
+        "·Indices scales for astrometrisation"
+        "  Lowest index:$lowestScaleForIndex"
+        "  Highest index:$highestScaleForIndex"
+        " "
+        "·Scale-low parameters for solve-field (astrometry.net):$solve_field_L_Param"
+        "·Scale-high parameters for solve-field (astrometry.net):$solve_field_H_Param"
+        "·Scale units for parameters for solve-field (astrometry.net):$solve_field_u_Param"
+        " "
+        "·Filter:$filter"
+        "·Pixel scale:$pixelScale:[arcsec/px]"
+        "·Detector width:$detectorWidth:[px]"
+        "·Detector height:$detectorHeight:[px]"
+
+        # "Saturation threshold set to:$saturationThreshold"
+        # "The size of the field in degrees is:$sizeOfOurFieldDegrees"
+        # "The size in px of each side of the coadded image is:$coaddSizePx"
+        # "The calibration range is:$calibrationBrightLimit to $calibrationFaintLimit"
+        # "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry FWHM"
+        # "A common normalisation ring is going to be used?:$USE_COMMON_RING"
+        # "The file which contains the ring definition is:$commonRingDefinitionFile"
+        # "The running flat is going to be used?:$RUNNING_FLAT"
+        # "The running flat will be computed with a window size of:$windowSize"
+        # "The indices that will be built for the construction of indices for astrometrisation are"
+        # "Lowest index:$lowestScaleForIndex"
+        # "Highest index:$highestScaleForIndex"
+        # "The background will be modelled as a constant?:$MODEL_SKY_AS_CONSTANT"
+        # "If so, the method to model the sky is:$sky_estimation_method"
+        # "Otherwise, the polynomial degree is:$polynomialDegree"
+    )
+
+    echo -e "Summary of the configuration variables provided for the reduction\n"
+    for entry in "${data[@]}"; do
+    IFS=":" read -r text value unit <<< "$entry" 
+    printf "\t%-60s $ORANGE %-20s $GREEN %-10s $NOCOLOUR\n" "$text" "$value" "$unit"
+    done
+}
+export -f test
+
 escapeSpacesFromString() {
     local input="$1"
     escaped_string="${input// /\\ }"
@@ -90,6 +188,7 @@ checkIfAllVariablesAreSet() {
                 coaddSizePx \
                 calibrationBrightLimit \
                 calibrationFaintLimit \
+                numberOfFWHMForPhotometry \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
                 keyWordToDecideRing
@@ -609,7 +708,7 @@ computeSky() {
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
-        echo -e "\nScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
+        echo -e "\n\tScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
     else
         framesToComputeSky=()
         for a in $(seq 1 $totalNumberOfFrames); do
@@ -665,7 +764,7 @@ subtractSky() {
 
     if ! [ -d $directoryToStoreSkySubtracted ]; then mkdir $directoryToStoreSkySubtracted; fi
     if [ -f $directoryToStoreSkySubtracteddone ]; then
-        echo -e "\nSky substraction is already done for the science images for extension $h\n"
+        echo -e "\n\tSky substraction is already done for the science images\n"
     else
     framesToSubtractSky=()
     for a in $(seq 1 $totalNumberOfFrames); do
@@ -727,13 +826,13 @@ downloadDecalsData() {
     filters=$5
     ringFile=$6
 
-    echo -e "\n-Downloading Decals bricks"
+    echo -e "\n·Downloading Decals bricks"
 
     donwloadMosaicDone=$mosaicDir/decalsImages/done_downloads.txt
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
     if ! [ -d $decalsImagesDir ]; then mkdir $decalsImagesDir; fi
     if [ -f $donwloadMosaicDone ]; then
-        echo -e "\nMosaic images already downloaded\n"
+        echo -e "\n\tMosaic images already downloaded\n"
     else
         rm $frameBrickCorrespondenceFile # Remove the brick map. This is done to avoid problems with files of previous executions
 
@@ -820,7 +919,7 @@ buildDecalsMosaic() {
     buildMosaicDone=$swarpedImagesDir/done_t.xt
     if ! [ -d $swarpedImagesDir ]; then mkdir $swarpedImagesDir; fi
     if [ -f $buildMosaicDone ]; then
-        echo -e "\nMosaic already built\n"
+        echo -e "\n\tMosaic already built\n"
     else
         decalsPxScale=$dataPixelScale
         mosaicSize=$(echo "($sizeOfOurFieldDegrees * 3600) / $decalsPxScale" | bc)
@@ -857,7 +956,7 @@ downloadGaiaCatalogueForField() {
 
     retcatdone=$BDIR/downloadedGaia_done_"$n".txt
     if [ -f $retcatdone ]; then
-            echo -e "\ngaia dr3 catalog retrived\n"
+            echo -e "\n\tgaia dr3 catalog retrived\n"
     else
         astquery gaia --dataset=edr3 --overlapwith=$ref --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error    -o$BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits
         asttable $BDIR/catalogs/"$objectName"_Gaia_eDR3_.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -otmp.txt
@@ -1085,7 +1184,7 @@ selectStarsAndSelectionRangeDecals() {
     if ! [ -d $tmpFolder ]; then mkdir $tmpFolder; fi
 
     if [ -f $selectDecalsStarsDone ]; then
-            echo -e "\nDecals bricks and stars for doing the photometric calibration are already selected for each frame\n"
+            echo -e "\n\tDecals bricks and stars for doing the photometric calibration are already selected for each frame\n"
     else
         # A lot of frames will have the same set of bricks becase they will be in the same sky region (same pointing)
         # The idea here is to take all the different set of bricks and parallelise its computation
@@ -1227,10 +1326,10 @@ selectStarsAndSelectionRangeOurData() {
     mycatdir=$3
     tileSize=$4
 
-    mycatdone=$mycatdir/done_ccd"$h".txt
+    mycatdone=$mycatdir/done.txt
     if ! [ -d $mycatdir ]; then mkdir $mycatdir; fi
     if [ -f $mycatdone ]; then
-            echo -e "\nSources for photometric calibration are already extracted for my image\n"
+            echo -e "\n\tSources for photometric calibration are already extracted for my image\n"
     else
         framesToUse=()
         for a in $(seq 1 $totalNumberOfFrames); do
@@ -1247,10 +1346,10 @@ matchDecalsAndOurData() {
     mycatdir=$3
     matchdir2=$4
 
-    matchdir2done=$matchdir2/done_automatic_ccd"$h".txt
+    matchdir2done=$matchdir2/done_automatic.txt
     if ! [ -d $matchdir2 ]; then mkdir $matchdir2; fi
     if [ -f $matchdir2done ]; then
-        echo -e "\nMatch between decals (automatic) catalog and my (automatic) catalogs already done\n"
+        echo -e "\n\tMatch between decals (automatic) catalog and my (automatic) catalogs already done\n"
     else
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_$a.fits"
@@ -1289,12 +1388,13 @@ buildDecalsCatalogueOfMatchedSourcesForFrame() {
     matchdir2=$4
     mosaicDir=$5
     decalsImagesDir=$6
+    numberOfFWHMToUse=$7
 
 
     # I have to take 2 the FWHM (half-max-rad)
     # It is already saved as mean value of the point-like sources
     r_decals_pix_=$(awk 'NR==1 {printf $1}' $rangeUsedDecalsDir/"selected_rangeForFrame_"$a".txt")
-    r_decals_pix=$(astarithmetic $r_decals_pix_ 3. x -q )
+    r_decals_pix=$(astarithmetic $r_decals_pix_ $numberOfFWHMToUse. x -q )
 
     base="entirecamera_$a.fits"
     matchedCatalogue=$matchdir2/match-decals-"$base"_automatic.cat
@@ -1321,21 +1421,22 @@ buildDecalsCatalogueOfMatchedSources() {
     matchdir2=$3
     mosaicDir=$4
     decalsImagesDir=$5
+    numberOfFWHMToUse=$6
 
     # this function has to be paralellised so we can save some time
     # Be careful when paralellising because now the common file "apertures_decals" is used, but this will have to be changed
     # to an individual frame (with different name) so it is successfully parallelised
 
-    decalsdone=$decalsdir/done__ccd"$h".txt
+    decalsdone=$decalsdir/done.txt
     if ! [ -d $decalsdir ]; then mkdir $decalsdir; fi
     if [ -f $decalsdone ]; then
-        echo -e "\nDecals: catalogue for the calibration stars already built\n"
+        echo -e "\n\tDecals: catalogue for the calibration stars already built\n"
     else
         framesToUse=()
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToUse+=("$a")
         done
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildDecalsCatalogueOfMatchedSourcesForFrame {} $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildDecalsCatalogueOfMatchedSourcesForFrame {} $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMToUse
         echo done > $decalsdone
     fi
 }
@@ -1346,13 +1447,14 @@ buildOurCatalogueOfMatchedSourcesForFrame() {
     framesForCalibrationDir=$3
     matchdir2=$4
     mycatdir=$5
+    numberOfFWHMToUse=$6
 
     base="entirecamera_$a.fits"
     i=$framesForCalibrationDir/$base
     matchedCatalogue=$matchdir2/match-decals-"$base"_automatic.cat
 
     r_myData_pix_=$(awk 'NR==1 {printf $1}' $mycatdir/range1_"$base".txt)
-    r_myData_pix=$(astarithmetic $r_myData_pix_ 3. x -q )
+    r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfFWHMToUse. x -q )
 
     # raColumnName=RA_INPUT_DATA
     # decColumnName=DEC_INPUT_DATA
@@ -1373,17 +1475,18 @@ buildOurCatalogueOfMatchedSources() {
     framesForCalibrationDir=$2
     matchdir2=$3
     mycatdir=$4
+    numberOfFWHMToUse=$5
 
-    ourDatadone=$ourDatadir/done_"$filter"_ccd"$h".txt
+    ourDatadone=$ourDatadir/done.txt
     if ! [ -d $ourDatadir ]; then mkdir $ourDatadir; fi
     if [ -f $ourDatadone ]; then
-        echo -e "\nAperture catalogs in our data done\n"
+        echo -e "\n\tAperture catalogs in our data done\n"
     else
         framesToUse=()
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToUse+=("$a")
         done
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $matchdir2 $mycatdir
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $matchdir2 $mycatdir $numberOfFWHMToUse
         echo done > $ourDatadone
     fi
 }
@@ -1392,17 +1495,17 @@ matchCalibrationStarsCatalogues() {
     matchdir2=$1
     ourDatadir=$2
     decalsdir=$3
-    matchdir2done=$matchdir2/done_aperture_ccd"$h".txt
+    matchdir2done=$matchdir2/done_aperture.txt
 
     if [ -f $matchdir2done ]; then
-        echo -e "\nMatch between decals (aperture) catalog and our (aperture) catalogs done for extension $h\n"
+        echo -e "\n\tMatch between decals (aperture) catalog and our (aperture) catalogs done for extension $h\n"
     else
         for a in $(seq 1 $totalNumberOfFrames); do
             base="entirecamera_$a.fits"
             i=$ourDatadir/"$base".cat
 
             out_tmp=$matchdir2/"$objectName"_Decals_"$a"_tmp.cat
-            out=$matchdir2/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".cat
+            out=$matchdir2/"$objectName"_Decals-"$filter"_"$a".cat
 
             astmatch $decalsdir/decals_"$base".cat --hdu=1 $i --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aRA,aDEC,bRA,bDEC,aMAGNITUDE,aSUM,bMAGNITUDE,bSUM -o$out_tmp
             asttable $out_tmp --output=$out --colmetadata=1,RA,deg,"Right ascension DECaLs" \
@@ -1425,24 +1528,24 @@ computeAndStoreFactors() {
     brightLimit=$3
     faintLimit=$4
 
-    alphatruedone=$alphatruedir/done_ccd"$h".txt
+    alphatruedone=$alphatruedir/done.txt
     numberOfStarsUsedToCalibrateFile=$alphatruedir/numberOfStarsUsedForCalibrate.txt
 
     if ! [ -d $alphatruedir ]; then mkdir $alphatruedir; fi
     if [ -f $alphatruedone ]; then
-        echo -e "\nTrustable alphas computed for extension $h\n"
+        echo -e "\n\tTrustable alphas computed for extension $h\n"
     else
         for a in $(seq 1 $totalNumberOfFrames); do
             base="$a".txt
-            f=$matchdir2/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".cat
+            f=$matchdir2/"$objectName"_Decals-"$filter"_"$a".cat
 
-            alphatruet=$alphatruedir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt
+            alphatruet=$alphatruedir/"$objectName"_Decals-"$filter"_"$a".txt
             asttable $f -h1 --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
             asttable $alphatruet -h1 -c1,2,3,'arith $6 $8 /' -o$alphatruedir/$base
 
             mean=$(asttable $alphatruedir/$base -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
             std=$(asttable $alphatruedir/$base -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
-            echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt
+            echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
             count=$(asttable $alphatruedir/$base -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
             echo "Frame number $a: $count" >> $numberOfStarsUsedToCalibrateFile
         done
@@ -1461,11 +1564,13 @@ computeCalibrationFactors() {
     brightLimit=$8
     faintLimit=$9
     tileSize=${10}
+    numberOfFWHMForPhotometry=${11}
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $tileSize
+
 
     matchdir2=$BDIR/match-decals-myData_it$iteration
     echo -e "\n ${GREEN} ---Matching our data and Decals--- ${NOCOLOUR}"
@@ -1473,15 +1578,15 @@ computeCalibrationFactors() {
 
     decalsdir=$BDIR/decals-aperture-catalog_it$iteration
     echo -e "\n ${GREEN} ---Building Decals catalogue for (matched) calibration stars--- ${NOCOLOUR}"
-    buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir
+    buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMForPhotometry
 
     ourDataCatalogueDir=$BDIR/ourData-catalogs-apertures_it$iteration
     echo -e "\n ${GREEN} ---Building our catalogue for calibration stars--- ${NOCOLOUR}"
-    buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $matchdir2 $mycatdir
+    buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $matchdir2 $mycatdir $numberOfFWHMForPhotometry
 
     echo -e "\n ${GREEN} ---Matching calibration stars catalogues--- ${NOCOLOUR}"
     matchCalibrationStarsCatalogues $matchdir2 $ourDataCatalogueDir $decalsdir
-    
+
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir2 $brightLimit $faintLimit
 }
@@ -1493,10 +1598,9 @@ applyCalibrationFactorsToFrame() {
     alphatruedir=$3
     photCorrDir=$4
 
-    h=0
     base=entirecamera_"$a".fits
     f=$imagesForCalibration/"entirecamera_$a.fits"
-    alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt
+    alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
     alpha=$(awk 'NR=='1'{print $1}' $alpha_cat)
     echo astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/$base
     astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/$base
@@ -1508,10 +1612,10 @@ applyCalibrationFactors() {
     alphatruedir=$2
     photCorrDir=$3
 
-    muldone=$photCorrDir/done_ccd"$h".txt
+    muldone=$photCorrDir/done.txt
     if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
     if [ -f $muldone ]; then
-            echo -e "\nMultiplication for alpha in the pointings (huge grid) is done for extension $h\n"
+            echo -e "\n\tMultiplication for alpha in the pointings (huge grid) is done for extension $h\n"
     else
         framesToApplyFactor=()
         for a in $(seq 1 $totalNumberOfFrames); do
@@ -1571,7 +1675,7 @@ computeWeights() {
     iteration=$7
 
     if [ -f $wdone ]; then
-        echo -e "\nWeights computation done for extension $h\n"
+        echo -e "\n\tWeights computation done for extension $h\n"
     else
         framesToComputeWeight=()
         for a in $(seq 1 $totalNumberOfFrames); do
@@ -1593,7 +1697,7 @@ buildUpperAndLowerLimitsForOutliers() {
 
     if ! [ -d $clippingdir ]; then mkdir $clippingdir; fi
     if [ -f $clippingdone ]; then
-            echo -e "\nUpper and lower limits for building the masked of the weighted images already computed\n"
+            echo -e "\n\tUpper and lower limits for building the masked of the weighted images already computed\n"
     else
             # Compute clipped median and std
             med_im=$clippingdir/median_image.fits
@@ -1705,8 +1809,8 @@ produceAstrometryCheckPlot() {
         myFrame=$i
         frameNumber=$(echo "$i" | awk -F '[/]' '{print $(NF)}' | awk -F '[.]' '{print $(1)}' | awk -F '[_]' '{print $(NF)}')
         referenceFrame=$referenceCatalogue/*_$frameNumber.*
-        astmatch $referenceFrame --hdu=1 $myFrame --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=2/3600 --outcols=aRA,aDEC,bRA,bDEC -o./$astrometryTmpDir/$frameNumber.cat
-    done
+        astmatch $referenceFrame --hdu=1 $myFrame --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1.7/3600 --outcols=aRA,aDEC,bRA,bDEC -o./$astrometryTmpDir/$frameNumber.cat
+       done
 
     python3 $pythonScriptsPath/diagnosis_deltaRAdeltaDEC.py $astrometryTmpDir $output $pixelScale
     rm -r $astrometryTmpDir
@@ -1722,6 +1826,7 @@ produceCalibrationCheckPlot() {
     output=$6
     calibrationBrighLimit=$7
     calibrationFaintLimit=$8
+    numberOfFWHMToUse=$9
 
     tmpDir="./calibrationDiagnosisTmp"
     if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
@@ -1736,7 +1841,7 @@ produceCalibrationCheckPlot() {
         fileWithMyApertureData=$aperturesForMyData_dir/range1_entirecamera_$frameNumber*
 
         r_myData_pix_=$(awk 'NR==1 {printf $1}' $fileWithMyApertureData)
-        r_myData_pix=$(astarithmetic $r_myData_pix_ 3. x -q )
+        r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfFWHMToUse. x -q )
 
         # raColumnName=RA
         # decColumnName=DEC
@@ -1756,7 +1861,7 @@ produceCalibrationCheckPlot() {
   done
 
 python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $calibrationBrighLimit $calibrationFaintLimit
-# rm -rf $tmpDir
+rm -rf $tmpDir
 }
 export -f produceCalibrationCheckPlot
 
@@ -1777,14 +1882,16 @@ produceHalfMaxRadVsMagForSingleImage() {
     # catalogueName=$(generateCatalogueFromImage_noisechisel $image $outputDir $a $tileSize)
     catalogueName=$(generateCatalogueFromImage_sextractor $image $outputDir $a)
 
-    astmatch $catalogueName --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt 
+    astmatch $catalogueName --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt 
     
-    plotXLowerLimit=1
+    plotXLowerLimit=0.5
     plotXHigherLimit=15
     plotYLowerLimit=12
     plotYHigherLimit=22
     python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png  \
         $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
+
+    rm $catalogueName $outputDir/match_decals_gaia_$a.txt 
 }
 export -f produceHalfMaxRadVsMagForSingleImage
 
@@ -1814,10 +1921,10 @@ buildCoadd() {
     moonwdir=$4
 
 
-    coaddone=$coaddir/done_"$k".txt
+    coaddone=$coaddir/done.txt
     if ! [ -d $coaddir ]; then mkdir $coaddir; fi
     if [ -f $coaddone ]; then
-            echo -e "\nThe first weighted (based upon std) mean of the images already done\n"
+            echo -e "\n\tThe first weighted (based upon std) mean of the images already done\n"
     else
             astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_wx.fits
             astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_w.fits
