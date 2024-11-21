@@ -85,6 +85,7 @@ checkIfAllVariablesAreSet
 
 outputConfigurationVariablesInformation
 
+
 # The following lines are responsible of the cpu's used for paralellise
 # If it is running in a system with slurm it takes the number of cpu's from the slurm job
 # Otherwise it takes it from the provided configuration file
@@ -422,7 +423,6 @@ oneNightPreProcessing() {
     wholeNightFlatToUse=$flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone
   fi
-
 
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
@@ -859,6 +859,7 @@ else
 fi
 
 
+
 sexcfg=$CDIR/default.sex
 # Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
@@ -884,9 +885,10 @@ else
       i=$framesForCommonReductionDir/$base
       frameNames+=("$i")
   done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $astrocfg $astroimadir
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir
   echo done > $astroimadone
 fi
+
 
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
@@ -908,7 +910,7 @@ else
     for a in $(seq 1 $totalNumberOfFrames); do
         frameNames+=("$a")
     done
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
     echo done > $sexdone
 fi
 
@@ -1473,8 +1475,6 @@ fi
 
 endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"
-
-
 exit 0
 
 

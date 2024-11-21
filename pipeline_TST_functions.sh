@@ -82,7 +82,9 @@ outputConfigurationVariablesInformation() {
         "·Calibration range"
         "  Bright limit:$calibrationBrightLimit:[mag]"
         "  Faint limit:$calibrationFaintLimit:[mag]"
+        "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry:[FWHM]"
         "·Saturation threshold:$saturationThreshold:[ADU]"
+        "·Gain:$gain:[e-/ADU]"
         "·Approximately size of the field:$sizeOfOurFieldDegrees:[deg]"
         "·Size of the coadd:$coaddSizePx:[px]"
         " "
@@ -184,6 +186,7 @@ checkIfAllVariablesAreSet() {
                 airMassKeyWord \ 
                 dateHeaderKey \
                 saturationThreshold \
+                gain \
                 sizeOfOurFieldDegrees \
                 coaddSizePx \
                 calibrationBrightLimit \
@@ -1008,7 +1011,7 @@ solveField() {
     solve_field_u_Param=$4
     ra_gal=$5
     dec_gal=$6
-    astrocfg=$7
+    confFile=$7
     astroimadir=$8
 
     base=$( basename $i)
@@ -1018,8 +1021,8 @@ solveField() {
     # Maybe a bug? I have not managed to make it work
     solve-field $i --no-plots \
     -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
-    --ra=$ra_gal --dec=$dec_gal --radius=2. \
-    --overwrite --extension 1 --config $astrocfg --no-verify -E 1 -c 0.01 \
+    --ra=$ra_gal --dec=$dec_gal --radius=3. \
+    --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify -E 1 -c 0.01 \
     --odds-to-solve 1e9 \
     --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
     -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
@@ -1033,9 +1036,15 @@ runSextractorOnImage() {
     sexconv=$4
     astroimadir=$5
     sexdir=$6
+    saturationThreshold=$7
+    gain=$8 
 
+    # Here I put the saturation threshold and the gain directly.
+    # This is because it's likely that we end up forgetting about tuning the sextractor configuration file but we will be more careful with the configuration file of the reductions
+    # These two values (saturation level and gain) are key for astrometrising correctly, they are used by scamp for identifying saturated sources and weighting the sources
+    # I was, in fact, having frames bad astrometrised due to this parameters.
     i=$astroimadir/"$a".fits
-    source-extractor $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat
+    source-extractor $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat -SATUR_LEVEL=$saturationThreshold -GAIN=$gain
 }
 export -f runSextractorOnImage
 
