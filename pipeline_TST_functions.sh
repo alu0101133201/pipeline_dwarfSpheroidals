@@ -43,7 +43,7 @@ writeTimeOfStepToFile() {
 
     echo "Step: $step. Start time:  $(date +%D-%T)" >> $file
 }
-export -f writeTimeToFile
+export -f writeTimeOfStepToFile
 
 loadVariablesFromFile() {
   file=$1
@@ -143,7 +143,7 @@ outputConfigurationVariablesInformation() {
     printf "\t%-60s $ORANGE %-20s $GREEN %-10s $NOCOLOUR\n" "$text" "$value" "$unit"
     done
 }
-export -f test
+export -f outputConfigurationVariablesInformationl
 
 escapeSpacesFromString() {
     local input="$1"
@@ -1044,6 +1044,7 @@ runSextractorOnImage() {
     # These two values (saturation level and gain) are key for astrometrising correctly, they are used by scamp for identifying saturated sources and weighting the sources
     # I was, in fact, having frames bad astrometrised due to this parameters.
     i=$astroimadir/"$a".fits
+    echo source-extractor $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat -SATUR_LEVEL=$saturationThreshold -GAIN=$gain
     source-extractor $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat -SATUR_LEVEL=$saturationThreshold -GAIN=$gain
 }
 export -f runSextractorOnImage
@@ -1860,6 +1861,7 @@ produceCalibrationCheckPlot() {
     calibrationBrighLimit=$7
     calibrationFaintLimit=$8
     numberOfFWHMToUse=$9
+    outputDir=${10}
 
     tmpDir="./calibrationDiagnosisTmp"
     if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
@@ -1893,7 +1895,7 @@ produceCalibrationCheckPlot() {
         rm $tmpDir/$frameNumber.cat
   done
 
-python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $calibrationBrighLimit $calibrationFaintLimit
+python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
 rm -rf $tmpDir
 }
 export -f produceCalibrationCheckPlot

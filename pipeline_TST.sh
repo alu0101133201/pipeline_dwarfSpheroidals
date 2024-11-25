@@ -837,6 +837,7 @@ else
 fi
 
 
+
 # Making the indexes
 writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
 echo -e "·Downloading Indices for astrometrisation"
@@ -889,7 +890,6 @@ else
   echo done > $astroimadone
 fi
 
-
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -928,8 +928,10 @@ if [ -f $scampdone ]; then
 else
     scamp -c $scampcfg $(ls -v $sexdir/*.cat)
     mv *.pdf $scampres/
+    mv scamp.xml $scampdir
     echo done > $scampdone
 fi
+
 
 # We copy the files for improving the astrometry into the folder of the images that we are going to warp
 cp $sexdir/*.head $astroimadir
@@ -961,6 +963,24 @@ else
   echo done > $entiredone
 fi
 
+# Checking and removing bad astrometrised frames ------
+diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+badFilesWarningsFile=identifiedBadFrames_astrometry.txt
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_astrometry.txt
+if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
+if [ -f $badFilesWarningsDone ]; then
+    echo -e "\n\tBad astrometrised frames warning already done\n"
+else
+  scampXMLFilePath=$scampdir/scamp.xml
+  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile
+  echo done > $badFilesWarningsDone
+fi
+
+rejectedFramesDir=$BDIR/rejectedFrames_astrometry
+if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bas astrometrised"
+removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 
@@ -1002,7 +1022,7 @@ else
   if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
     tmpDir=$noiseskydir
   else
-    tmpDir=$noiseskyctedir
+    tmpDir=$noiseskyctedirk
   fi
   python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
   echo done > $badFilesWarningsDone
@@ -1047,14 +1067,12 @@ decalsImagesDir=$mosaicDir/decalsImages
 writeTimeOfStepToFile "DECaLs data processing" $fileForTimeStamps
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
 
-
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
-
 
 # Checking and removing bad frames based on the FWHM value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1109,7 +1127,8 @@ calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
 if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
-    produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit  $numberOfFWHMForPhotometry
+    produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 \
+                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit  $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir
 fi
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
@@ -1220,62 +1239,62 @@ fi
 
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
-if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-  coaddPlaneDone=$coaddDir/done_plane.txt
-  if [ -f $coaddPlaneDone ]; then
-    echo -e "\n\tCoadd with background modelled as a plane already done"
-  else 
-    planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd_it$iteration
-    planeEstimationForCoaddDone=$planeEstimationForCoaddDir/done.txt
-    polynomialDegree=1
-    if ! [ -d $planeEstimationForCoaddDir ]; then mkdir $planeEstimationForCoaddDir; fi
-    computeSky $photCorrSmallGridDir $planeEstimationForCoaddDir $planeEstimationForCoaddDone false $sky_estimation_method $polynomialDegree false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+# if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+#   coaddPlaneDone=$coaddDir/done_plane.txt
+#   if [ -f $coaddPlaneDone ]; then
+#     echo -e "\n\tCoadd with background modelled as a plane already done"
+#   else 
+#     planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd_it$iteration
+#     planeEstimationForCoaddDone=$planeEstimationForCoaddDir/done.txt
+#     polynomialDegree=1
+#     if ! [ -d $planeEstimationForCoaddDir ]; then mkdir $planeEstimationForCoaddDir; fi
+#     computeSky $photCorrSmallGridDir $planeEstimationForCoaddDir $planeEstimationForCoaddDone false $sky_estimation_method $polynomialDegree false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 
-    planeSubtractionForCoaddDir=$BDIR/planeSubtractionBeforeCoadd_it$iteration
-    if ! [ -d $planeSubtractionForCoaddDir ]; then mkdir $planeSubtractionForCoaddDir; fi
-    planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
-    subtractSky $photCorrFullGridDir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
+#     planeSubtractionForCoaddDir=$BDIR/planeSubtractionBeforeCoadd_it$iteration
+#     if ! [ -d $planeSubtractionForCoaddDir ]; then mkdir $planeSubtractionForCoaddDir; fi
+#     planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
+#     subtractSky $photCorrFullGridDir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
 
-    noiseskyPlaneDir=$BDIR/noise-sky_forPlaneCoadd_it$iteration
-    if ! [ -d $noiseskyPlaneDir ]; then mkdir $noiseskyPlaneDir; fi
-    noiseskyPlaneDone=$noiseskyPlaneDir/done.txt
-    computeSky $planeSubtractionForCoaddDir $noiseskyPlaneDir $noiseskyPlaneDone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+#     noiseskyPlaneDir=$BDIR/noise-sky_forPlaneCoadd_it$iteration
+#     if ! [ -d $noiseskyPlaneDir ]; then mkdir $noiseskyPlaneDir; fi
+#     noiseskyPlaneDone=$noiseskyPlaneDir/done.txt
+#     computeSky $planeSubtractionForCoaddDir $noiseskyPlaneDir $noiseskyPlaneDone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
     
-    minRmsFileName=min_rms_plane_it$iteration.txt
-    python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskyPlaneDir $DIR $iteration $minRmsFileName
+#     minRmsFileName=min_rms_plane_it$iteration.txt
+#     python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskyPlaneDir $DIR $iteration $minRmsFileName
 
-    wdir=$BDIR/weight-dir_plane_it$iteration
-    wonlydir=$BDIR/only-w-dir_plane_it$iteration
-    wdone=$wdir/done.txt
-    wonlydone=$wonlydir/done.txt
-    if ! [ -d $wdir ]; then mkdir $wdir; fi
-    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-    # We provide the fullGrid because we are going to combine then now
-    computeWeights $wdir $wdone $wonlydir $wonlydone $planeSubtractionForCoaddDir $noiseskyPlaneDir $iteration $minRmsFileName
+#     wdir=$BDIR/weight-dir_plane_it$iteration
+#     wonlydir=$BDIR/only-w-dir_plane_it$iteration
+#     wdone=$wdir/done.txt
+#     wonlydone=$wonlydir/done.txt
+#     if ! [ -d $wdir ]; then mkdir $wdir; fi
+#     if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+#     # We provide the fullGrid because we are going to combine then now
+#     computeWeights $wdir $wdone $wonlydir $wonlydone $planeSubtractionForCoaddDir $noiseskyPlaneDir $iteration $minRmsFileName
 
-    sigmaForStdSigclip=2
-    clippingdir=$BDIR/clipping-outliers_plane_it$iteration
-    clippingdone=$clippingdir/done.txt
-    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
+#     sigmaForStdSigclip=2
+#     clippingdir=$BDIR/clipping-outliers_plane_it$iteration
+#     clippingdone=$clippingdir/done.txt
+#     buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
-    mowdir=$BDIR/weight-dir-no-outliers_plane_it$iteration
-    moonwdir=$BDIR/only-weight-dir-no-outliers_plane_it$iteration
-    mowdone=$mowdir/done.txt
-    if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-    if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
-    removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
+#     mowdir=$BDIR/weight-dir-no-outliers_plane_it$iteration
+#     moonwdir=$BDIR/only-weight-dir-no-outliers_plane_it$iteration
+#     mowdone=$mowdir/done.txt
+#     if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+#     if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
+#     removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
-    coaddDir=$BDIR/coadds
-    coaddDone=$coaddDir/done_plane.txt
-    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_plane.fits
-    buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+#     coaddDir=$BDIR/coadds
+#     coaddDone=$coaddDir/done_plane.txt
+#     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_plane.fits
+#     buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-    keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
-    numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-    values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
-    addkeywords $coaddName keyWords values
-  fi
-fi
+#     keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
+#     numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+#     values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
+#     addkeywords $coaddName keyWords values
+#   fi
+# fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
@@ -1416,62 +1435,62 @@ else
 fi
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
-if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-  coaddPlaneDone=$coaddDir/done_plane.txt
-  if [ -f $coaddPlaneDone ]; then
-    echo -e "\n\tCoadd with background modelled as a plane already done"
-  else 
-    planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd_it$iteration
-    planeEstimationForCoaddDone=$planeEstimationForCoaddDir/done.txt
-    polynomialDegree=1
-    if ! [ -d $planeEstimationForCoaddDir ]; then mkdir $planeEstimationForCoaddDir; fi
-    computeSky $photCorrSmallGridDir $planeEstimationForCoaddDir $planeEstimationForCoaddDone false $sky_estimation_method $polynomialDegree false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+# if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+#   coaddPlaneDone=$coaddDir/done_plane.txt
+#   if [ -f $coaddPlaneDone ]; then
+#     echo -e "\n\tCoadd with background modelled as a plane already done"
+#   else 
+#     planeEstimationForCoaddDir=$BDIR/planeEstimationBeforeCoadd_it$iteration
+#     planeEstimationForCoaddDone=$planeEstimationForCoaddDir/done.txt
+#     polynomialDegree=1
+#     if ! [ -d $planeEstimationForCoaddDir ]; then mkdir $planeEstimationForCoaddDir; fi
+#     computeSky $photCorrSmallGridDir $planeEstimationForCoaddDir $planeEstimationForCoaddDone false $sky_estimation_method $polynomialDegree false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 
-    planeSubtractionForCoaddDir=$BDIR/planeSubtractionBeforeCoadd_it$iteration
-    if ! [ -d $planeSubtractionForCoaddDir ]; then mkdir $planeSubtractionForCoaddDir; fi
-    planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
-    subtractSky $photCorrFullGridDir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
+#     planeSubtractionForCoaddDir=$BDIR/planeSubtractionBeforeCoadd_it$iteration
+#     if ! [ -d $planeSubtractionForCoaddDir ]; then mkdir $planeSubtractionForCoaddDir; fi
+#     planeSubtractionForCoaddDone=$planeSubtractionForCoaddDir/done.txt
+#     subtractSky $photCorrFullGridDir $planeSubtractionForCoaddDir $planeSubtractionForCoaddDone $planeEstimationForCoaddDir false
 
-    noiseskyPlaneDir=$BDIR/noise-sky_forPlaneCoadd_it$iteration
-    if ! [ -d $noiseskyPlaneDir ]; then mkdir $noiseskyPlaneDir; fi
-    noiseskyPlaneDone=$noiseskyPlaneDir/done.txt
-    computeSky $planeSubtractionForCoaddDir $noiseskyPlaneDir $noiseskyPlaneDone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+#     noiseskyPlaneDir=$BDIR/noise-sky_forPlaneCoadd_it$iteration
+#     if ! [ -d $noiseskyPlaneDir ]; then mkdir $noiseskyPlaneDir; fi
+#     noiseskyPlaneDone=$noiseskyPlaneDir/done.txt
+#     computeSky $planeSubtractionForCoaddDir $noiseskyPlaneDir $noiseskyPlaneDone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
     
-    minRmsFileName=min_rms_plane_it$iteration.txt
-    python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskyPlaneDir $DIR $iteration $minRmsFileName
+#     minRmsFileName=min_rms_plane_it$iteration.txt
+#     python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskyPlaneDir $DIR $iteration $minRmsFileName
 
-    wdir=$BDIR/weight-dir_plane_it$iteration
-    wonlydir=$BDIR/only-w-dir_plane_it$iteration
-    wdone=$wdir/done.txt
-    wonlydone=$wonlydir/done.txt
-    if ! [ -d $wdir ]; then mkdir $wdir; fi
-    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-    # We provide the fullGrid because we are going to combine then now
-    computeWeights $wdir $wdone $wonlydir $wonlydone $planeSubtractionForCoaddDir $noiseskyPlaneDir $iteration $minRmsFileName
+#     wdir=$BDIR/weight-dir_plane_it$iteration
+#     wonlydir=$BDIR/only-w-dir_plane_it$iteration
+#     wdone=$wdir/done.txt
+#     wonlydone=$wonlydir/done.txt
+#     if ! [ -d $wdir ]; then mkdir $wdir; fi
+#     if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+#     # We provide the fullGrid because we are going to combine then now
+#     computeWeights $wdir $wdone $wonlydir $wonlydone $planeSubtractionForCoaddDir $noiseskyPlaneDir $iteration $minRmsFileName
 
-    sigmaForStdSigclip=2
-    clippingdir=$BDIR/clipping-outliers_plane_it$iteration
-    clippingdone=$clippingdir/done.txt
-    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
+#     sigmaForStdSigclip=2
+#     clippingdir=$BDIR/clipping-outliers_plane_it$iteration
+#     clippingdone=$clippingdir/done.txt
+#     buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
-    mowdir=$BDIR/weight-dir-no-outliers_plane_it$iteration
-    moonwdir=$BDIR/only-weight-dir-no-outliers_plane_it$iteration
-    mowdone=$mowdir/done.txt
-    if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-    if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
-    removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
+#     mowdir=$BDIR/weight-dir-no-outliers_plane_it$iteration
+#     moonwdir=$BDIR/only-weight-dir-no-outliers_plane_it$iteration
+#     mowdone=$mowdir/done.txt
+#     if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+#     if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
+#     removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
-    coaddDir=$BDIR/coadds_it$iteration
-    coaddDone=$coaddDir/done_plane.txt
-    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_plane.fits
-    buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+#     coaddDir=$BDIR/coadds_it$iteration
+#     coaddDone=$coaddDir/done_plane.txt
+#     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_plane.fits
+#     buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-    keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
-    numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-    values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
-    addkeywords $coaddName keyWords values
-  fi
-fi
+#     keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
+#     numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+#     values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
+#     addkeywords $coaddName keyWords values
+#   fi
+# fi
 
 endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"

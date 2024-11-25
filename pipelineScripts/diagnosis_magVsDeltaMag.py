@@ -1,5 +1,7 @@
+import os
 import sys
 import glob
+import random
 
 import numpy as np
 
@@ -63,17 +65,61 @@ def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimi
             diffMagInRange.append(magDiff[i])
     return(np.sqrt(np.mean(np.array(diffMagInRange)**2)))
 
+def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, imageName):
+    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+    configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=False)
+    ax.set_ylim(-1, 2)
+    ax.set_xlim(12, 23)
+
+    ax.vlines(x=calibrationBrightLimit, ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--", label="Calibration region")
+    ax.vlines(x=calibrationFaintLimit,  ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--")
+
+    ax.hlines(y=0, xmin=12, xmax=23, color="black", lw=1.5, ls="--")
+    scatter = ax.scatter(mag1Total, magDiff, s=25, c=frameNumber, cmap='viridis', edgecolor="black")
+    cbar = plt.colorbar(scatter)
+    cbar.set_label('Frame Number', rotation=270, labelpad=20, fontsize=22)
+
+    ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
+        fontsize=24, verticalalignment='top', horizontalalignment='left')
+    ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
+        fontsize=24, verticalalignment='top', horizontalalignment='left')
+
+    ax.legend(fontsize=22)
+    plt.savefig(imageName)
+
+def plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, totalScatter, scatterInRange, imageName):
+    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+    configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=False)
+    ax.set_ylim(-1, 2)
+    ax.set_xlim(12, 23)
+
+    ax.vlines(x=calibrationBrightLimit, ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--", label="Calibration region")
+    ax.vlines(x=calibrationFaintLimit,  ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--")
+
+    ax.hlines(y=0, xmin=12, xmax=23, color="black", lw=1.5, ls="--")
+    ax.scatter(mag1Total, magDiff, s=25, color="teal", edgecolor="black")
+    ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
+        fontsize=24, verticalalignment='top', horizontalalignment='left')
+    ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
+        fontsize=24, verticalalignment='top', horizontalalignment='left')
+
+    ax.legend(fontsize=22)
+    plt.savefig(imageName)
+
+setMatplotlibConf()
 
 directoryWithTheCatalogues = sys.argv[1]
-imageName = sys.argv[2]
-calibrationBrightLimit = float(sys.argv[3])
-calibrationFaintLimit  = float(sys.argv[4])
+outputName = sys.argv[2]
+outputDir  = sys.argv[3]
+calibrationBrightLimit = float(sys.argv[4])
+calibrationFaintLimit  = float(sys.argv[5])
 
 magDiff = np.array([])
 magDiffAbs = np.array([])
 mag1Total = np.array([])
 frameNumber = np.array([])
 
+# Calibration plot for all the frames
 for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
     mag1, mag2 = read_columns_from_file(file)
     mag1Total = np.append(mag1Total, mag1)
@@ -81,41 +127,28 @@ for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
     magDiffAbs = np.append(magDiffAbs, np.array(np.abs(mag1 - mag2)))
 
     tmp = np.array(np.abs(mag1 - mag2))
-    mask1 = tmp > 0.3
-    mask2 = mag1 < 17.5
-    finalMask = (mask1 & mask2)
-    
-    print("\nfile: ", file)
-    print(mag1[finalMask])
-    print(tmp[finalMask])
-
     frameNumber = np.append(frameNumber, np.repeat(index, len(mag1)))
-
-
 
 totalScatter = np.sqrt(np.mean(magDiffAbs**2))
 scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, outputName)
 
-setMatplotlibConf()
 
-fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=False)
-ax.set_ylim(-1, 2)
-ax.set_xlim(15, 23)
+# Individual calibration plot for a set of frames
+numberOfFilesToShowCalibrationPlotIndividually = 4
+allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
 
-ax.vlines(x=calibrationBrightLimit, ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--", label="Calibration region")
-ax.vlines(x=calibrationFaintLimit,  ymin = -1, ymax = 2, lw=2, color="grey", linestyle="--")
+if len(allFrames) < numberOfFilesToShowCalibrationPlotIndividually:
+    print(f"Not enough files to perform the calibration plot of 4 frames. Only found {len(allFrames)} frames.")
+else:
+    selected_files = random.sample(allFrames, numberOfFilesToShowCalibrationPlotIndividually)
 
-ax.hlines(y=0, xmin=15, xmax=23, color="black", lw=1.5, ls="--")
-scatter = ax.scatter(mag1Total, magDiff, s=25, c=frameNumber, cmap='viridis', edgecolor="black")
-cbar = plt.colorbar(scatter)
-cbar.set_label('Frame Number', rotation=270, labelpad=20, fontsize=22)
+    for file_name in selected_files:
+        number = file_name.split('_')[0]
+        mag1, mag2 = read_columns_from_file(directoryWithTheCatalogues + "/" + file_name)
+        magDiff = np.array((mag1 - mag2))
+        magDiffAbs = np.array(np.abs(mag1 - mag2))
 
-ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
-    fontsize=24, verticalalignment='top', horizontalalignment='left')
-
-ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
-    fontsize=24, verticalalignment='top', horizontalalignment='left')
-
-ax.legend(fontsize=22)
-plt.savefig(imageName)
+        totalScatter = np.sqrt(np.mean(magDiffAbs**2))
+        scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+        plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir + "/calibrationPlot_" + number + ".png")

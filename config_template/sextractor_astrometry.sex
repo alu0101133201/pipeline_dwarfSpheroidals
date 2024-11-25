@@ -13,8 +13,8 @@ PARAMETERS_NAME  ./config/default.param  # name of the file containing catalog c
  
 DETECT_TYPE      CCD            # CCD (linear) or PHOTO (with gamma correction)
 DETECT_MINAREA   5              # minimum number of pixels above threshold
-DETECT_THRESH    2            # <sigmas> or <threshold>,<ZP> in mag.arcsec-2
-ANALYSIS_THRESH  2            # <sigmas> or <threshold>,<ZP> in mag.arcsec-2
+DETECT_THRESH    3            # <sigmas> or <threshold>,<ZP> in mag.arcsec-2
+ANALYSIS_THRESH  3            # <sigmas> or <threshold>,<ZP> in mag.arcsec-2
  
 FILTER           Y              # apply filter for detection (Y or N)?
 FILTER_NAME      ./config/default.conv   # name of the file containing the filter
@@ -39,8 +39,8 @@ SATUR_LEVEL      58000.0        # level (in ADUs) at which arises saturation
 
 MAG_ZEROPOINT    22.5            # magnitude zero-point
 MAG_GAMMA        4.0            # gamma of emulsion (for photographic scans)
-GAIN             0.4            # detector gain in e-/ADU
-PIXEL_SCALE      1.0            # size of pixel in arcsec (0=use FITS WCS info)
+GAIN             0.41            # detector gain in e-/ADU
+PIXEL_SCALE      1.8            # size of pixel in arcsec (0=use FITS WCS info)
  
 #------------------------- Star/Galaxy Separation ----------------------------
  
