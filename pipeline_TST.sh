@@ -1143,7 +1143,6 @@ else
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
-exit 0
 
 # ---------------------------------------------------
 
@@ -1357,7 +1356,6 @@ imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
 
-exit 0
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
