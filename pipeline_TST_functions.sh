@@ -1110,7 +1110,6 @@ selectStarsAndSelectionRangeDecalsForFrame() {
     base="entirecamera_"$a.fits
     bricks=$( getBricksWhichCorrespondToFrame $framesForCalibrationDir/$base $frameBrickCorrespondenceFile )
 
-    
     # Why do we need each process to go into its own folder? 
     # Even if all the temporary files have a unique name (whatever_$a...), swarpgenerates tmp files in the working directory
     # So, if two different sets of bricks are being processed at the same time and they have some common brick, it might fail
@@ -1297,6 +1296,7 @@ prepareDecalsDataForPhotometricCalibration() {
     echo -e "\n ${GREEN} ---Downloading GAIA catalogue for our field --- ${NOCOLOUR}"
     downloadGaiaCatalogueForField $mosaicDir
 
+    
     # First of all remember that we need to do the photometric calibration frame by frame.
     # For each frame of the data, due to its large field, we have multiple (in our case 4 - defined in "downloadBricksForFrame.py") decals bricks
     echo -e "\n ${GREEN} --- Selecting stars and star selection range for Decals--- ${NOCOLOUR}"
@@ -1432,22 +1432,28 @@ buildDecalsCatalogueOfMatchedSources() {
     mosaicDir=$4
     decalsImagesDir=$5
     numberOfFWHMToUse=$6
+    iteration=$7
 
-    # this function has to be paralellised so we can save some time
-    # Be careful when paralellising because now the common file "apertures_decals" is used, but this will have to be changed
-    # to an individual frame (with different name) so it is successfully parallelised
-
-    decalsdone=$decalsdir/done.txt
-    if ! [ -d $decalsdir ]; then mkdir $decalsdir; fi
-    if [ -f $decalsdone ]; then
-        echo -e "\n\tDecals: catalogue for the calibration stars already built\n"
+    # We just compute it for the first iteration since the aperture photometry in decals does not change from iterations
+    # Maybe this should be included in the "prepareDecalsDataForCalibration", but it wasn't initially there so here it is
+    if [ "$iteration" -eq 1 ]; then
+        decalsdone=$decalsdir/done.txt
+        if ! [ -d $decalsdir ]; then mkdir $decalsdir; fi
+        if [ -f $decalsdone ]; then
+            echo -e "\n\tDecals: catalogue for the calibration stars already built\n"
+        else
+            framesToUse=()
+            for a in $(seq 1 $totalNumberOfFrames); do
+                framesToUse+=("$a")
+            done
+            printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildDecalsCatalogueOfMatchedSourcesForFrame {} $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMToUse
+            echo done > $decalsdone
+        fi
     else
-        framesToUse=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            framesToUse+=("$a")
-        done
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildDecalsCatalogueOfMatchedSourcesForFrame {} $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMToUse
-        echo done > $decalsdone
+        echo -e "Decals aperture catalogs already built from previous iterations"
+        folderName=$( echo $decalsdir | cut -d'_' -f1 )
+        cp -r "$folderName"_it1 $decalsdir
+
     fi
 }
 
@@ -1581,14 +1587,13 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $tileSize
 
-
     matchdir2=$BDIR/match-decals-myData_it$iteration
     echo -e "\n ${GREEN} ---Matching our data and Decals--- ${NOCOLOUR}"
     matchDecalsAndOurData $iteration $selectedDecalsStarsDir $mycatdir $matchdir2 
 
     decalsdir=$BDIR/decals-aperture-catalog_it$iteration
     echo -e "\n ${GREEN} ---Building Decals catalogue for (matched) calibration stars--- ${NOCOLOUR}"
-    buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMForPhotometry
+    buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMForPhotometry $iteration
 
     ourDataCatalogueDir=$BDIR/ourData-catalogs-apertures_it$iteration
     echo -e "\n ${GREEN} ---Building our catalogue for calibration stars--- ${NOCOLOUR}"

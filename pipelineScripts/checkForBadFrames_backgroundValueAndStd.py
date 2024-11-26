@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
+from astropy.stats import sigma_clip
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
 
@@ -192,6 +193,35 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         return(float('nan'), float('nan')) 
     return(backgroundValue / airmass, backgroundStd)
 
+def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting):
+    badFiles   = []
+    allFiles   = []
+    allStd     = []
+    allBackgroundValues = []
+
+    for currentFile in glob.glob(folderWithFrames + "/*.txt"):
+        if fnmatch.fnmatch(currentFile, '*done*.txt'):
+            continue
+        currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+
+        if (math.isnan(currentValue)):
+            continue
+        allFiles.append(currentFile)
+        allStd.append(currentStd)
+        allBackgroundValues.append(currentValue)
+
+    allStd = np.array(allStd)
+    allBackgroundValues = np.array(allBackgroundValues)
+
+    std_mask = sigma_clip(allStd, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
+    values_mask = sigma_clip(allBackgroundValues, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
+
+    combined_mask = values_mask | std_mask
+    allFiles = np.array(allFiles)
+    badFiles = allFiles[combined_mask]
+    return(badFiles)
+
+
 HDU_TO_FIND_AIRMASS = 1
 
 folderWithSkyEstimations      = sys.argv[1]
@@ -229,20 +259,8 @@ saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
 
 
 # 3.- Identify what frames are outside the acceptance region ------------------
-badFiles = []
-for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
-    if fnmatch.fnmatch(currentFile, '*done*.txt'):
-        continue
-    currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+badFiles = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
 
-    if (math.isnan(currentValue)):
-        continue
-    if ((currentValue > (backgroundValueMedian + (numberOfStdForRejecting * backgroundValueStd))) or \
-        (currentValue < (backgroundValueMedian - (numberOfStdForRejecting * backgroundValueStd))) or \
-        (currentStd   > (backgroundStdMedian   + (numberOfStdForRejecting * BackgroundStdStd))) or \
-        (currentStd   < (backgroundStdMedian   - (numberOfStdForRejecting * BackgroundStdStd)))):
-        badFiles.append(currentFile.split('/')[-1])
-        
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
         file.write(fileName + '\n')

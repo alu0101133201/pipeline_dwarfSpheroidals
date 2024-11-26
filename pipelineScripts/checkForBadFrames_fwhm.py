@@ -2,15 +2,16 @@ import re
 import sys
 import glob
 import math
+import fnmatch
 import astropy
 
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-from matplotlib.ticker import MultipleLocator
+from astropy.stats import sigma_clip
 from astropy.stats import sigma_clipped_stats
-
+from matplotlib.ticker import MultipleLocator
 
 def setMatplotlibConf():
     rc_fonts = {
@@ -55,7 +56,7 @@ def retrieveFWHMValues(currentFile):
     with open(currentFile, 'r') as f:
         lines = f.readlines()
         if( len(lines) != 1):
-            raise Exception("File with the FWHM estimation contains more that 1 line. Expected 1 line got " + str(len(lines)))
+            raise Exception("File " + currentFile + " with the FWHM estimation contains more that 1 line. Expected 1 line got " + str(len(lines)))
         
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
@@ -121,16 +122,31 @@ fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
 saveHistogram(fwhmValues, fwhmValueMean, fwhmValueStd, outputFolder + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")
 
 
-# 3.- Identify what frames are outside the acceptance region -----------------------
-badFiles = []
-for currentFile in glob.glob(folderWithFWHM + "/range1_*.txt"):
-    fwhmValue = retrieveFWHMValues(currentFile)
+def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
+    badFiles   = []
+    allFiles   = []
+    allFWHM     = []
 
-    if (math.isnan(fwhmValue)):
-        continue
-    if ((fwhmValue > (fwhmValueMean + (numberOfStdForRejecting * fwhmValueStd))) or \
-        (fwhmValue < (fwhmValueMean - (numberOfStdForRejecting * fwhmValueStd)))):
-        badFiles.append(currentFile.split('/')[-1])
+    for currentFile in glob.glob(folderWithFWHM + "/range1_*.txt"):
+        if fnmatch.fnmatch(currentFile, '*done*.txt'):
+            continue
+
+        fwhmValue = retrieveFWHMValues(currentFile)
+        if (math.isnan(fwhmValue)):
+            continue
+        allFiles.append(currentFile)
+        allFWHM.append(fwhmValue)
+
+    allFWHM = np.array(allFWHM)
+
+    mask = sigma_clip(allFWHM, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
+
+    allFiles = np.array(allFiles)
+    badFiles = allFiles[mask]
+    return(badFiles)
+    
+# 3.- Identify what frames are outside the acceptance region -----------------------
+badFiles = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
 
 pattern = r"entirecamera_\d+"
 with open(outputFolder + "/" + outputFile, 'w') as file:

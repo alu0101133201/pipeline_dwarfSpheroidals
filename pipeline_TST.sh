@@ -59,8 +59,8 @@ astrometryModuleName="astrometry.net/0.94"
 load_module $astrometryModuleName
 
 # Needed if using the SIE software
-pythonModuleName="python"
-load_module $pythonModuleName
+# pythonModuleName="python"
+# load_module $pythonModuleName
 
 ########## Handling options and arguments ##########
 OPTSTRING=":h"
@@ -116,16 +116,14 @@ noisechisel_param="--tilesize=$tileSize,$tileSize \
 # # In the nominal TST resolution the default parameters work really bad.
 # # I have modified them to detect fainter signal, since the pixel size is smaller I think it's harder an requires fine-tuning to detect more
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-# tileSize=200
+# tileSize=175
 # noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                     --meanmedqdiff=0.01 \
 #                     --detgrowquant=0.7 \
-#                     --qthresh=0.25 \
-#                     --snquant=0.98 \
 #                     --erode=1 \
-#                     --detgrowmaxholesize=5000 \
+#                     --detgrowmaxholesize=10000 \
 #                     --kernel=$ROOTDIR/"$objectName"/kernel.fits \
 #                     --rawoutput"
+
 
 export noisechisel_param
 
@@ -174,10 +172,6 @@ ra=$ra_gal
 dec=$dec_gal
 export ra
 export dec
-
-echo -e "\nCoordinates of the galaxy:"
-echo -e "\t·RA: ${ORANGE} ${ra} ${NOCOLOUR}"
-echo -e "\t·DEC: ${ORANGE} ${dec} ${NOCOLOUR}"
 
 numberOfNights=$(ls -d $INDIRo/night* | wc -l)
 export numberOfNights
@@ -801,7 +795,6 @@ totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
 
-
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
@@ -837,7 +830,6 @@ else
 fi
 
 
-
 # Making the indexes
 writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
 echo -e "·Downloading Indices for astrometrisation"
@@ -858,7 +850,6 @@ else
   printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catdir $objectName $indexdir
   echo done > $indexdone
 fi
-
 
 
 sexcfg=$CDIR/default.sex
@@ -890,6 +881,7 @@ else
   echo done > $astroimadone
 fi
 
+
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -914,6 +906,8 @@ else
     echo done > $sexdone
 fi
 
+
+
 # Making scamp headers
 writeTimeOfStepToFile "Making Scamp headers" $fileForTimeStamps
 echo -e "·Creatin Scamp headers"
@@ -935,6 +929,7 @@ fi
 
 # We copy the files for improving the astrometry into the folder of the images that we are going to warp
 cp $sexdir/*.head $astroimadir
+
 
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
@@ -963,10 +958,11 @@ else
   echo done > $entiredone
 fi
 
+
 # Checking and removing bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
-badFilesWarningsDone=$diagnosis_and_badFilesDir/done_astrometry.txt
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_astrometry.txt
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tBad astrometrised frames warning already done\n"
@@ -975,6 +971,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile
   echo done > $badFilesWarningsDone
 fi
+
 
 rejectedFramesDir=$BDIR/rejectedFrames_astrometry
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
@@ -1013,7 +1010,7 @@ fi
 # Checking and removing bad frames based on the background value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_backgroundValue.txt
-badFilesWarningsDone=$diagnosis_and_badFilesDir/done_backgroundValue.txt
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_backgroundAndStd.txt
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tbadFiles warning already done\n"
@@ -1047,7 +1044,7 @@ writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
 ### PARAMETERS ###
 toleranceForMatching=2 #arcsec
-sigmaForPLRegion=1 # Parameter for deciding the selection region (half-max-rad region)
+sigmaForPLRegion=2 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
 export sigmaForPLRegion
 
@@ -1067,12 +1064,14 @@ decalsImagesDir=$mosaicDir/decalsImages
 writeTimeOfStepToFile "DECaLs data processing" $fileForTimeStamps
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
 
+
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
+
 
 # Checking and removing bad frames based on the FWHM value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1144,6 +1143,7 @@ else
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
+exit 0
 
 # ---------------------------------------------------
 
@@ -1237,7 +1237,6 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   coaddPlaneDone=$coaddDir/done_plane.txt
@@ -1312,7 +1311,6 @@ find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/decals-aperture-catalog_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/ourData-catalogs-apertures_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtracted -type f ! -name 'done*' -exec rm {} \;
 
@@ -1358,6 +1356,8 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
+
+exit 0
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
@@ -1516,10 +1516,8 @@ find $BDIR/sub-sky-smallGrid_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/photCorrFullGrid-dir_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/photCorrSmallGrid-dir_it2 -type f ! -name 'done*' -exec rm {} \;
 
-
 find $BDIR/my-catalog-halfmaxradius_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it2 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/decals-aperture-catalog_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/ourData-catalogs-apertures_it2 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtractedDir_it2 -type f ! -name 'done*' -exec rm {} \;
 
