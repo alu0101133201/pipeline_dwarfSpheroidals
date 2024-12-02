@@ -1037,6 +1037,43 @@ echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
+#### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
+echo -e "${GREEN} --- Coadding before photometric calibratino --- ${NOCOLOUR} \n"
+writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
+iteration=1
+h=0
+minRmsFileName=min_rms_prev.txt
+pyton3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration min_rms_prev.txt
+
+#Compute weights
+wdir=$BDIR/weight-dir-prephot
+wdone=$wdir/done.txt
+if ! [ -d $wdir ]; then mkdir $wdir; fi
+
+wonlydir=$BDIR/only-w-dir-prev
+wonlydone=$wonlydir/done.txt
+if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+
+computeWeights $wdir $wdone $wonlydir $wonlydone $subskyFullGrid_dir $noiseskydir $iteration $minRmsFileName
+##Mask the outliers
+sigmaForStdSigclip=2
+clippingdir=$BDIR/clipping-outliers-prev
+clippingdone=$clippingdir/done.txt
+buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
+
+mowdir=$BDIR/weight-dir-no-outliers-prev
+moonwdir=$BDIR/only-weight-dir-no-outliers
+mowdone=$mowdir/done.txt
+if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
+removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
+
+##Make the coadd
+coaddDir=$BDIR/coadds-prev
+coaddDone=$coaddDir/done.txt
+coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
+buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
