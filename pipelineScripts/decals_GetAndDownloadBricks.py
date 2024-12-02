@@ -183,13 +183,16 @@ def downloadBrick(brickName, filters, destinationFolder, overWrite=True):
                 "https://portal.nersc.gov/cfs/cosmo/data/legacysurvey/dr10/north/coadd",
                 "https://portal.nersc.gov/cfs/cosmo/data/legacysurvey/dr9/south/coadd",
                 "https://portal.nersc.gov/cfs/cosmo/data/legacysurvey/dr9/north/coadd"]
+            success = False
             for base_url in base_urls:
                 url = f"{base_url}/{block}/{brickName}/legacysurvey-{brickName}-image-{i}.fits.fz"
                 result=os.system(f"wget -O {destinationFolder}/decal_image_{brickName}_{i}.fits '{url}'")
                 if result==0:
-                    return f"{destinationFolder}/decal_image_{brickName}_{i}.fits"
-            raise Exception (f"Error in 'downloadBrick': Brick {brickName} not present in Decals DR9 or DR10.")	
-            return None
+                    success = True
+                    break
+            if not success:
+                raise Exception(f"Error in 'downloadBrick': Brick {brickName} not present in Decals DR9 or DR10.")	
+                
                     
     return()
 # This function obtains the name of the block from the name of the brick
