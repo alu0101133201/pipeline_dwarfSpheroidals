@@ -1260,6 +1260,30 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
+#astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
+if [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd is already done"
+else
+  #We assume that if this works for this iteration, then the next one will need at least same parameters
+  tileSize = $((tileSize - 5))
+  noisechisel_param ="--tilesize=$tileSize,$tileSize \
+                    --erode=1 \
+                    --detgrowmaxholesize=5000 \
+                    --rawoutput"
+  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+fi
+if [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd is already done"
+else
+  #We assume that if this works for this iteration, then the next one will need at least same parameters
+  tileSize = $((tileSize - 5))
+  noisechisel_param ="--tilesize=$tileSize,$tileSize \
+                    --erode=1 \
+                    --detgrowmaxholesize=5000 \
+                    --rawoutput"
+  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+fi
+
 writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
