@@ -1276,8 +1276,8 @@ if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
   #We assume that if this works for this iteration, then the next one will need at least same parameters
-  tileSize = $((tileSize - 5))
-  noisechisel_param ="--tilesize=$tileSize,$tileSize \
+  tileSize=$((tileSize - 5))
+  noisechisel_param="--tilesize=$tileSize,$tileSize \
                     --erode=1 \
                     --detgrowmaxholesize=5000 \
                     --rawoutput"
@@ -1287,8 +1287,8 @@ if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
   #We assume that if this works for this iteration, then the next one will need at least same parameters
-  tileSize = $((tileSize - 5))
-  noisechisel_param ="--tilesize=$tileSize,$tileSize \
+  tileSize=$((tileSize - 5))
+  noisechisel_param="--tilesize=$tileSize,$tileSize \
                     --erode=1 \
                     --detgrowmaxholesize=5000 \
                     --rawoutput"
