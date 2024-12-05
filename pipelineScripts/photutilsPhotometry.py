@@ -54,12 +54,13 @@ image               = sys.argv[2]
 aperture_radius_px  = float(sys.argv[3])
 output              = sys.argv[4]
 zp                  = float(sys.argv[5])
-columnWithXCoordPx  = int(sys.argv[6])
-columnWithYCoordPx  = int(sys.argv[7])
-columnWithXCoordWCS = int(sys.argv[8])
-columnWithYCoordWCS = int(sys.argv[9])
+dataHdu             = int(sys.argv[6])
+columnWithXCoordPx  = int(sys.argv[7])
+columnWithYCoordPx  = int(sys.argv[8])
+columnWithXCoordWCS = int(sys.argv[9])
+columnWithYCoordWCS = int(sys.argv[10])
 
-imageData, shape, wcs = getImageData(image, 1)
+imageData, shape, wcs = getImageData(image, dataHdu)
 
 x, y = getCoordinatesFromCatalogue(catalogue, columnWithXCoordPx, columnWithYCoordPx)
 ra, dec = getCoordinatesFromCatalogue(catalogue, columnWithXCoordWCS, columnWithYCoordWCS)
@@ -84,8 +85,7 @@ for i in range(len(x)):
     aperture_area = currentAperture.area_overlap(imageData)
     total_bkg = bkg_mean * aperture_area
     currentFlux = float(phot_table_local['aperture_sum'][0]) - float(total_bkg)
-
-
+       
     ids.append(i)
     mag.append(-2.5 * np.log10(currentFlux) + zp)
     sums.append(currentFlux)

@@ -16,7 +16,7 @@
 # This folder must contain:
 #   · Scamp conf file
 #   · Swarp conf file
-#   · Sextractor conf files (.conv, .param and .sex)
+#   · Sextractor conf files (.conv, .param and .sex). Two different sets, one for the astrometry and another one for the rest of detections
 
 # The path of the ring(s) definition (.txt file) have to be provided in the configuration file of the galaxy.
 # A common normalisation ring (most of the cases will be centered in the image) has to be provided (mandatory)
@@ -151,6 +151,7 @@ export CDIR
 export DARKDIR
 export keyWordDirectory
 
+if ! [ -d $CDIR ]; then mkdir $CDIR; fi
 if ! [ -d $BDIR ]; then mkdir $BDIR; fi
 if ! [ -d $INDIR ]; then mkdir $INDIR; fi
 if ! [ -d $filtereyWordDirectory ]; then mkdir $filtereyWordDirectory; fi
@@ -163,9 +164,6 @@ echo -e "\t·Config directory ${ORANGE} ${CDIR} ${NOCOLOUR}"
 echo -e "\t·Data directory (INDIR): ${ORANGE} ${INDIR} ${NOCOLOUR}"
 echo -e "\t·Dark Data directory (DARKDIR): ${ORANGE} ${DARKDIR} ${NOCOLOUR}"
 echo -e "\t·KeyWords directory (keyWordDirectory): ${ORANGE} ${keyWordDirectory} ${NOCOLOUR}"
-
-
-if ! [ -d $CDIR ]; then mkdir $CDIR; fi
 
 # Getting the coordinates of the galaxy
 ra=$ra_gal
@@ -309,6 +307,7 @@ oneNightPreProcessing() {
       astarithmetic $i -h1 set-i $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits  -h1  set-m \
                 i i $saturationThreshold gt i isblank or 2 dilate nan where m -  float32  \
                 -o $out
+
 
       propagateKeyword $i $airMassKeyWord $out
       # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
@@ -791,41 +790,37 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
+
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
+
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
 # All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
-
-
 echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
-
-# NOTE: TO DO THING # 
-# The following step is duplicated in the pipeline. It is done here for the astrometry and then for the calibration is also done
-# The difference is that here we provide a radius (3.1 right now) for downloading the catalogue and in the calibration the 
-# field of the DECaLS mosaic is done for downloading the catalog. 
-# This should be refactorised when possible.
 
 writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
 echo -e "·Downloading Gaia Catalogue"
-query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=3.1 --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
+
+
+
+# Here I add some extra size to the field used to download the gaia catalogue
+# This is because you don't want to use a field too big in order not to download bricks that you don't need
+# So I expect the "sizeofOurFieldDegrees" value to be quite tight. But since the catalogue is text and it doesn't take
+# long I prefer to add something and be sure that I don't lose any source because of the catalogue
+radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc)
+query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
+catName=$catdir/"$objectName"_Gaia_eDR3.fits
 catdone=$catdir/done.txt
 if ! [ -d $catdir ]; then mkdir $catdir; fi
 if [ -f $catdone ]; then
   echo -e "\n\tCatalogue is already downloaded\n"
 else
-  astquery $query_param -o $catdir/"$objectName"_Gaia_eDR3_tmp.fits
-  asttable $catdir/"$objectName"_Gaia_eDR3_tmp.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -o$catdir/tmp.txt
-  # Here we demand that the parallax OR a proper motion is > 3 times its error
-  asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
-  asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
-  asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o$catdir/"$objectName"_Gaia_eDR3.fits
-
-  rm $catdir/test1.txt $catdir/tmp.txt $catdir/"$objectName"_Gaia_eDR3_tmp.fits $catdir/test_.txt
+  downloadGaiaCatalogue "$query_param" $catdir $catName
   echo "done" > $catdone
 fi
 
@@ -1044,12 +1039,12 @@ writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
 ### PARAMETERS ###
 toleranceForMatching=2 #arcsec
-sigmaForPLRegion=2 # Parameter for deciding the selection region (half-max-rad region)
+sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
 export sigmaForPLRegion
 
 # Parameters for performing the sigma clipping to the different samples in aststatistics
-sigmaForStdSigclip=2
+sigmaForStdSigclip=1
 iterationsForStdSigClip=3
 export sigmaForStdSigclip
 export iterationsForStdSigClip
@@ -1062,16 +1057,17 @@ rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 decalsImagesDir=$mosaicDir/decalsImages
 
 writeTimeOfStepToFile "DECaLs data processing" $fileForTimeStamps
-prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees
-
+prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir \
+                                            $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees $galaxySMA $galaxyAxisRatio $galaxyPA $catName $starMagnitudeThresholdToReject_gBand \
+                                            $numberOfFWHMForPhotometry
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
+matchdir=$BDIR/match-decals-myData_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
-
+computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $matchdir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
 
 # Checking and removing bad frames based on the FWHM value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1110,7 +1106,6 @@ photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
-
 # DIAGNOSIS PLOTs ---------------------------------------------------
 
 # Astrometry
@@ -1118,7 +1113,7 @@ astrometryPlotName=$diagnosis_and_badFilesDir/astrometry.png
 if [ -f $astrometryPlotName ]; then
     echo -e "\nAstrometry diagnosis plot already done\n"
 else
-  produceAstrometryCheckPlot $fwhmFolder $BDIR/decals-aperture-catalog_it1 $pythonScriptsPath $astrometryPlotName $pixelScale
+  produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
 fi
 
 # Calibration
@@ -1126,14 +1121,15 @@ calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
 if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
-    produceCalibrationCheckPlot $BDIR/ourData-catalogs-apertures_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-catalog_it1 \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit  $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir
+    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-photometry_perBrick_it1 \
+                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir
 fi
+
+exit 0
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
 halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
-
 if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
 if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
     echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
@@ -1143,6 +1139,7 @@ else
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
+exit 0
 
 # ---------------------------------------------------
 

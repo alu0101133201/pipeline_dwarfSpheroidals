@@ -8,12 +8,9 @@
 # The rest of the tables can be checked in "https://datalab.noirlab.edu/query.php"
 
 import os
-
 import numpy as np
 
 from dl import queryClient as qc
-
-
 
 ### Get brick names utilities ###
 
@@ -109,9 +106,9 @@ def getNeighborsFromBrick(centreBrickName, includecentreBrickName=False):
 #   firstPoint (ra [degrees], dec [degrees]):  First point which defines the region to retrieve bricks
 #   secondPoint (ra [degrees], dec [degrees]): Second point which defines the region to retrieve bricks
 # Returns:
-#   result: Name of the bricks which define the region
+#   result: Name of the bricks which define the region and its central coordinates
 ###
-def getBrickNamesFromRegionDefinedByTwoPoints(firstPoint, secondPoint):
+def getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(firstPoint, secondPoint):
     isRaList = isinstance(firstPoint, (list, np.ndarray, tuple))
     isDecList = isinstance(secondPoint, (list, np.ndarray, tuple))
     if ((not isRaList) and (not isDecList)):
@@ -121,16 +118,26 @@ def getBrickNamesFromRegionDefinedByTwoPoints(firstPoint, secondPoint):
     firstPointDec  = firstPoint[1]
     secondPointRa = secondPoint[0]
     secondPointDec = secondPoint[1]
-
-
     raMin, raMax = (firstPointRa, secondPointRa) if (firstPointRa < secondPointRa) else (secondPointRa, firstPointRa)
     decMin, decMax = (firstPointDec, secondPointDec) if (firstPointDec < secondPointDec) else (secondPointDec, firstPointDec)
 
-    tmpQuery = 'SELECT brickname FROM ls_dr10.bricks WHERE \
+    tmpQuery = 'SELECT brickname, ra, dec FROM ls_dr10.bricks WHERE \
                 (ra2 > ' + str(raMin) + ' AND ra1 < ' + str(raMax) + \
                 ') AND (dec2 > ' + str(decMin) + ' AND dec1 < ' + str(decMax) + ')'
+
     result = qc.query(tmpQuery)
-    return(result.split()[1:])
+
+    bricksNames = []
+    bricksRA    = []
+    bricksDec   = []
+    for i in result.split()[1:]:
+        values = i.split(',')
+        if (len(values) > 0):
+            bricksNames.append(values[0])
+            bricksRA.append(float(values[1]))
+            bricksDec.append(float(values[2]))
+
+    return(np.array(bricksNames), np.array(bricksRA), np.array(bricksDec))
 
 # This function retrieves the brick names of the region defined by a central point and the size of the region in ra and dec
 # Arguments:

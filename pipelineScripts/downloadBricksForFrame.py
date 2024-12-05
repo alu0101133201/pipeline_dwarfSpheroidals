@@ -6,11 +6,25 @@ import sys
 import threading 
 
 import numpy as np
-
 from astropy.io import fits
 from astropy.wcs import WCS
 
+from matplotlibConf import *
 from decals_GetAndDownloadBricks import *
+
+
+def getCoordsAndMagFromBrightStars(catalogue, threshold):
+    ra = []
+    dec = []
+    mag_g = []
+    with fits.open(catalogue) as hdul:
+        data = hdul[1].data
+        for row in data:
+            if (row[2] < threshold):
+                ra.append(row[0])
+                dec.append(row[1])
+                mag_g.append(row[2])
+    return( np.array(ra), np.array(dec) )
 
 def getImageData(image, hduNumber):
     hdulist = fits.open(image)
@@ -30,36 +44,128 @@ def getRingRadiusFromFile(path):
             raise Exception ("Error in 'getRingRadiusFromFile'. The ring file is not as expected.")
     return()
 
+def getWCSCoordinatesOfFrameCorners(file):
+    with fits.open(file) as hdul:
+        header = hdul[1].header
+        wcs = WCS(header)
+        dataShape = hdul[1].data.shape
+    corner1 = (0, 0)
+    corner2 = (dataShape[0] - 1, dataShape[1] -1)
+    cornersCoords = wcs.pixel_to_world_values([corner1, corner2])
+    return(cornersCoords)
 
-if (len(sys.argv) < 5):
+def brickContainTheGalaxy(ra, dec, galaxyRA, galaxyDec, galaxySMA, galaxyRatio, galaxyPA):
+    theta = np.radians(galaxyPA)
+
+    # This is done for flipping the right ascention, the ellipse is defined looking at DS9 (basically the position angle is from west-anticlockwise)
+    ra = 360 - ra
+    galaxyRA = 360 - galaxyRA
+
+    ra_InEllipseCentre  = ra - galaxyRA
+    dec_InEllipseCentre = dec - galaxyDec
+
+    cos_theta = np.cos(-theta)
+    sin_theta = np.sin(-theta)
+    ra_rot = cos_theta * ra_InEllipseCentre - sin_theta * dec_InEllipseCentre
+    dec_rot = sin_theta * ra_InEllipseCentre + cos_theta * dec_InEllipseCentre
+
+    smb = galaxySMA * galaxyRatio
+    ellipse_eq = (ra_rot / galaxySMA)**2 + (dec_rot / smb)**2
+    return ellipse_eq <= 1
+
+def brickContainBrightStar(bricksNames, bricksRA, bricksDec, brightStarsRa, brighStarsDec, brickWidth):
+    mask_bricksWithBrightStars = np.full(len(bricksNames), False)
+    bricksWithStarCounter = 0
+
+    for j in range(len(brightStarsRa)):
+        for i in range(len(bricksRA)):
+            if ( np.abs(bricksRA[i] - brightStarsRa[j]) < (brickWidth/2) and np.abs(bricksDec[i] - brighStarsDec[j]) < (brickWidth/2) ):
+                mask_bricksWithBrightStars[i] = True
+                bricksWithStarCounter += 1
+
+    if (bricksWithStarCounter > len(brightStarsRa)):
+        raise Exception("Error in rejecting the bricks with bright stars. A star has been found in more than one brick, something went wront")
+    return(mask_bricksWithBrightStars)
+
+def plotEllipseAndBricks(x0, y0, sma, axis_ratio, pa, x, y, pointsmask_bricksInsideGalaxy, pointsmask_bricksWithBrightStars, maskCombined, mosaicDir):
+    t = np.linspace(0, 2 * np.pi, 500)
+    ellipse_x = sma * np.cos(t)
+    ellipse_y = sma * axis_ratio * np.sin(t)
+    
+    # Rotate the ellipse by the position angle
+    theta = np.radians(180 - pa) # This is for inverting the position angle, because the plot has the x-axis flipped so
+                                 # we see the ellipse as we see the galaxy i nDS9
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+    ellipse_x_rot = cos_theta * ellipse_x - sin_theta * ellipse_y
+    ellipse_y_rot = sin_theta * ellipse_x + cos_theta * ellipse_y
+    
+    # Translate the ellipse to its center
+    ellipse_x_rot += x0
+    ellipse_y_rot += y0
+    
+    fig, ax = plt.subplots(1, 1, figsize=(12 ,12))
+    configureAxis(ax, 'RA (deg)', 'Dec (deg)', logScale=False)
+    plt.tight_layout(pad=5)
+    plt.gca().invert_xaxis()  # Ensure the x-axis reflects the RA convention
+
+    ax.plot(ellipse_x_rot, ellipse_y_rot, label="Galaxy region", color="teal", lw=2)
+    ax.scatter(x[pointsmask_bricksInsideGalaxy], y[pointsmask_bricksInsideGalaxy], color="red", marker="^", s=120, label="Rejected - Bricks in galaxy")
+    ax.scatter(x[pointsmask_bricksWithBrightStars], y[pointsmask_bricksWithBrightStars], color="orange", marker="v", s=120, label="Rejected - Bricks with Bright stars")
+    ax.scatter(x[~maskCombined], y[~maskCombined], color="green", marker="s", s=120, label="Accepted bricks")
+
+    plt.legend(shadow=True, fontsize=17, loc='upper left', bbox_to_anchor=(0.2, 1.1))
+    plt.axis("equal")
+    plt.savefig(mosaicDir + "/downloadedBricks.png")
+
+def writeBricksAndItsCoordinates(file, brickNames, ra, dec):
+    with open(file, 'w') as f:
+        f.write("BrickName\tRA_centre\tDec_centre\n")
+        for i in range(len(brickNames)):
+            f.write(brickNames[i] + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
+
+
+if (len(sys.argv) < 8):
     raise Exception("A frame path, ring path, array of filters and download destination has to be provided")
 
-framePath = sys.argv[1]
-ringPath = sys.argv[2]
-filters = sys.argv[3].split(',')
-downloadDestination = sys.argv[4]
+filters                         = sys.argv[1].split(',')
+downloadDestination             = sys.argv[2]
+galaxyRA                        = float(sys.argv[3])
+galaxyDec                       = float(sys.argv[4])
+galaxySMA                       = float(sys.argv[5])
+galaxyAxisRatio                 = float(sys.argv[6])
+galaxyPA                        = float(sys.argv[7])
+fieldSize                       = float(sys.argv[8])
+mosaicDir                       = sys.argv[9]
+bricksIdentificationFile        = sys.argv[10]
+gaiaCatalogue                   = sys.argv[11]
+starThresholdForRejectingBricks = float(sys.argv[12])
 
-radius = getRingRadiusFromFile(ringPath)
-data, shape, wcs = getImageData(framePath, 1)
-dataCentrePx = (int(shape[1]/2), int(shape[0]/2))
+setMatplotlibConf()
 
-dataLocation1Px = (dataCentrePx[0], dataCentrePx[1] - radius)
-dataLocation2Px = (dataCentrePx[0], dataCentrePx[1] + radius)
-dataLocation3Px = (dataCentrePx[0] - radius, dataCentrePx[1])
-dataLocation4Px = (dataCentrePx[0] + radius, dataCentrePx[1])
+decalsBrickWidthDeg = 15.5 / 60 
 
-dataLocation1Wcs = wcs.pixel_to_world(dataLocation1Px[0], dataLocation1Px[1])
-dataLocation2Wcs = wcs.pixel_to_world(dataLocation2Px[0], dataLocation2Px[1])
-dataLocation3Wcs = wcs.pixel_to_world(dataLocation3Px[0], dataLocation3Px[1])
-dataLocation4Wcs = wcs.pixel_to_world(dataLocation4Px[0], dataLocation4Px[1])
+# Compute corners of the field
+galaxyMinimumRA  = galaxyRA  - (fieldSize / 2)
+galaxyMaximumRA  = galaxyRA  + (fieldSize / 2)
+galaxyMinimumDec = galaxyDec - (fieldSize / 2)
+galaxyMaximumDec = galaxyDec + (fieldSize / 2)
+cornersWCSCoords = [(galaxyMinimumRA, galaxyMinimumDec), (galaxyMaximumRA, galaxyMaximumDec)]
 
-raList = [dataLocation1Wcs.ra.deg, dataLocation2Wcs.ra.deg, dataLocation3Wcs.ra.deg, dataLocation4Wcs.ra.deg]
-decList = [dataLocation1Wcs.dec.deg, dataLocation2Wcs.dec.deg, dataLocation3Wcs.dec.deg, dataLocation4Wcs.dec.deg]
+bricksNames, bricksRA, bricksDec = getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(cornersWCSCoords[0], cornersWCSCoords[1])
+mask_bricksInsideGalaxy = brickContainTheGalaxy(np.array(bricksRA), np.array(bricksDec), galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA)
 
-brickNames = getBrickNamesFromCoords(raList, decList)
+ra, dec = getCoordsAndMagFromBrightStars(gaiaCatalogue, starThresholdForRejectingBricks)
+mask_bricksWithBrightStar = brickContainBrightStar(bricksNames, np.array(bricksRA), np.array(bricksDec), ra, dec, decalsBrickWidthDeg)
+
+maskCombined = mask_bricksInsideGalaxy | mask_bricksWithBrightStar
+
+bricksToDownload = bricksNames[~maskCombined]
+plotEllipseAndBricks(galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA, bricksRA, bricksDec, mask_bricksInsideGalaxy, mask_bricksWithBrightStar, maskCombined, mosaicDir)
+writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames[~maskCombined], bricksRA[~maskCombined], bricksDec[~maskCombined])
 
 threadList = []
-for i in brickNames:
+for i in bricksToDownload:
     threadList.append(threading.Thread(target=downloadBrick, args=(i, filters, downloadDestination, False)))
 
 for i in threadList:
@@ -67,6 +173,3 @@ for i in threadList:
 
 for i in threadList:
     i.join()
-
-# This print is to be able to recover the bricknames from the bash pipeline
-print(brickNames)

@@ -112,7 +112,7 @@ setMatplotlibConf()
 
 # 1.- Obtain the FWHM values ------------------------
 fwhmValues = np.array([])
-for currentFile in glob.glob(folderWithFWHM + "/range1_*.txt"):
+for currentFile in glob.glob(folderWithFWHM + "/range_*.txt"):
     fwhmValue = retrieveFWHMValues(currentFile)
     if (not math.isnan(fwhmValue)):
         fwhmValues = np.concatenate((fwhmValues, [fwhmValue]))
@@ -127,7 +127,7 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
     allFiles   = []
     allFWHM     = []
 
-    for currentFile in glob.glob(folderWithFWHM + "/range1_*.txt"):
+    for currentFile in glob.glob(folderWithFWHM + "/range_*.txt"):
         if fnmatch.fnmatch(currentFile, '*done*.txt'):
             continue
 
