@@ -1056,10 +1056,12 @@ selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 decalsImagesDir=$mosaicDir/decalsImages
 
+
 writeTimeOfStepToFile "DECaLs data processing" $fileForTimeStamps
 prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir \
                                             $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees $galaxySMA $galaxyAxisRatio $galaxyPA $catName $starMagnitudeThresholdToReject_gBand \
                                             $numberOfFWHMForPhotometry
+
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
@@ -1068,6 +1070,7 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $matchdir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
+
 
 # Checking and removing bad frames based on the FWHM value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles

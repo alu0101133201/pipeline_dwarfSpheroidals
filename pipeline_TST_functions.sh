@@ -1058,6 +1058,7 @@ selectStarsAndSelectionRangeDecals(){
     if [ -f $starSelectionDone ]; then
         echo -e "\n\tStar and range selection for calibration already done\n"
     else
+        brickList=()
         for i in $( ls $dirWithBricks/decompressed_*.fits); do
             currentName=$( basename $i )
             brickList+=("$currentName")
@@ -1209,8 +1210,7 @@ prepareDecalsDataForPhotometricCalibration() {
     
     decompressBricks $decalsImagesDir # I have to decompressed them, I don't know what DECaLS does exactly but otherwise I can't run sextractor directly on the downloaded bricks
                                       # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
-    
-    methodToUse="noisechisel"
+    methodToUse="sextractor"
     selectStarsAndSelectionRangeDecals $decalsImagesDir $selectedDecalsStarsDir $methodToUse
 
     halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
@@ -1585,7 +1585,7 @@ computeCalibrationFactors() {
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize
 
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
-    echo -e "\n ${GREEN} ---Building catalogues to out data with aperture photometry --- ${NOCOLOUR}"
+    echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfFWHMForPhotometry
     
     decalsDataCatalogueDir=$BDIR/decals-aperture-photometry_perBrick_it$iteration
@@ -1597,18 +1597,6 @@ computeCalibrationFactors() {
 
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
-
-
-    # decalsdir=$BDIR/decals-aperture-catalog_it$iteration
-    # echo -e "\n ${GREEN} ---Building Decals catalogue for (matched) calibration stars--- ${NOCOLOUR}"
-    # buildDecalsCatalogueOfMatchedSources $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMForPhotometry $iteration
-    
-    # ourDataCatalogueDir=$BDIR/ourData-catalogs-apertures_it$iteration
-    # echo -e "\n ${GREEN} ---Building our catalogue for calibration stars--- ${NOCOLOUR}"
-    # buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $matchdir2 $mycatdir $numberOfFWHMForPhotometry
-    
-    # echo -e "\n ${GREEN} ---Matching calibration stars catalogues--- ${NOCOLOUR}"
-    # matchCalibrationStarsCatalogues $matchdir2 $ourDataCatalogueDir $decalsdir
     
 }
 export -f computeCalibrationFactors
@@ -1666,8 +1654,9 @@ computeWeightForFrame() {
     rms_min=$(awk 'NR=='1'{print $1}' $BDIR/$minRmsFileName)
     rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
 
-    weight=$(astarithmetic $rms_min $rms_f / --quiet)
-    echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt        #    saving into file
+    weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) # Quadratic is the ptimal weight 
+
+    echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt      
 
     # multiply each image for its weight
     wixi_im_tmp=$wdir/$basetmp              # frame x weight
@@ -2059,7 +2048,6 @@ generateCatalogueFromImage_sextractor(){
 
     # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
-
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII  1>/dev/null 2>&1
     awk '{ $6 = $6 / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
 
