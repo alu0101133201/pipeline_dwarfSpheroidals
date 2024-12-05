@@ -1339,74 +1339,6 @@ matchDecalsAndOurData() {
 }
 export -f matchDecalsAndOurData
 
-buildDecalsCatalogueOfMatchedSourcesForFrame() {
-    a=$1
-    decalsdir=$2
-    rangeUsedDecalsDir=$3
-    matchdir2=$4
-    mosaicDir=$5
-    decalsImagesDir=$6
-    numberOfFWHMToUse=$7
-
-
-    # I have to take 2 the FWHM (half-max-rad)
-    # It is already saved as mean value of the point-like sources
-    r_decals_pix_=$(awk 'NR==1 {printf $1}' $rangeUsedDecalsDir/"selected_rangeForFrame_"$a".txt")
-    r_decals_pix=$(astarithmetic $r_decals_pix_ $numberOfFWHMToUse. x -q )
-
-    base="entirecamera_$a.fits"
-    matchedCatalogue=$matchdir2/match-decals-"$base"_automatic.cat
-
-    decalsCombinedBricks=$mosaicDir/combinedBricksForImages/combinedBricks_$a.fits
-
-    # raColumnName=RA_CALIBRATION_DATA
-    # decColumnName=DEC_CALIBRATION_DATA
-    # photometryOnImage_noisechisel $a $decalsdir $matchedCatalogue $decalsCombinedBricks $r_decals_pix $decalsdir/decals_"$base".cat \
-    #                             22.5 $raColumnName $decColumnName
-    
-    columnWithXCoordForDecalsPx=2 # These numbers come from how the catalogue of the matches stars is built. This is not very clear right now, should be improved
-    columnWithYCoordForDecalsPx=3
-    columnWithXCoordForDecalsWCS=4
-    columnWithYCoordForDecalsWCS=5  
-    
-    echo "Esta funcion se va a borrar, pero le falta pasarle el hdu al photoemtryOnImage_photutils"
-    exit 0
-    photometryOnImage_photutils $a $decalsdir "$matchedCatalogue" "$decalsCombinedBricks" $r_decals_pix $decalsdir/decals_"$base".cat \
-                22.5 $columnWithXCoordForDecalsPx $columnWithYCoordForDecalsPx $columnWithXCoordForDecalsWCS $columnWithYCoordForDecalsWCS
-}
-export -f buildDecalsCatalogueOfMatchedSourcesForFrame
-
-buildDecalsCatalogueOfMatchedSources() {
-    decalsdir=$1
-    rangeUsedDecalsDir=$2
-    matchdir2=$3
-    mosaicDir=$4
-    decalsImagesDir=$5
-    numberOfFWHMToUse=$6
-    iteration=$7
-
-    # We just compute it for the first iteration since the aperture photometry in decals does not change from iterations
-    # Maybe this should be included in the "prepareDecalsDataForCalibration", but it wasn't initially there so here it is
-    if [ "$iteration" -eq 1 ]; then
-        decalsdone=$decalsdir/done.txt
-        if ! [ -d $decalsdir ]; then mkdir $decalsdir; fi
-        if [ -f $decalsdone ]; then
-            echo -e "\n\tDecals: catalogue for the calibration stars already built\n"
-        else
-            framesToUse=()
-            for a in $(seq 1 $totalNumberOfFrames); do
-                framesToUse+=("$a")
-            done
-            printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildDecalsCatalogueOfMatchedSourcesForFrame {} $decalsdir $rangeUsedDecalsDir $matchdir2 $mosaicDir $decalsImagesDir $numberOfFWHMToUse
-            echo done > $decalsdone
-        fi
-    else
-        echo -e "Decals aperture catalogs already built from previous iterations"
-        folderName=$( echo $decalsdir | cut -d'_' -f1 )
-        cp -r "$folderName"_it1 $decalsdir
-    fi
-}
-
 buildOurCatalogueOfMatchedSourcesForFrame() {
     a=$1
     ourDatadir=$2
@@ -1900,10 +1832,9 @@ produceHalfMaxRadVsMagForSingleImage() {
     if ! [[ -n "$a" ]]; then
         a=$alternativeIdentifier
     fi
-    header=1
-    echo "aquí mirar le heade rque paso"
-    exit 555
-    # catalogueName=$(generateCatalogueFromImage_noisechisel $image $outputDir $a  $tileSize)
+
+    # header=1
+    # catalogueName=$(generateCatalogueFromImage_noisechisel $image $outputDir $a $headerToUse $tileSize)
     catalogueName=$(generateCatalogueFromImage_sextractor $image $outputDir $a)
 
     astmatch $catalogueName --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt 
@@ -2132,3 +2063,32 @@ photometryOnImage_photutils() {
     rm $tmpCatalogName
 }
 export -f photometryOnImage_photutils
+
+limitingSurfaceBrightness() {
+    image=$1
+    mask=$2
+    exposureMap=$3
+    directoryOfImages=$4
+    areaSB=$(printf "%.10f" "$5")
+    fracExpMap=$(printf "%.10f" "$6")
+    pixelScale=$(printf "%.10f" "$7")
+    outFile=$8
+
+    out_mask=$directoryOfImages/mask_det.fits
+    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask
+
+    out_maskexp=$directoryOfImages/mask_exp.fits
+    expMax=$(aststatistics $exposureMap --maximum -q)
+    expMax=$(printf "%.10f" "$expMax")
+    exp_fr=$(echo "$expMax * $fracExpMap" | bc -l)
+    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
+
+    sigma=$(aststatistics $out_maskexp --std -q)
+    sigma=$(printf "%.10f" "$sigma")
+
+    sb_lim=$(echo "-2.5*l(3*$sigma/($areaSB/$pixelScale))/l(10)+22.5" | bc -l)
+    echo "$sb_lim" > "$outFile"
+
+    rm $out_mask $out_maskexp
+}
+export -f limitingSurfaceBrightness
