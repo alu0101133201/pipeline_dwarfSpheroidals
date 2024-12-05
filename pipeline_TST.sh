@@ -1084,6 +1084,10 @@ else
 	coaddDone=$coaddDir/done.txt
 	coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot.fits
 	buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+
+  	exposuremapDir=$coaddDir/"$objectName"_exposureMap
+  	exposuremapdone=$coaddDir/done_exposureMap.txt
+  	computeExposureMap $framesDir $exposuremapDir $exposuremapdone
 fi
 
 #### PHOTOMETRIC CALIBRATION  ####
@@ -1370,6 +1374,15 @@ exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
 computeExposureMap $framesDir $exposuremapDir $exposuremapdone
 
+#Compute surface brightness limit
+sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
+exposuremapName=$coaddDir/exposureMap.fits
+if [ -f  $sblimitFile ]; then
+    echo -e "\n\tSurface brightness limit for coadd already measured\n"
+else
+    limitingSurfaceBrightness $coaddName $maskName $exposuremapDir $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
+
+fi
 # # Remove intermediate folders to save some space
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1561,6 +1574,25 @@ fi
 #     addkeywords $coaddName keyWords values
 #   fi
 # fi
+#Compute the mask and surface brightness limit
+maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
+if [ -f $maskName ]; then
+  echo "The mask of the weighted coadd is already done"
+else
+  astnoisechisel $coaddName "'$noisechisel_param'" -o $maskName
+fi
+
+exposuremapDir=$coaddDir/"$objectName"_exposureMap
+exposuremapdone=$coaddDir/done_exposureMap.txt
+computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+
+sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
+exposuremapName=$coaddDir/exposureMap.fits
+if [ -f  $sblimitFile ]; then
+    echo -e "\n\tSurface brightness limit for coadd already measured\n"
+else
+    limitingSurfaceBrightness $coaddName $maskName $exposuremapDir $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
+fi
 
 endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"
