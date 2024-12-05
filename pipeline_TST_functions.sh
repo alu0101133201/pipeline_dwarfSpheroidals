@@ -119,6 +119,10 @@ outputConfigurationVariablesInformation() {
         "·Pixel scale:$pixelScale:[arcsec/px]"
         "·Detector width:$detectorWidth:[px]"
         "·Detector height:$detectorHeight:[px]"
+        " "
+        "Parameters for measuring the surface brightness limit"
+        "·Exp map fraction:$fractionExpMap"
+        "·Area of the SB limit metric:$areaSBlimit: [arcsec]"
 
         # "Saturation threshold set to:$saturationThreshold"
         # "The size of the field in degrees is:$sizeOfOurFieldDegrees"
@@ -215,7 +219,9 @@ checkIfAllVariablesAreSet() {
                 solve_field_L_Param \
                 solve_field_H_Param \
                 solve_field_u_Param \ 
-                numberOfStdForBadFrames)
+                numberOfStdForBadFrames
+                fractionExpMap\
+                areaSBlimit)
 
     echo -e "\n"
     for currentVar in ${variablesToCheck[@]}; do
@@ -2148,3 +2154,37 @@ photometryOnImage_photutils() {
     rm $tmpCatalogName
 }
 export -f photometryOnImage_photutils
+
+limitingSurfaceBrightness() {
+    image=$1
+    mask=$2
+    exposureMap=$3
+    directoryOfImages=$4
+    areaSB=$(printf "%.10f" "$5")
+    fracExpMap=$(printf "%.10f" "$6")
+    pixelScale=$(printf "%.10f" "$7")
+    outFile=$8
+
+    out_mask=$directoryOfImages/mask_det.fits
+    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask
+
+    out_maskexp=$directoryOfImages/mask_exp.fits
+    expMax=$(aststatistics $exposureMap --maximum -q)
+    expMax=$(printf "%.10f" "$expMax")
+    exp_fr=$(echo "$expMax * $frExp" | bc -l)
+    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
+
+    sigma=$(aststatistics $out_maskexp --std -q)
+    sigma=$(printf "%.10f" "$sigma")
+
+    sb_lim=$(echo "-2.5*l(3*$sigma/($areaSB/$pixelScale))/l(10)+22.5" | bc -l)
+    echo "$sb_lim" > "$outFile"
+
+    rm $out_mask $out_maskexp
+}
+export -f limitingSurfaceBrightness
+
+
+
+
+
