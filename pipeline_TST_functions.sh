@@ -1586,7 +1586,7 @@ computeWeightForFrame() {
     rms_min=$(awk 'NR=='1'{print $1}' $BDIR/$minRmsFileName)
     rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
 
-    weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) # Quadratic is the ptimal weight 
+    weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) # Quadratic is the optimal weight 
 
     echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt      
 
