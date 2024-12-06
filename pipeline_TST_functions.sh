@@ -1668,7 +1668,7 @@ computeWeightForFrame() {
     rms_min=$(awk 'NR=='1'{print $1}' $BDIR/$minRmsFileName)
     rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
 
-    weight=$(astarithmetic $rms_min $rms_f / --quiet)
+    weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet)
     echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt        #    saving into file
 
     # multiply each image for its weight
@@ -2171,7 +2171,7 @@ limitingSurfaceBrightness() {
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
     expMax=$(printf "%.10f" "$expMax")
-    exp_fr=$(echo "$expMax * $frExp" | bc -l)
+    exp_fr=$(echo "$expMax * $fracExpMap" | bc -l)
     astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
 
     sigma=$(aststatistics $out_maskexp --std -q)
