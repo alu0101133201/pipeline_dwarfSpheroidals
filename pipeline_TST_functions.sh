@@ -2160,9 +2160,9 @@ limitingSurfaceBrightness() {
     mask=$2
     exposureMap=$3
     directoryOfImages=$4
-    areaSB=$(printf "%.10f" "$5")
-    fracExpMap=$(printf "%.10f" "$6")
-    pixelScale=$(printf "%.10f" "$7")
+    areaSB=$5
+    fracExpMap=$6
+    pixelScale=$7
     outFile=$8
 
     out_mask=$directoryOfImages/mask_det.fits
@@ -2170,19 +2170,19 @@ limitingSurfaceBrightness() {
 
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
-    expMax=$(printf "%.10f" "$expMax")
-    exp_fr=$(echo "$expMax * $fracExpMap" | bc -l)
+    exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
     astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
 
-    sigma=$(aststatistics $out_maskexp --std -q)
-    sigma=$(printf "%.10f" "$sigma")
+    sigma=$(aststatistics $out_maskexp --sigclip-std -q)
+    
 
-    sb_lim=$(echo "-2.5*l(3*$sigma/($areaSB/$pixelScale))/l(10)+22.5" | bc -l)
+    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x 22.5 + -q)
     echo "$sb_lim" > "$outFile"
 
     rm $out_mask $out_maskexp
 }
 export -f limitingSurfaceBrightness
+
 
 
 
