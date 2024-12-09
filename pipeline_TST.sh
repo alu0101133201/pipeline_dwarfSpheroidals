@@ -1380,7 +1380,7 @@ exposuremapName=$coaddDir/exposureMap.fits
 if [ -f  $sblimitFile ]; then
     echo -e "\n\tSurface brightness limit for coadd already measured\n"
 else
-    limitingSurfaceBrightness $coaddName $maskName $exposuremapDir $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
+    limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
 
 fi
 # # Remove intermediate folders to save some space
@@ -1591,7 +1591,7 @@ exposuremapName=$coaddDir/exposureMap.fits
 if [ -f  $sblimitFile ]; then
     echo -e "\n\tSurface brightness limit for coadd already measured\n"
 else
-    limitingSurfaceBrightness $coaddName $maskName $exposuremapDir $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
+    limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
 fi
 
 endTime=$(date +%D%T)
