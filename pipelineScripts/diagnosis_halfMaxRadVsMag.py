@@ -75,7 +75,14 @@ print("imageoutputName: ", imageOutputName)
 
 setMatplotlibConf()
 halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 5, 4)
-halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 4, 5)
+halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 5, 4)
+
+x, y =  readHalfMaxRadAndMag(matchedtableFile, 0, 1)
+
+# for i in range(len(halfMaxRadMatched)):
+#     if (halfMaxRadMatched[i] < 0.7):
+#         print(halfMaxRadMatched[i], x[i], y[i])
+
 
 fig, ax = plt.subplots(1, 1, figsize=(12, 12))
 plt.tight_layout(pad=7.0)
@@ -84,12 +91,12 @@ ax.set_xscale('log')
 ax.set_xlim(plotXLowerLimit, plotXHigherLimit)
 ax.set_ylim(plotYLowerLimit, plotYHigherLimit)
 ax.scatter(halfMaxRadAll, magnitudeAll, s=30, color="crimson", alpha=0.85, linewidths=1.5, edgecolor="black", label="All sources")
-ax.scatter(halfMaxRadMatched, magnitudeMatched, s=60, color="blue", linewidths=1.5, edgecolor="black", label="Matched Gaia")
+ax.scatter(halfMaxRadMatched, magnitudeMatched, s=40, color="blue", linewidths=1.5, edgecolor="black", label="Matched Gaia")
 
 if (meanRad > 0): 
     ax.vlines(x=meanRad, ymin = 10, ymax = 26, color="black", lw=2.5, ls="--")
 if (minRad > 0): 
-    ax.vlines(x=minRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--", label=r"Point-like region $(1\sigma)$")
+    ax.vlines(x=minRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--", label=r"Point-like region")
 if (maxRad > 0): 
     ax.vlines(x=maxRad, ymin = 10, ymax = 26, color="black", lw=1.5, ls="--")
 ax.legend(fontsize=18, shadow=True)
