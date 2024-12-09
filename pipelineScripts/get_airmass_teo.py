@@ -1,8 +1,8 @@
 ###This script will try to measure a theoretical Airmass and get the DATA-obs based on Pickering 2002 interpolation formulae
-from astropy.coordinates import EarthLocation,SkyCoord
+from astropy.coordinates import EarthLocation,SkyCoord,AltAz
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import AltAz
+import sys
 from astropy.io import fits
 
 ###Variables: file, dateheaderkeyword, ra, dec
@@ -12,7 +12,7 @@ ra=float(sys.argv[3])
 dec=float(sys.argv[4])
 
 #Observing site: Izaña
-observing_location = EarthLocation(lat='28d18m04s', lon='16d30m38s', height=2390*u.m)  
+observing_location = EarthLocation(lat='28d18m04s', lon='-16d30m38s', height=2390*u.m)  
 
 #Header
 hed = fits.open(img)[1].header
@@ -21,4 +21,7 @@ date_obs = Time(hed[datK][:10]+' '+hed[datK][12:])
 aa = AltAz(location=observing_location, obstime=date_obs)
 
 coord = SkyCoord(ra=ra*u.deg, dec = dec*u.deg)
-coord.transform_to(aa)
+azalt = coord.transform_to(aa)
+
+airmass = azalt.secz.value
+print(airmass)
