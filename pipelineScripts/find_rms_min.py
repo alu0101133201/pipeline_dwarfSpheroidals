@@ -15,21 +15,14 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
 # Public License for more details. See <http://www.gnu.org/licenses/>.
 
-# System imports
-
 import os
 import pdb
 import sys
-import warnings
 import glob
-
-# 3rd parties
-
+import warnings
 
 import numpy as np
 import matplotlib.pyplot as plt
-
-
 
 
 filter         = sys.argv[1]   
@@ -42,7 +35,6 @@ iteration      = str(sys.argv[7])
 outputFile     = str(sys.argv[8])
 
 rms = []
-
 noiseFiles = glob.glob(noiseFilesPath + "/entirecamera_*.txt")
 
 for file in noiseFiles:
@@ -53,7 +45,6 @@ for file in noiseFiles:
 
     except Exception as e:
         print(f'Error processing file {file}: {e}')
-
 
 
 rms_min = np.nanmin(rms)
