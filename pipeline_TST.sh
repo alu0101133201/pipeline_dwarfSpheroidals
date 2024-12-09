@@ -1424,7 +1424,6 @@ numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
 addkeywords $coaddName keyWords values
 
-exit 0
 
 halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it2.png
 if [ -f $halfMaxRadForCoaddName ]; then
@@ -1445,6 +1444,8 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo "done" > $framesWithCoaddSubtractedDone
 fi
+
+exit 0
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then

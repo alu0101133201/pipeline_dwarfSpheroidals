@@ -87,7 +87,7 @@ headers = [field.get('name') for field in fields]
 # The threshold comes by observing the frames and the documentation. In the docs the say that a threshold of 2 or lower
 # is not trustable; I have defined 2.5 to be conservative
 col1_name = 'XY_Contrast'
-threshold = 2.5
+threshold = 5
 data = []
 
 for row in rows:
