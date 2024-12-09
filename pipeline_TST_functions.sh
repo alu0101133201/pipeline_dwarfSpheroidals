@@ -127,6 +127,10 @@ outputConfigurationVariablesInformation() {
         "·Pixel scale:$pixelScale:[arcsec/px]"
         "·Detector width:$detectorWidth:[px]"
         "·Detector height:$detectorHeight:[px]"
+        " "
+        "Parameters for measuring the surface brightness limit"
+        "·Exp map fraction:$fractionExpMap"
+        "·Area of the SB limit metric:$areaSBlimit: [arcsec]"
     )
 
     echo -e "Summary of the configuration variables provided for the reduction\n"
@@ -211,7 +215,9 @@ checkIfAllVariablesAreSet() {
                 solve_field_L_Param \
                 solve_field_H_Param \
                 solve_field_u_Param \ 
-                numberOfStdForBadFrames)
+                numberOfStdForBadFrames
+                fractionExpMap\
+                areaSBlimit)
 
     echo -e "\n"
     for currentVar in ${variablesToCheck[@]}; do
@@ -1587,7 +1593,6 @@ computeWeightForFrame() {
     rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
 
     weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) # Quadratic is the optimal weight 
-
     echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt      
 
     # multiply each image for its weight
@@ -2069,9 +2074,9 @@ limitingSurfaceBrightness() {
     mask=$2
     exposureMap=$3
     directoryOfImages=$4
-    areaSB=$(printf "%.10f" "$5")
-    fracExpMap=$(printf "%.10f" "$6")
-    pixelScale=$(printf "%.10f" "$7")
+    areaSB=$5
+    fracExpMap=$6
+    pixelScale=$7
     outFile=$8
 
     out_mask=$directoryOfImages/mask_det.fits
@@ -2079,14 +2084,13 @@ limitingSurfaceBrightness() {
 
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
-    expMax=$(printf "%.10f" "$expMax")
-    exp_fr=$(echo "$expMax * $fracExpMap" | bc -l)
+    exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
     astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
 
-    sigma=$(aststatistics $out_maskexp --std -q)
-    sigma=$(printf "%.10f" "$sigma")
+    sigma=$(aststatistics $out_maskexp --sigclip-std -q)
+    
 
-    sb_lim=$(echo "-2.5*l(3*$sigma/($areaSB/$pixelScale))/l(10)+22.5" | bc -l)
+    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x 22.5 + -q)
     echo "$sb_lim" > "$outFile"
 
     rm $out_mask $out_maskexp

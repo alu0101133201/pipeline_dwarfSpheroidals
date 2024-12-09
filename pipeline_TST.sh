@@ -1032,6 +1032,58 @@ echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
+#### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
+echo -e "${GREEN} --- Coadding before photometric calibratino --- ${NOCOLOUR} \n"
+writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
+iteration=1
+h=0
+minRmsFileName=min_rms_prev.txt
+noisesky_prephot=$BDIR/noise-sky_prephot
+noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
+imagesAreMasked=false
+if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
+if [ -f $noisesky_prephot ]; then
+	echo -e "\n Coadd pre-photometry already done\n"
+else
+	computeSky $subskyFullGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+
+	python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration min_rms_prev.txt
+
+	#Compute weights
+	wdir=$BDIR/weight-dir-prephot
+	wdone=$wdir/done.txt
+	if ! [ -d $wdir ]; then mkdir $wdir; fi
+
+	wonlydir=$BDIR/only-w-dir-prephot
+	wonlydone=$wonlydir/done.txt
+	if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+
+	computeWeights $wdir $wdone $wonlydir $wonlydone $subskyFullGrid_dir $noisesky_prephot $iteration $minRmsFileName
+
+	##Mask the outliers
+	sigmaForStdSigclip=2
+	clippingdir=$BDIR/clipping-outliers-prephot
+	clippingdone=$clippingdir/done.txt
+	buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
+	
+
+	mowdir=$BDIR/weight-dir-no-outliers-prephot
+	moonwdir=$BDIR/only-weight-dir-no-outliers-prephot
+	mowdone=$mowdir/done.txt
+	if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+	if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
+	removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
+
+	##Make the coadd
+	coaddDir=$BDIR/coadds-prephot
+	coaddDone=$coaddDir/done.txt
+	coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot.fits
+	buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+
+  	exposuremapDir=$coaddDir/"$objectName"_exposureMap
+  	exposuremapdone=$coaddDir/done_exposureMap.txt
+  	computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+fi
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
@@ -1221,6 +1273,30 @@ else
   astnoisechisel $coaddName $noisechisel_param -o $maskName
 fi
 
+#astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
+if [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd is already done"
+else
+  #We assume that if this works for this iteration, then the next one will need at least same parameters
+  tileSize=$((tileSize - 5))
+  noisechisel_param="--tilesize=$tileSize,$tileSize \
+                    --erode=1 \
+                    --detgrowmaxholesize=5000 \
+                    --rawoutput"
+  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+fi
+if [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd is already done"
+else
+  #We assume that if this works for this iteration, then the next one will need at least same parameters
+  tileSize=$((tileSize - 5))
+  noisechisel_param="--tilesize=$tileSize,$tileSize \
+                    --erode=1 \
+                    --detgrowmaxholesize=5000 \
+                    --rawoutput"
+  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+fi
+
 writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
@@ -1296,16 +1372,14 @@ exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
 computeExposureMap $framesDir $exposuremapDir $exposuremapdone
 
-
 #Compute surface brightness limit
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
 if [ -f  $sblimitFile ]; then
     echo -e "\n\tSurface brightness limit for coadd already measured\n"
 else
-    limitingSurfaceBrightness $coaddName $maskName $exposuremapDir $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
+    limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
 fi
-
 
 # # Remove intermediate folders to save some space
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1504,6 +1578,25 @@ exit 0
 #     addkeywords $coaddName keyWords values
 #   fi
 # fi
+#Compute the mask and surface brightness limit
+maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
+if [ -f $maskName ]; then
+  echo "The mask of the weighted coadd is already done"
+else
+  astnoisechisel $coaddName "'$noisechisel_param'" -o $maskName
+fi
+
+exposuremapDir=$coaddDir/"$objectName"_exposureMap
+exposuremapdone=$coaddDir/done_exposureMap.txt
+computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+
+sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
+exposuremapName=$coaddDir/exposureMap.fits
+if [ -f  $sblimitFile ]; then
+    echo -e "\n\tSurface brightness limit for coadd already measured\n"
+else
+    limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile
+fi
 
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
