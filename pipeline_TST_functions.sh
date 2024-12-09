@@ -86,7 +86,7 @@ outputConfigurationVariablesInformation() {
         "  Faint limit:$calibrationFaintLimit:[mag]"
         "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry:[FWHM]"
         "The definition of the galaxy region for not using these DECaLS bricks in calibration:"
-        "  Galaxy's Semi-major axis:$galaxySM:[deg] "
+        "  Galaxy's Semi-major axis:$galaxySMA:[deg] "
         "  Galaxy's axis ratio:$galaxyAxisRatio"
         "  Galaxy's position angle:$galaxyPA:[deg]"
         "DECaLS bricks rejected if present stars brighter (g-band) than:$starMagnitudeThresholdToReject_gBand:[mag]"
@@ -2080,19 +2080,18 @@ limitingSurfaceBrightness() {
     outFile=$8
 
     out_mask=$directoryOfImages/mask_det.fits
-    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask
+    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask 1>/dev/null
 
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
     exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
-    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
+    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp 1>/dev/null
 
     sigma=$(aststatistics $out_maskexp --sigclip-std -q)
-    
 
     sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x 22.5 + -q)
-    echo "$sb_lim" > "$outFile"
-
     rm $out_mask $out_maskexp
+    echo "$sb_lim" > "$outFile"
+    echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }
 export -f limitingSurfaceBrightness
