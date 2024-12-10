@@ -878,51 +878,50 @@ fi
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
-# Making sex catalogs
-writeTimeOfStepToFile "Making sextractor catalogues" $fileForTimeStamps
-echo -e "·Creating SExtractorcatalogues"
+# Making sex catalogs and running scamp
+
+# ****** Decision note *******
+# In the LBT pipeline this two steps were done sequentially in two different blocks, first sextractor and then scamp
+# I have put them together so we can loop them easily, because to perform an iterative astrometrisation we need to do
+# sextractor + scamp, so for doing it in a confortable manner in the code both steps are in the same block
+writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
+echo -e "·Creating SExtractor catalogues and running scamp"
+
+numOfSextractorPlusScampIterations=2
 
 sexcfg=$CDIR/sextractor_astrometry.sex
 sexparam=$CDIR/sextractor_astrometry.param
 sexconv=$CDIR/default.conv
 sexdir=$BDIR/sex-it1
-sexdone=$sexdir/done_"$filter".txt
-if ! [ -d $sexdir ]; then mkdir $sexdir; fi
-if [ -f $sexdone ]; then
-    echo -e "\n\tSex catalogs are already done for extension $h\n"
-else
-    frameNames=()
-    for a in $(seq 1 $totalNumberOfFrames); do
-        frameNames+=("$a")
-    done
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
-    echo done > $sexdone
-fi
 
-
-
-# Making scamp headers
-writeTimeOfStepToFile "Making Scamp headers" $fileForTimeStamps
-echo -e "·Creatin Scamp headers"
 scampcfg=$CDIR/scamp.cfg
 scampdir=$BDIR/scamp-it1
 scampres=$scampdir/results_Decals-"$filter"
 scampdone=$scampdir/done_"$filter".txt
+
+if ! [ -d $sexdir ]; then mkdir $sexdir; fi
 if ! [ -d $scampdir ]; then mkdir $scampdir; fi
 if ! [ -d $scampres ]; then mkdir $scampres; fi
+
 if [ -f $scampdone ]; then
-    echo -e "\n\tScamp headers are already done for extension $h\n"
+    echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
 else
+  frameNames=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+      frameNames+=("$a")
+  done
+
+  for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
+    echo -e "\tSExtractor + scamp iteration $i"
+
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
     scamp -c $scampcfg $(ls -v $sexdir/*.cat)
+    cp $sexdir/*.head $astroimadir
     mv *.pdf $scampres/
     mv scamp.xml $scampdir
-    echo done > $scampdone
+  done
+  echo done > $scampdone
 fi
-
-
-# We copy the files for improving the astrometry into the folder of the images that we are going to warp
-cp $sexdir/*.head $astroimadir
-
 
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
@@ -951,7 +950,6 @@ else
   echo done > $entiredone
 fi
 
-
 # Checking and removing bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
@@ -964,7 +962,6 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile
   echo done > $badFilesWarningsDone
 fi
-
 
 rejectedFramesDir=$BDIR/rejectedFrames_astrometry
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
@@ -990,7 +987,6 @@ ringDir=$BDIR/ring
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 
-
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
 noiseskyctedone=$noiseskyctedir/done_"$filter".txt
@@ -998,7 +994,6 @@ if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"
   computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 fi
-
 
 # Checking and removing bad frames based on the background value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1032,7 +1027,7 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 
 
 #### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
-echo -e "${GREEN} --- Coadding before photometric calibratino --- ${NOCOLOUR} \n"
+echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
 writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
 iteration=1
 h=0
@@ -1079,14 +1074,15 @@ else
 	coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot.fits
 	buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-  	exposuremapDir=$coaddDir/"$objectName"_exposureMap
-  	exposuremapdone=$coaddDir/done_exposureMap.txt
-  	computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+  exposuremapDir=$coaddDir/"$objectName"_exposureMap
+  exposuremapdone=$coaddDir/done_exposureMap.txt
+  computeExposureMap $framesDir $exposuremapDir $exposuremapdone
 fi
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
+
 
 ### PARAMETERS ###
 toleranceForMatching=2 #arcsec
@@ -1122,7 +1118,6 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $matchdir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
 
-
 # Checking and removing bad frames based on the FWHM value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
@@ -1136,13 +1131,11 @@ else
   echo done > $badFilesWarningsDone
 fi
 
-
 rejectedFramesDir=$BDIR/rejectedFrames_FWHM
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with FWHM"
 removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-
 
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
@@ -1153,13 +1146,11 @@ else
 fi
 python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
 
-
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
-
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
 
@@ -1179,8 +1170,6 @@ else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-photometry_perBrick_it1 \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir
 fi
-
-
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
@@ -1244,7 +1233,6 @@ if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 
 removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
-
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
 
@@ -1298,11 +1286,30 @@ else
     surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
-keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES" "SURFACE_BRIGHTNESS_LIMIT")
-numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-addkeywords $coaddName keyWords values
+times=($(getInitialMidAndFinalFrameTimes $INDIR))
+initialTime=$( date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+meanTime=$( date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
 
+keyWords=("FRAMES_COMBINED" \
+          "NUMBER_OF_DIFFERENT_NIGHTS" \
+          "INITIAL_DATE_OBS"
+          "MEAN_DATE_OBS"
+          "FINAL_DATE_OBS"
+          "FILTER" \
+          "SATURATION_THRESHOLD" \
+          "CALIBRATION_BRIGHTLIMIT" \
+          "CALIBRATION_FAINTLIMIT" \
+          "RUNNING_FLAT" \
+          "WINDOW_SIZE" \
+          "STD_FOR_BAD_FRAMES" \
+          "SURFACE_BRIGHTNESS_LIMIT")
+
+numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+astfits $coaddName --write=/,"Pipeline information"
+addkeywords $coaddName keyWords values comments
 
 
 halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
@@ -1376,10 +1383,35 @@ fi
 #     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_plane.fits
 #     buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-#     keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
-#     numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-#     values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
-#     addkeywords $coaddName keyWords values
+    # #Compute surface brightness limit
+    # sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
+    # exposuremapName=$coaddDir/exposureMap.fits
+    # if [ -f  $sblimitFile ]; then
+    #     echo -e "\n\tSurface brightness limit for coadd already measured\n"
+    # else
+    #     surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+    # fi
+
+    # keyWords=("FRAMES_COMBINED" \
+    #           "NUMBER_OF_DIFFERENT_NIGHTS" \
+    #           "INITIAL_DATE_OBS"
+    #           "MEAN_DATE_OBS"
+    #           "FINAL_DATE_OBS"
+    #           "FILTER" \
+    #           "SATURATION_THRESHOLD" \
+    #           "CALIBRATION_BRIGHTLIMIT" \
+    #           "CALIBRATION_FAINTLIMIT" \
+    #           "RUNNING_FLAT" \
+    #           "WINDOW_SIZE" \
+    #           "STD_FOR_BAD_FRAMES" \
+    #           "SURFACE_BRIGHTNESS_LIMIT")
+    # numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+
+    # values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+    # comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+
+    # astfits $coaddName --write=/,"Pipeline information"
+    # addkeywords $coaddName keyWords values comments 
 #   fi
 # fi
 
@@ -1436,6 +1468,7 @@ imagesAreMasked=true
 computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+
 
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1514,11 +1547,24 @@ else
 fi
 
 echo -e "\nAdding keywords to the coadd"
-keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES" "SURFACE_BRIGHTNESS_LIMIT")
+keyWords=("FRAMES_COMBINED" \
+          "NUMBER_OF_DIFFERENT_NIGHTS" \
+          "INITIAL_DATE_OBS"
+          "MEAN_DATE_OBS"
+          "FINAL_DATE_OBS"
+          "FILTER" \
+          "SATURATION_THRESHOLD" \
+          "CALIBRATION_BRIGHTLIMIT" \
+          "CALIBRATION_FAINTLIMIT" \
+          "RUNNING_FLAT" \
+          "WINDOW_SIZE" \
+          "STD_FOR_BAD_FRAMES" \
+          "SURFACE_BRIGHTNESS_LIMIT")
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-addkeywords $coaddName keyWords values
-
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+astfits $coaddName --write=/,"Pipeline information"
+addkeywords $coaddName keyWords values comments
 
 halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it2.png
 if [ -f $halfMaxRadForCoaddName ]; then
@@ -1591,13 +1637,35 @@ fi
 #     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_plane.fits
 #     buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-#     keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
-#     numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-#     values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
-#     addkeywords $coaddName keyWords values
+    # #Compute surface brightness limit
+    # sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
+    # exposuremapName=$coaddDir/exposureMap.fits
+    # if [ -f  $sblimitFile ]; then
+    #     echo -e "\n\tSurface brightness limit for coadd already measured\n"
+    # else
+    #     surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+    # fi
+    
+      # keyWords=("FRAMES_COMBINED" \
+      #           "NUMBER_OF_DIFFERENT_NIGHTS" \
+      #           "INITIAL_DATE_OBS"
+      #           "MEAN_DATE_OBS"
+      #           "FINAL_DATE_OBS"
+      #           "FILTER" \
+      #           "SATURATION_THRESHOLD" \
+      #           "CALIBRATION_BRIGHTLIMIT" \
+      #           "CALIBRATION_FAINTLIMIT" \
+      #           "RUNNING_FLAT" \
+      #           "WINDOW_SIZE" \
+      #           "STD_FOR_BAD_FRAMES" \
+      #           "SURFACE_BRIGHTNESS_LIMIT")
+      #     numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+    # values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+    # comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+    # astfits $coaddName --write=/,"Pipeline information"
+    # addkeywords $coaddName keyWords values comments 
 #   fi
 # fi
-
 
 endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"
@@ -1735,10 +1803,24 @@ exit 0
 # buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
 # echo -e "\nAdding keywords to the coadd"
-# keyWords=("FRAMES_COMBINED" "FILTER" "SATURATION_THRESHOLD" "CALIBRATION_BRIGHTLIMIT" "CALIBRATION_FAINTLIMIT" "RUNNING_FLAT" "WINDOW_SIZE" "STD_FOR_BAD_FRAMES")
+# keyWords=("FRAMES_COMBINED" \
+#           "NUMBER_OF_DIFFERENT_NIGHTS" \
+#           "INITIAL_DATE_OBS"
+#           "MEAN_DATE_OBS"
+#           "FINAL_DATE_OBS"
+#           "FILTER" \
+#           "SATURATION_THRESHOLD" \
+#           "CALIBRATION_BRIGHTLIMIT" \
+#           "CALIBRATION_FAINTLIMIT" \
+#           "RUNNING_FLAT" \
+#           "WINDOW_SIZE" \
+#           "STD_FOR_BAD_FRAMES" \
+#           "SURFACE_BRIGHTNESS_LIMIT")
 # numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-# values=("$numberOfFramesCombined" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames")
-# addkeywords $coaddName keyWords values
+# values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+# comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+# astfits $coaddName --write=/,"Pipeline information"
+# addkeywords $coaddName keyWords values comments
 
 
 # if [ -f $framesWithCoaddSubtractedDone ]; then
