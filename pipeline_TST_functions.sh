@@ -254,13 +254,39 @@ maskImages() {
 }
 export -f maskImages
 
+getInitialMidAndFinalFrameTimes() {
+  directoryWithNights=$1
+
+  declare -a date_obs_array
+  
+  while IFS= read -r -d '' file; do
+    currentDateObs=$( gethead $file DATE-OBS)
+
+    if [[ -n "$currentDateObs" ]]; then
+        unixTime=$( date -d "$currentDateObs" +"%s" )
+        date_obs_array+=("$unixTime")
+    fi
+  done < <(find "$directoryWithNights" -type f -name "*.fits" -print0)
+
+  sortedDateObsArray=($(for date in "${date_obs_array[@]}"; do echo "$date"; done | sort))
+  arrayLength=$( echo "${#sortedDateObsArray[@]}" )
+
+  initialTime=${sortedDateObsArray[0]}
+  meanTime=${sortedDateObsArray[(( (( $arrayLength - 1)) / 2))]}
+  finalTime=${sortedDateObsArray[(( $arrayLength - 1))]}
+  echo "$initialTime $meanTime $finalTime"
+}
+export -f getInitialMidAndFinalFrameTimes
+
+
 writeKeywordToFits() {
     fitsFile=$1
     header=$2
     keyWord=$3
     value=$4
+    comment=$5
 
-    astfits --write=$keyWord,$value $fitsFile -h$header
+    astfits --write=$keyWord,$value,"$comment" $fitsFile -h$header
 }
 export -f writeKeywordToFits
 
@@ -279,6 +305,7 @@ addkeywords() {
     shift
     local -n keys_array=$1
     local -n values_array=$2
+    local -n comments_array=$3
 
     if [[ -z "$fits_file" || ${#keys_array[@]} -eq 0 || ${#values_array[@]} -eq 0 ]]; then
         errorNumber=7
@@ -296,8 +323,9 @@ addkeywords() {
     for i in "${!keys_array[@]}"; do
         local key="${keys_array[$i]}"
         local value="${values_array[$i]}"
+        local comment="${comments_array[$i]}"
 
-        writeKeywordToFits $fits_file 1 "$key" "$value"
+        writeKeywordToFits $fits_file 1 "$key" "$value" "$comment"
     done
 }
 export -f addkeywords
@@ -1515,9 +1543,7 @@ computeCalibrationFactors() {
     numberOfFWHMForPhotometry=${12}
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
-
     methodToUse="noisechisel"
-
 
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize
@@ -1529,7 +1555,7 @@ computeCalibrationFactors() {
     decalsDataCatalogueDir=$BDIR/decals-aperture-photometry_perBrick_it$iteration
     echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
     combineDecalsBricksCataloguesForEachFrame $decalsDataCatalogueDir $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
- 
+     
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $decalsDataCatalogueDir $matchdir 
 
@@ -1592,7 +1618,11 @@ computeWeightForFrame() {
     rms_min=$(awk 'NR=='1'{print $1}' $BDIR/$minRmsFileName)
     rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
 
-    weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) # Quadratic is the optimal weight 
+    # ****** Decision note *******
+    # The weights are obtained as the quadratic ratio between the best sigma and the current sigma
+    # This weights produce the optimal combinantion for a gaussian distribution 
+    # Ref: https://ned.ipac.caltech.edu/level5/Leo/Stats4_5.html
+    weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) 
     echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt      
 
     # multiply each image for its weight
@@ -2079,6 +2109,8 @@ limitingSurfaceBrightness() {
     pixelScale=$7
     outFile=$8
 
+    numOfSigmasForMetric=3
+
     out_mask=$directoryOfImages/mask_det.fits
     astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask 1>/dev/null
 
@@ -2089,9 +2121,9 @@ limitingSurfaceBrightness() {
 
     sigma=$(aststatistics $out_maskexp --sigclip-std -q)
 
-    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x 22.5 + -q)
+    sb_lim=$(astarithmetic $sigma $numOfSigmasForMetric x $pixelScale x $areaSB / log10 -2.5 x 22.5 + -q)
     rm $out_mask $out_maskexp
-    echo "$sb_lim" > "$outFile"
+    echo "Limiting magnitude ($numOfSigmasForMetric sigma, $areaSB x $areaSB): $sb_lim" > "$outFile"
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }
 export -f limitingSurfaceBrightness
