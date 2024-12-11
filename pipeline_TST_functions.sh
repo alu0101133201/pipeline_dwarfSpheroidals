@@ -2086,11 +2086,11 @@ limitingSurfaceBrightness() {
     expMax=$(aststatistics $exposureMap --maximum -q)
     exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
     astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
-
+    zp_asec=$(astarithmetic $pixelScale log10 5 x 22.5 + -q)
     sigma=$(aststatistics $out_maskexp --sigclip-std -q)
     
 
-    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x 22.5 + -q)
+    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
     echo "$sb_lim" > "$outFile"
 
     rm $out_mask $out_maskexp
