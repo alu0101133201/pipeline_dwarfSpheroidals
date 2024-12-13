@@ -2117,11 +2117,13 @@ limitingSurfaceBrightness() {
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
     exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
-    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp 1>/dev/null
-
+    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
+    zp_asec=$(astarithmetic $pixelScale log10 5 x 22.5 + -q)
     sigma=$(aststatistics $out_maskexp --sigclip-std -q)
+    
+    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
+    echo "$sb_lim" > "$outFile"
 
-    sb_lim=$(astarithmetic $sigma $numOfSigmasForMetric x $pixelScale x $areaSB / log10 -2.5 x 22.5 + -q)
     rm $out_mask $out_maskexp
     echo "Limiting magnitude ($numOfSigmasForMetric sigma, $areaSB x $areaSB): $sb_lim" > "$outFile"
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
