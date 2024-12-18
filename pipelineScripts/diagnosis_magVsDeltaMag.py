@@ -63,7 +63,9 @@ def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimi
     for i in range(len(mag)):
         if ( (mag[i] > brightLimit) and (mag[i] < faintLimit) ):
             diffMagInRange.append(magDiff[i])
-    return(np.sqrt(np.mean(np.array(diffMagInRange)**2)))
+        
+    clippedMangitudes, _, _ = sigmaclip(diffMagInRange, low=5.0, high=5.0)
+    return(np.sqrt(np.mean(np.array(clippedMangitudes)**2)))
 
 def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, imageName):
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -129,8 +131,11 @@ for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
     tmp = np.array(np.abs(mag1 - mag2))
     frameNumber = np.append(frameNumber, np.repeat(index, len(mag1)))
 
-totalScatter = np.sqrt(np.mean(magDiffAbs**2))
+
 scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+magDiffAbs, _, _ = sigmaclip(magDiffAbs, low=5.0, high=5.0)
+
+totalScatter = np.sqrt(np.mean(magDiffAbs**2))
 plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, outputName)
 
 
