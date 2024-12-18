@@ -444,7 +444,12 @@ calculateFlat() {
     # So we have to be a little bit aggresive in order to be able to remove the outliers
     sigmaValue=2
     iterations=10
-    astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 -o $flatName
+    gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+    if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 --writeall -o $flatName
+    else
+        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 -o $flatName
+    fi
 }
 export -f calculateFlat
 
@@ -1678,9 +1683,15 @@ buildUpperAndLowerLimitsForOutliers() {
             # Compute clipped median and std
             med_im=$clippingdir/median_image.fits
             std_im=$clippingdir/std_image.fits
-
-            astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 -o$med_im
-            astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 -o$std_im
+            gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 --writeall -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 --writeall -o$std_im
+            else
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1  -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1  -o$std_im
+            fi
+            
             # Compute "borders" images
             up_lim=$clippingdir/upperlim.fits
             lo_lim=$clippingdir/lowerlim.fits
@@ -1916,8 +1927,14 @@ buildCoadd() {
     if [ -f $coaddone ]; then
             echo -e "\n\tThe first weighted (based upon std) mean of the images already done\n"
     else
-            astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_wx.fits
-            astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_w.fits
+            gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_w.fits
+            else
+                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_w.fits
+            fi
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
             echo done > $coaddone
     fi
@@ -1963,7 +1980,12 @@ computeExposureMap() {
       done
       
       printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
-      astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1 -o$coaddDir/exposureMap.fits
+      gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+      if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+        astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1  --writeall -o$coaddDir/exposureMap.fits
+      else
+        astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1  --writeall -o$coaddDir/exposureMap.fits
+      fi
       rm -rf $exposuremapDir
       echo done > $exposuremapdone
     fi
