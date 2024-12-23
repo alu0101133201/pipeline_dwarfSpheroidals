@@ -10,7 +10,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from matplotlibConf import *
-from decals_GetAndDownloadBricks import *
+from GetAndDownloadBricks import *
 
 
 def getCoordsAndMagFromBrightStars(catalogue, threshold):
@@ -118,11 +118,14 @@ def plotEllipseAndBricks(x0, y0, sma, axis_ratio, pa, x, y, pointsmask_bricksIns
     plt.axis("equal")
     plt.savefig(mosaicDir + "/downloadedBricks.png")
 
-def writeBricksAndItsCoordinates(file, brickNames, ra, dec):
+def writeBricksAndItsCoordinates(file, brickNames, ra, dec, survey):
     with open(file, 'w') as f:
         f.write("BrickName\tRA_centre\tDec_centre\n")
         for i in range(len(brickNames)):
-            f.write(brickNames[i] + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
+            if survey=='PANSTARRS':
+                #Just to avoid the .fits in the brick identification file, will be useful in the future
+                brickName=brickNames[i][:-5]
+            f.write(brickName + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
 
 
 if (len(sys.argv) < 8):
@@ -140,10 +143,10 @@ mosaicDir                       = sys.argv[9]
 bricksIdentificationFile        = sys.argv[10]
 gaiaCatalogue                   = sys.argv[11]
 starThresholdForRejectingBricks = float(sys.argv[12])
-
+survey                          = sys.argv[13]
 setMatplotlibConf()
-
 decalsBrickWidthDeg = 15.5 / 60 
+panstarrsBrickWidthDeg=15.0 / 60
 
 # Compute corners of the field
 galaxyMinimumRA  = galaxyRA  - (fieldSize / 2)
@@ -152,7 +155,34 @@ galaxyMinimumDec = galaxyDec - (fieldSize / 2)
 galaxyMaximumDec = galaxyDec + (fieldSize / 2)
 cornersWCSCoords = [(galaxyMinimumRA, galaxyMinimumDec), (galaxyMaximumRA, galaxyMaximumDec)]
 
-bricksNames, bricksRA, bricksDec = getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(cornersWCSCoords[0], cornersWCSCoords[1])
+if survey=='DECaLS':
+    bricksNames, bricksRA, bricksDec = getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(cornersWCSCoords[0], cornersWCSCoords[1])
+    threadList = []
+
+    for i in bricksNames:
+        threadList.append(threading.Thread(target=downloadBrickDecals, args=(i, filters, downloadDestination, False)))
+    for i in threadList:
+        i.start()
+    for i in threadList:
+        i.join()
+elif survey=='PANSTARRS':
+    bricks_fullNames,bricksRA,bricksDec,bricksNames = getPanstarrsBricksFromRegionDefinedByTwoPoints(cornersWCSCoords[0],cornersWCSCoords[1],filters)
+    threadList = []
+    for i in range(len(bricks_fullNames)):
+        b_fname=bricks_fullNames[i]
+        b_ra=bricksRA[i]
+        b_dec=bricksDec[i]
+        b_name=bricksNames[i]
+        threadList.append(threading.Thread(target=downloadBrickPanstarrs,args=(b_fname,b_name,b_ra,b_dec,downloadDestination,False)))
+    for i in threadList:
+        i.start()
+    for i in threadList:
+        i.join()
+else:
+    raise Exception (f"Survey {survey} not supported for Photometric calibration")
+    
+#All this comments concern the fact that we can mask bricks where galaxy or bright stars are allocated
+"""
 mask_bricksInsideGalaxy = brickContainTheGalaxy(np.array(bricksRA), np.array(bricksDec), galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA)
 
 ra, dec = getCoordsAndMagFromBrightStars(gaiaCatalogue, starThresholdForRejectingBricks)
@@ -162,14 +192,6 @@ maskCombined = mask_bricksInsideGalaxy | mask_bricksWithBrightStar
 
 bricksToDownload = bricksNames[~maskCombined]
 plotEllipseAndBricks(galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA, bricksRA, bricksDec, mask_bricksInsideGalaxy, mask_bricksWithBrightStar, maskCombined, mosaicDir)
-writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames[~maskCombined], bricksRA[~maskCombined], bricksDec[~maskCombined])
+"""
+writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames, bricksRA, bricksDec, survey)
 
-threadList = []
-for i in bricksToDownload:
-    threadList.append(threading.Thread(target=downloadBrick, args=(i, filters, downloadDestination, False)))
-
-for i in threadList:
-    i.start()
-
-for i in threadList:
-    i.join()

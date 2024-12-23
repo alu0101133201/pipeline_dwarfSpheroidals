@@ -10,7 +10,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 
-from decals_GetAndDownloadBricks import *
+from pipeline.pipelineScripts.GetAndDownloadBricks import *
 
 def getImageData(image, hduNumber):
     hdulist = fits.open(image)

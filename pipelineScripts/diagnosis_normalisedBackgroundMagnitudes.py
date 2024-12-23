@@ -152,18 +152,49 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, title, imageName):
+def saveHistogram(values,rvalues_bck,rvalues_fwhm, title, imageName):
     valuesToPlot = values[~np.isnan(values)]
+    
+    rvaluesToPlot_fwhm=rvalues_fwhm[~np.isnan(rvalues_fwhm)]
     myBins = calculateFreedmanBins(valuesToPlot)
     myBins = np.linspace(np.nanmin(values), np.nanmax(values), 10)
-
+    
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     ax.set_title(title, fontsize=22, pad=17)
     plt.tight_layout(pad=7.0)
     configureAxis(ax, 'Background (mag/arcsec^2)', '', logScale=False)
-    counts, bins, patches = ax.hist(values, bins=myBins, color="teal")
-    max_bin_height = counts.max() + 10
+    counts, bins, patches = ax.hist(values, bins=myBins, color="teal",label='Used frames')
 
+    ##Check and hist rejected values
+    if len(rvalues_bck)!=0:
+        rvaluesToPlot_bck=rvalues_bck[~np.isnan(rvalues_bck)]
+        myBins_bck = calculateFreedmanBins(rvaluesToPlot_bck)
+        myBins_bck = np.linspace(np.nanmin(rvalues_bck), np.nanmax(rvalues_bck), 10)
+        counts_bck,bins_bck,patches_bck = ax.hist(rvalues_bck,bins=myBins_bck,color='darkred',label='Rejected Back.')
+    
+    if len(rvalues_fwhm)!=0:
+        rvaluesToPlot_fwhm=rvalues_fwhm[~np.isnan(rvalues_fwhm)]
+        myBins_fwhm = calculateFreedmanBins(rvaluesToPlot_fwhm)
+        myBins_fwhm = np.linspace(np.nanmin(rvalues_fwhm), np.nanmax(rvalues_fwhm), 10)
+        counts_bck,bins_bck,patches_bck = ax.hist(rvalues_fwhm,bins=myBins_fwhm,color='mediumorchid',label='Rejected FWHM')
+    max_bin_height = counts.max() + 10
+    ax.legend()
+    plt.savefig(imageName)
+    return()
+
+def saveScatterFactors(factors,badFrames_bck,badFrames_fwhm,rfactors_bck,rfactors_fwhm,title,imageName):
+    frames=np.arange(1,len(factors)+1) #All frames
+    fig, ax = plt.subplots(1,1,figsize=(10,10))
+    ax.set_title(title,fontsize=22,pad=17)
+    plt.tight_layout(pad=7.0)
+    configureAxis(ax,'Number of Frame','Calibration Factor',logScale=False)
+    ax.scatter(frames,factors,marker='o',edgecolor='k',color='teal',s=60,zorder=0)
+    if len(badFrames_bck)!=0:
+        ax.scatter(badFrames_bck,rfactors_bck,marker='X',edgecolor='k',color='darkred',s=80,zorder=1,label='Rejected back.')
+    if len(badFrames_fwhm)!=0:
+        ax.scatter(badFrames_fwhm,rfactors_fwhm,marker='P',edgecolor='k',color='mediumorchid',s=80,zorder=1,label='Rejected FWHM')
+
+    ax.legend()
     plt.savefig(imageName)
     return()
 
@@ -197,18 +228,24 @@ def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFacto
                 
     return(calibratedValues)
 
-def removeBadFramesFromList(data, badFrames):
+def removeBadFramesFromList(data, badFrames_bck, badFrames_fwhm):
     noBadValues = []
-    badFramesSet = set(badFrames)
-
+    badFramesSet_bck = set(badFrames_bck)
+    badFramesSet_fwhm = set(badFrames_fwhm)
+    BadValues_bck = []
+    BadValues_fwhm = []
     for i in data:
         match = re.search(r'(\d+)', i[0])
         if match:
             number = float(match.group(1))
 
-            if number not in badFrames:
+            if number in badFrames_bck:
+                BadValues_bck.append(i)
+            elif number in badFrames_fwhm:
+                BadValues_fwhm.append(i)
+            else:
                 noBadValues.append(i)
-    return(noBadValues)
+    return(noBadValues,BadValues_bck,BadValues_fwhm)
 
 def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, fileName):
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -234,20 +271,21 @@ rejectedFramesFWHM            = sys.argv[8]
 # 0.- Identify the files that have been identified as bad frames 
 # This is needed because the data used comes from the noise-sky_it1 (since we need the background values) and the
 # removal of bad frames is something done in posterior steps
-badFrames = []
+# In order to trace reasons concerning the removal, we're gonna store it on different lists
+badFrames_background = []
 for currentFile in glob.glob(rejectedFramesBackground + "/*.fits"):
     match = re.search(r'entirecamera_(\d+)\.fits', currentFile)
     if match:
         number = int(match.group(1))  
-        badFrames.append(number)
+        badFrames_background.append(number)
     else:
         raise Exception("Error identifying the number of the bad frames (background bad frames)")
-
+badFrames_fwhm = []
 for currentFile in glob.glob(rejectedFramesFWHM + "/*.fits"):
     match = re.search(r'entirecamera_(\d+)\.fits', currentFile)
     if match:
         number = int(match.group(1))  
-        badFrames.append(number)
+        badFrames_fwhm.append(number)
     else:
         raise Exception("Error identifying the number of the bad frames (FWHM bad frames)")
 
@@ -265,19 +303,22 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
 
 # 2.- Obtain the calibration factors
 totalCalibrationFactors = []
-for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*.txt"):
+for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt"):
     calibrationFactor = retrieveCalibrationFactors(currentFile)
     if (not math.isnan(calibrationFactor)):
         totalCalibrationFactors.append([currentFile.split('/')[-1], calibrationFactor])
-    
-normalisedBackgroundValues = removeBadFramesFromList(normalisedBackgroundValues, badFrames)
-totalCalibrationFactors    = removeBadFramesFromList(totalCalibrationFactors, badFrames)
 
-values = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
+values_noremoved = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
+magnitudesPerArcSecSq_noremoved = countsToSurfaceBrightnessUnits(values_noremoved, arcsecPerPx)
+#In order to check which values are affected by bad backgrounds/fwhm we store them
+magnitudesPerArcSecSq,removedValues_bck,removedValues_fwhm = removeBadFramesFromList(magnitudesPerArcSecSq_noremoved, badFrames_background,badFrames_fwhm)
+totalCalibrationFactors_rem,removedFactors_bck,removedFactors_fwhm  = removeBadFramesFromList(totalCalibrationFactors, badFrames_background,badFrames_fwhm)
+
+#values = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
+values,rembck,remfwhm=removeBadFramesFromList(values_noremoved,badFrames_background,badFrames_fwhm)
 
 
-magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(values, arcsecPerPx)
-saveHistogram(np.array(magnitudesPerArcSecSq), "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
-
-x = [float(i[1]) for i in normalisedBackgroundValues]
+saveHistogram(np.array(magnitudesPerArcSecSq),np.array(removedValues_bck),np.array(removedValues_fwhm), "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
+saveScatterFactors(np.array(totalCalibrationFactors),badFrames_background,badFrames_fwhm,removedFactors_bck,removedFactors_fwhm,"Evolution of calibration factors",destinationFolder + "/calibfacEvol.png")
+x = [float(i[1]) for i in values]
 scatterPlotCountsVsMagnitudes(x, magnitudesPerArcSecSq, destinationFolder + "/countsVsMagnitudes.png")
