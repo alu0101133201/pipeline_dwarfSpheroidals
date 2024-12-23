@@ -867,7 +867,7 @@ downloadData() {
     else
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions        
         echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
-        python $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $starThresholdForRejectingBricks $survey
+        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $starThresholdForRejectingBricks $survey
         echo "done" > $donwloadMosaicDone
     fi
 }
@@ -1203,7 +1203,7 @@ produceHalfMaxRadiusPlotsForPanstarrs() {
             plotXHigherLimit=10
             plotYLowerLimit=13
             plotYHigherLimit=24
-            python $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $currentFullCatalogue $matchedCatalogue -1 $minr $maxr $outputDir/$brickName.png  \
+            python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $currentFullCatalogue $matchedCatalogue -1 $minr $maxr $outputDir/$brickName.png  \
                 $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
         done
         
@@ -1363,7 +1363,7 @@ prepareDecalsDataForPhotometricCalibration() {
     if [[ -f $brickDecalsAssociationFile ]]; then
         rm $brickDecalsAssociationFile
     fi
-    python $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
+    python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
 }
 export -f prepareDecalsDataForPhotometricCalibration
 
@@ -1965,7 +1965,7 @@ produceCalibrationCheckPlot() {
         rm $tmpDir/$frameNumber.cat
     done
 
-    python $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
+    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
     rm -rf $tmpDir
 }
 export -f produceCalibrationCheckPlot
@@ -1994,7 +1994,7 @@ produceHalfMaxRadVsMagForSingleImage() {
     plotXHigherLimit=10
     plotYLowerLimit=12
     plotYHigherLimit=22
-    python $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png  \
+    python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png  \
         $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
 
     rm $catalogueName $outputDir/match_decals_gaia_$a.txt 
@@ -2227,7 +2227,7 @@ photometryOnImage_photutils() {
     yColumnWCS=${12}
 
     tmpCatalogName=$directoryToWork/tmp_"$a".cat
-    python $pythonScriptsPath/photutilsPhotometry.py $matchedCatalogue $imageToUse $aperture_radius_px $tmpCatalogName $zeropoint $hduWithData $xColumnPx $yColumnPx $xColumnWCS $yColumnWCS
+    python3 $pythonScriptsPath/photutilsPhotometry.py $matchedCatalogue $imageToUse $aperture_radius_px $tmpCatalogName $zeropoint $hduWithData $xColumnPx $yColumnPx $xColumnWCS $yColumnWCS
 
     asttable $tmpCatalogName -p4 --colmetadata=2,X,px,"X" \
                             --colmetadata=3,Y,px,"Y" \
