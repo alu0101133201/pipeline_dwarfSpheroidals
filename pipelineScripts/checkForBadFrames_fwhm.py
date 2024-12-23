@@ -84,7 +84,7 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, median, std, imageName, numOfStd, title):
+def saveHistogram(values, median, std, badValues, imageName, numOfStd, title):
     myBins = calculateFreedmanBins(values)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
@@ -98,7 +98,12 @@ def saveHistogram(values, median, std, imageName, numOfStd, title):
         fontsize=20, verticalalignment='top', horizontalalignment='left')
     ax.text(0.375, 0.9, "Std: " + "{:.2f}".format(std), transform=ax.transAxes, 
         fontsize=20, verticalalignment='top', horizontalalignment='left')
-
+    if len(badValues)!=0:
+        counts_bad, bins_bad, patches_bad = ax.hist(badValues,bins=np.linspace(np.nanmin(badValues), np.nanmax(badValues), 4),color='red',label='Rejected FWHM')
+        
+        ax.legend()
+    ax.text(0.3655,0.85,"Rej. Frames: "+str(len(badValues)),transform=ax.transAxes,
+                fontsize=20,verticaligment='top',horizontalaligment='left')
     plt.savefig(imageName)
     return()
 
@@ -117,9 +122,6 @@ for currentFile in glob.glob(folderWithFWHM + "/range_*.txt"):
     if (not math.isnan(fwhmValue)):
         fwhmValues = np.concatenate((fwhmValues, [fwhmValue]))
 
-# 2.- Obtain the median and std and do teh histogram -------------------------------------
-fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
-saveHistogram(fwhmValues, fwhmValueMean, fwhmValueStd, outputFolder + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")
 
 
 def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
@@ -143,10 +145,11 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
 
     allFiles = np.array(allFiles)
     badFiles = allFiles[mask]
-    return(badFiles)
+    badFWHM = allFWHM[mask]
+    return(badFiles,badFWHM)
     
-# 3.- Identify what frames are outside the acceptance region -----------------------
-badFiles = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
+# 2.- Identify what frames are outside the acceptance region -----------------------
+badFiles,badFWHM = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
 
 pattern = r"entirecamera_\d+"
 with open(outputFolder + "/" + outputFile, 'w') as file:
@@ -154,3 +157,7 @@ with open(outputFolder + "/" + outputFile, 'w') as file:
         match = re.search(pattern, fileName)
         result = match.group()
         file.write(result + '\n')
+
+# 3.- Obtain the median and std and do teh histogram -------------------------------------
+fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
+saveHistogram(fwhmValues, fwhmValueMean, fwhmValueStd, badFWHM, outputFolder + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")

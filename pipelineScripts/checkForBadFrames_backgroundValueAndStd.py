@@ -107,7 +107,7 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
+def saveHistogram(values, median, std, badValues, imageName, numOfStd, title, labelX):
     valuesToPlot = values[~np.isnan(values)]
     myBins = calculateFreedmanBins(valuesToPlot)
 
@@ -124,7 +124,17 @@ def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
         fontsize=20, verticalalignment='top', horizontalalignment='left')
     ax.text(0.375, 0.9, "Std: " + str(int(std)), transform=ax.transAxes, 
         fontsize=20, verticalalignment='top', horizontalalignment='left')
+    if len(badValues)!=0:
+        if "STD" in labelX:
+            type_rejection="STD"
+        elif "counts" in labelX:
+            type_rejection="Counts"
+        counts_bad, bins_bad, patches_bad = ax.hist(badValues,bins=np.linspace(np.nanmin(badValues), np.nanmax(badValues), 4),color='red',label='Rejected'+type_rejection)
 
+        
+        ax.legend()
+    ax.text(0.3655, 0.85, "Rejected: " + str(len(badValues)), transform=ax.transAxes, 
+        fontsize=20, verticalalignment='top', horizontalalignment='left')
     # ax.text(0.1, 0.9, 'Mean: ' + "{:.0}".format(median), transform=ax.transAxes, 
     #     fontsize=18, verticalalignment='top', horizontalalignment='left')
     # ax.text(0.1, 0.85, 'Std: ' + "{:.0}".format(std), transform=ax.transAxes, 
@@ -219,7 +229,9 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     combined_mask = values_mask | std_mask
     allFiles = np.array(allFiles)
     badFiles = allFiles[combined_mask]
-    return(badFiles)
+    badValues=allBackgroundValues[values_mask]
+    badStd=allStd[std_mask]
+    return(badFiles,badValues,badStd)
 
 
 HDU_TO_FIND_AIRMASS = 1
@@ -248,20 +260,20 @@ normalisedBackgroundValues = np.array(normalisedBackgroundValues)
 backgroundStds = np.array(backgroundStds)
 
 print("\n\n")
-# 2.- Obtain the median and std and do the histograms ------------------
-backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
-saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, \
-                outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
-
-backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
-saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
-                outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
 
 
-# 3.- Identify what frames are outside the acceptance region ------------------
-badFiles = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
+# 2.- Identify what frames are outside the acceptance region ------------------
+badFiles,badValues,badStd = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
 
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
         file.write(fileName + '\n')
 
+# 3.- Obtain the median and std and do the histograms ------------------
+backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
+saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd,badValues, \
+                outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
+
+backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
+saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, badStd,\
+                outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
