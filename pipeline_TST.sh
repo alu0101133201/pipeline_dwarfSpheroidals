@@ -1142,7 +1142,7 @@ if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; f
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
   echo done > $badFilesWarningsDone
 fi
 
@@ -1159,8 +1159,8 @@ if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 else
   tmpDir=$noiseskyctedir
 fi
-python $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
-exit
+python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
+
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
@@ -1198,7 +1198,7 @@ else
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
-exit
+
 # ---------------------------------------------------
 
 echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
