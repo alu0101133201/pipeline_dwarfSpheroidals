@@ -77,7 +77,6 @@ for i in range(len(x)):
     currentAperture = CircularAperture((x[i] - 1, y[i] - 1), r=aperture_radius_px)
     currentAnnulus  =  CircularAnnulus((x[i] - 1, y[i] - 1), r_in=innerAnnulus, r_out=outerAnnulus)
 
-
     phot_table_local = aperture_photometry(imageData, currentAperture, mask = np.isnan(imageData), method="exact")
     aperstats = ApertureStats(imageData, currentAnnulus, sigma_clip=sigmaClip)
     bkg_mean = aperstats.median

@@ -85,11 +85,12 @@ outputConfigurationVariablesInformation() {
         "  Bright limit:$calibrationBrightLimit:[mag]"
         "  Faint limit:$calibrationFaintLimit:[mag]"
         "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry:[FWHM]"
-        "The definition of the galaxy region for not using these DECaLS bricks in calibration:"
+        "The calibration will be done using data from survey: $surveyForPhotometry"
+        "The definition of the galaxy region for not using these bricks in calibration:"
         "  Galaxy's Semi-major axis:$galaxySMA:[deg] "
         "  Galaxy's axis ratio:$galaxyAxisRatio"
         "  Galaxy's position angle:$galaxyPA:[deg]"
-        "DECaLS bricks rejected if present stars brighter (g-band) than:$starMagnitudeThresholdToReject_gBand:[mag]"
+        "Bricks rejected if present stars brighter (g-band) than:$starMagnitudeThresholdToReject_gBand:[mag]"
         ""
         "·Saturation threshold:$saturationThreshold:[ADU]"
         "·Gain:$gain:[e-/ADU]"
@@ -191,6 +192,7 @@ checkIfAllVariablesAreSet() {
                 calibrationBrightLimit \
                 calibrationFaintLimit \
                 numberOfFWHMForPhotometry \
+                surveyForPhotometry \
                 starMagnitudeThresholdToReject_gBand \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
@@ -842,9 +844,9 @@ getParametersFromHalfMaxRadius() {
 export -f getParametersFromHalfMaxRadius
 
 
-downloadDecalsData() {
+downloadData() {
     mosaicDir=$1
-    decalsImagesDir=$2
+    surveyImagesDir=$2
     bricksIdentificationFile=$3
     filters=$4
     ra=$5
@@ -855,22 +857,21 @@ downloadDecalsData() {
     fieldSizeDeg=${10}
     gaiaCatalogue=${11}
     starThresholdForRejectingBricks=${12}
-
-
-    echo -e "\n·Downloading Decals bricks"
-    donwloadMosaicDone=$mosaicDir/decalsImages/done_downloads.txt
+    survey=${13}
+    echo -e "\n·Downloading ${survey} bricks"
+    donwloadMosaicDone=$surveyImagesDir/done_downloads.txt
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
-    if ! [ -d $decalsImagesDir ]; then mkdir $decalsImagesDir; fi
+    if ! [ -d $surveyImagesDir ]; then mkdir $surveyImagesDir; fi
     if [ -f $donwloadMosaicDone ]; then
         echo -e "\n\tMosaic images already downloaded\n"
     else
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions        
-        echo "Downloading decals bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
-        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $decalsImagesDir $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $starThresholdForRejectingBricks
-        echo done > $donwloadMosaicDone
+        echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
+        python $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $starThresholdForRejectingBricks $survey
+        echo "done" > $donwloadMosaicDone
     fi
 }
-export -f downloadDecalsData
+export -f downloadData
 
 addTwoFiltersAndDivideByTwo() {
     decalsImagesDir=$1
@@ -1087,10 +1088,44 @@ decompressBricks() {
 }
 export -f decompressBricks
 
-selectStarsAndSelectionRangeDecals(){
+calibratePanstarrsFrame() {
+    brickName=$1
+    dirWithBricks=$2
+
+    cal_tm="cal_tm_"$brickName
+    ##We need to divide /10 to get into zp=22.5, and to divide between exposure time
+    texp=$(astfits $dirWithBricks/$brickName -h0 --keyvalue=EXPTIME -q )
+    astarithmetic $dirWithBricks/$brickName -h0 10 / $texp / -o $dirWithBricks/$cal_tm
+    cal="cal_"$brickName
+    astfits $dirWithBricks/$cal_tm --copy=1 --primaryimghdu -o $dirWithBricks/$cal
+    astfits $dirWithBricks/$cal -h0 --write=ZP,22.5
+    rm $dirWithBricks/$cal_tm
+}
+export -f calibratePanstarrsFrame
+
+calibratePanstarrs() {
+    dirWithBricks=$1
+
+    calibratedBricks=$dirWithBricks/recalibrated_done.txt
+    if [ -f $calibratedBricks ]; then
+        echo -e "\n\tPanstarrs bricks already re-calibrated\n"
+    else
+        brickList=()
+        for i in $( ls $dirWithBricks/t*.fits); do
+            currentName=$( basename $i )
+            brickList+=("$currentName")
+        done
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" calibratePanstarrsFrame {} $dirWithBricks
+        echo "done" > $calibratedBricks
+    fi
+}
+export -f calibratePanstarrs
+
+selectStarsAndSelectionRangeSurvey() {
     dirWithBricks=$1
     cataloguedir=$2
     methodToUse=$3
+    survey=$4
 
     starSelectionDone=$cataloguedir/done.txt
     if ! [ -d $cataloguedir ]; then mkdir $cataloguedir; fi
@@ -1098,10 +1133,17 @@ selectStarsAndSelectionRangeDecals(){
         echo -e "\n\tStar and range selection for calibration already done\n"
     else
         brickList=()
-        for i in $( ls $dirWithBricks/decompressed_*.fits); do
-            currentName=$( basename $i )
-            brickList+=("$currentName")
-        done
+        if [ "$survey" = "DECaLS" ]; then
+            for i in $( ls $dirWithBricks/decompressed_*.fits); do
+                currentName=$( basename $i )
+                brickList+=("$currentName")
+            done
+        elif [ "$survey" = "PANSTARRS" ]; then
+            for i in $( ls $dirWithBricks/cal_*.fits); do
+                currentName=$( basename $i )
+                brickList+=("$currentName")
+            done
+        fi
 
         headerWithData=0 # After decompressing the data ends up in the hdu 0
         noisechiselTileSize=50
@@ -1109,7 +1151,7 @@ selectStarsAndSelectionRangeDecals(){
         echo "done" > $starSelectionDone
     fi
 }
-export -f selectStarsAndSelectionRangeDecals
+export -f selectStarsAndSelectionRangeSurvey
 
 produceHalfMaxRadiusPlotsForDecals() {
     folderWithCatalogues=$1
@@ -1141,6 +1183,35 @@ produceHalfMaxRadiusPlotsForDecals() {
 }
 export -f produceHalfMaxRadiusPlotsForDecals
 
+produceHalfMaxRadiusPlotsForPanstarrs() {
+    folderWithCatalogues=$1
+    outputDir=$2
+    filter=$3
+    #ps==panstarrs
+    psHalfMaxRadiusPlotsDone=$outputDir/done.txt
+    if ! [ -d $outputDir ]; then mkdir $outputDir; fi
+    if [ -f $psHalfMaxRadiusPlotsDone ]; then
+        echo -e "\n\tHalf-max radius vs magnitude plots already done\n"
+    else
+        for currentFullCatalogue in $( ls $folderWithCatalogues/catalogue_*.cat ); do
+            brickName=$(echo "$currentFullCatalogue" | awk -F'catalogue_' '{print $2}' | awk -F'.cat' '{print $1}')
+            matchedCatalogue=$folderWithCatalogues/match_"$brickName"_my_gaia.txt
+            rangeFile=$folderWithCatalogues/range_"$brickName".txt
+            
+            read minr maxr < <(awk '{print $3, $4}' $rangeFile)
+            plotXLowerLimit=1
+            plotXHigherLimit=10
+            plotYLowerLimit=13
+            plotYHigherLimit=24
+            python $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $currentFullCatalogue $matchedCatalogue -1 $minr $maxr $outputDir/$brickName.png  \
+                $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
+        done
+        
+        echo "done" > $psHalfMaxRadiusPlotsDone
+    fi
+}
+export -f produceHalfMaxRadiusPlotsForPanstarrs
+
 performAperturePhotometryToSingleBrick() {
     brick=$1
     brickDir=$2
@@ -1148,8 +1219,12 @@ performAperturePhotometryToSingleBrick() {
     outputCat=$4
     filter=$5
     numberOfFWHMToUse=$6
-
-    brickName=decompressed_decal_image_"$brick"_"$filter".fits
+    survey=$7
+    if [[ "$survey" = "DECaLS" ]]; then
+        brickName=decompressed_decal_image_"$brick"_"$filter".fits
+    elif [[ "$survey" = "PANSTARRS" ]]; then
+        brickName=cal_"$brick".fits
+    fi
     brickImage=$brickDir/$brickName
     fileWithAperture=$automaticallySelectedDir/range_$brickName.txt
     automaticCatalogue=$automaticallySelectedDir/selected_"$brickName"_automatic.txt
@@ -1179,18 +1254,33 @@ performAperturePhotometryToBricks() {
     outputCat=$3
     filter=$4
     numberOfFWHMToUse=$5
-
+    survey=$6
+   
     outputDone=$outputCat/done.txt
     if ! [ -d $outputCat ]; then mkdir $outputCat; fi
     if [ -f $outputDone ]; then
         echo -e "\n\tCatalogues done with aperture photometry already done\n"
     else
         brickList=()
-        for a in $( ls $brickDir/decompressed*.fits); do
-            brickName=$(echo "$a" | awk -F'_image_' '{print $2}' | awk -F'_' '{print $1}')
-            brickList+=("$brickName")
-        done
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfFWHMToUse
+        #If aperture photometry is done in Panstarrs, brickNames are different
+        
+        if [[ "$survey" = "DECaLS" ]]; then
+            for a in $( ls $brickDir/decompressed*.fits); do
+                brickName=$(echo "$a" | awk -F'_image_' '{print $2}' | awk -F'_' '{print $1}')
+                brickList+=("$brickName")
+            done
+        elif [[ "$survey" = "PANSTARRS" ]]; then
+            for a in $( ls $brickDir/cal_*.fits); do
+                brickName=$(echo "$a" | awk -F'cal_' '{print $2}' | awk -F'.fits' '{print $1}')
+                brickList+=("$brickName")
+            done
+        else
+            echo "Error: "$survey" not supported for photometric calibration!"
+            exit 1
+        fi
+        
+        
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfFWHMToUse $survey
         echo "done" > $outputDone
     fi
 }
@@ -1199,45 +1289,45 @@ export -f performAperturePhotometryToBricks
 
 prepareDecalsDataForPhotometricCalibration() {
     referenceImagesForMosaic=$1
-    decalsImagesDir=$2
+    surveyImagesDir=$2
     filter=$3
     ra=$4
     dec=$5
     mosaicDir=$6
-    selectedDecalsStarsDir=$7
-    rangeUsedDecalsDir=$8
+    selectedSurveyStarsDir=$7
+    rangeUsedSurveyDir=$8
     dataPixelScale=$9
-    diagnosis_and_badFilesDir=${10}
-    sizeOfOurFieldDegrees=${11} 
-    galaxySMA=${12}
-    galaxyAxisRatio=${13}
-    galaxyPA=${14}
-    gaiaCatalogue=${15}
-    starThresholdForRejectingBricks=${16}
-    numberOfFWHMForPhotometry=${17}
-
-    echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
-    bricksIdentificationFile=$decalsImagesDir/brickIdentification.txt
-
+    survey=${10}
+    diagnosis_and_badFilesDir=${11}
+    sizeOfOurFieldDegrees=${12} 
+    galaxySMA=${13}
+    galaxyAxisRatio=${14}
+    galaxyPA=${15}
+    gaiaCatalogue=${16}
+    starThresholdForRejectingBricks=${17}
+    numberOfFWHMForPhotometry=${18}
+   
+    echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
+    bricksIdentificationFile=$surveyImagesDir/brickIdentification.txt
+    
     # If the images are donwloaded but the done.txt file is no present, the images won't be donwloaded again but
     # the step takes a while even if the images are already downloaded because we have to do a query to the database
     # in order to obtain the brickname and check if it is already downloaded or no
     if [ "$filter" = "lum" ]; then
         filters="g,r" # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
-        downloadDecalsData $mosaicDir $decalsImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks
-
+        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey  
         # This step creates the images (g+r)/2. This is needed because we are using a luminance filter which is a sort of (g+r)
         # The division by 2 is because in AB system we work with Janskys, which are W Hz^-1 m^-2. So we have to give a flux per wavelenght
         # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
         # practically the same wavelenght width, so dividing by 2 is enough
-        addTwoFiltersAndDivideByTwo $decalsImagesDir "g" "r"
-    elif [ "$filter" = "i" ]; then
+        addTwoFiltersAndDivideByTwo $surveyImagesDir "g" "r"
+    elif [ "$filter" = "i" ] && [ "$survey" = "DECaLS" ]; then
         filters="r,z" # We download 'r' and 'z' because filter 'i' is not in all DECaLs
-        downloadDecalsData $mosaicDir $decalsImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks
+        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey
         addTwoFiltersAndDivideByTwo $decalsImagesDir "r" "z"
     else 
         filters=$filter
-        downloadDecalsData $mosaicDir $decalsImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks
+        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey
     fi
 
 
@@ -1247,23 +1337,33 @@ prepareDecalsDataForPhotometricCalibration() {
     # resampledDecalsBricks=$mosaicDir/resampled
     # buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $resampledDecalsBricks $dataPixelScale $sizeOfOurFieldDegrees   
     
-    decompressBricks $decalsImagesDir # I have to decompressed them, I don't know what DECaLS does exactly but otherwise I can't run sextractor directly on the downloaded bricks
-                                      # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
+    if [ "$survey" = "DECaLS" ]; then 
+        decompressBricks $surveyImagesDir # I have to decompressed them, I don't know what DECaLS does exactly but otherwise I can't run sextractor directly on the downloaded bricks
+                                             # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
+    elif [ "$survey" = "PANSTARRS" ]; then
+        #Panstarrs is calibrated at ZP=25. In order to be the most general possible, we transform panstarrs data so it is at zp=22.5, and we do not need to change anything else
+        calibratePanstarrs $surveyImagesDir
+    fi
+    
     methodToUse="sextractor"
-    selectStarsAndSelectionRangeDecals $decalsImagesDir $selectedDecalsStarsDir $methodToUse
-
+    selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey
+    
     halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
-    produceHalfMaxRadiusPlotsForDecals $selectedDecalsStarsDir $halfMaxRad_Mag_plots $filter
-
+    if [ "$survey" = "DECalS" ]; then
+        produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
+    elif [ "$survey" = "PANSTARRS" ]; then
+        produceHalfMaxRadiusPlotsForPanstarrs $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
+    fi
+    
     aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues
-    performAperturePhotometryToBricks $decalsImagesDir $selectedDecalsStarsDir $aperturePhotDir $filter $numberOfFWHMForPhotometry 
-
+    performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $numberOfFWHMForPhotometry $survey
+    
     imagesHdu=1
     brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
     if [[ -f $brickDecalsAssociationFile ]]; then
         rm $brickDecalsAssociationFile
     fi
-    python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile
+    python $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
 }
 export -f prepareDecalsDataForPhotometricCalibration
 
@@ -1279,7 +1379,8 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
 
     i=$framesForCalibrationDir/$a
-
+    ##In the case of using it for Decals or Panstarrs, we need the variable survey
+    
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
@@ -1290,8 +1391,11 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         echo "Exiting with error number: $erroNumber"
         exit $erroNumber
     fi
+    
+    
+    
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
-
+    
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
     s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
@@ -1500,7 +1604,9 @@ combineDecalsCataloguesForSingleFrame() {
     bricks=$3
 
     catalogueName=$( echo "$frame" | awk -F'.' '{print $1}')
-    firstBrick=$(echo "$bricks" | awk '{print $1}')    
+    firstBrick=$(echo "$bricks" | awk '{print $1}')  
+    
+    
     asttablePrompt="asttable $decalsCataloguesDir/$firstBrick.cat -o$outputDir/$catalogueName.cat"
 
     remainingBricks=$(echo "$bricks" | cut -d' ' -f2-)  # Get the rest of the bricks
@@ -1525,13 +1631,12 @@ combineDecalsBricksCataloguesForEachFrame() {
             frame=$(echo "$line" | awk '{print $1}')
             frame=$( basename $frame )
             bricks=$(echo "$line" | cut -d' ' -f2-)
-
             combineDecalsCataloguesForSingleFrame $outputDir $frame "$bricks"
         done < "$frameBrickAssociationFile"
         echo "done" > $combinationDone
     fi
 }
-export -f combineDecalsCataloguesForEachBrick
+export -f combineDecalsBricksCataloguesForEachFrame
 
 computeCalibrationFactors() {
     iteration=$1
@@ -1860,7 +1965,7 @@ produceCalibrationCheckPlot() {
         rm $tmpDir/$frameNumber.cat
     done
 
-    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
+    python $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
     rm -rf $tmpDir
 }
 export -f produceCalibrationCheckPlot
@@ -1889,7 +1994,7 @@ produceHalfMaxRadVsMagForSingleImage() {
     plotXHigherLimit=10
     plotYLowerLimit=12
     plotYHigherLimit=22
-    python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png  \
+    python $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png  \
         $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
 
     rm $catalogueName $outputDir/match_decals_gaia_$a.txt 
@@ -2033,19 +2138,33 @@ generateCatalogueFromImage_sextractor(){
     image=$1
     outputDir=$2
     a=$3   
-
+   
     # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
+    #For panstarrs we need to use zp=25
+   
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII  1>/dev/null 2>&1
+
     awk '{ $6 = $6 / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
 
-    # Headers to mimic the noisechisel format
-    sed -i '1i# Column 6: HALF_MAX_RADIUS' $outputDir/$a.cat
-    sed -i '1i# Column 5: MAGNITUDE      ' $outputDir/$a.cat
-    sed -i '1i# Column 4: DEC            ' $outputDir/$a.cat
-    sed -i '1i# Column 3: RA             ' $outputDir/$a.cat
-    sed -i '1i# Column 2: Y              ' $outputDir/$a.cat
-    sed -i '1i# Column 1: X              ' $outputDir/$a.cat
+    # Headers to mimic the noisechisel format. Change between MacOS and Linux
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS (BSD sed)
+        sed -i '' '1s/^/# Column 1: X\
+# Column 2: Y\
+# Column 3: RA\
+# Column 4: DEC\
+# Column 5: MAGNITUDE\
+# Column 6: HALF_MAX_RADIUS\
+/' "$outputDir/$a.cat"
+    else
+        sed -i '1i# Column 6: HALF_MAX_RADIUS' $outputDir/$a.cat
+        sed -i '1i# Column 5: MAGNITUDE      ' $outputDir/$a.cat
+        sed -i '1i# Column 4: DEC            ' $outputDir/$a.cat
+        sed -i '1i# Column 3: RA             ' $outputDir/$a.cat
+        sed -i '1i# Column 2: Y              ' $outputDir/$a.cat
+        sed -i '1i# Column 1: X              ' $outputDir/$a.cat
+    fi
 
     rm $outputDir/"$a"_tmp.cat
 
@@ -2108,7 +2227,7 @@ photometryOnImage_photutils() {
     yColumnWCS=${12}
 
     tmpCatalogName=$directoryToWork/tmp_"$a".cat
-    python3 $pythonScriptsPath/photutilsPhotometry.py $matchedCatalogue $imageToUse $aperture_radius_px $tmpCatalogName $zeropoint $hduWithData $xColumnPx $yColumnPx $xColumnWCS $yColumnWCS
+    python $pythonScriptsPath/photutilsPhotometry.py $matchedCatalogue $imageToUse $aperture_radius_px $tmpCatalogName $zeropoint $hduWithData $xColumnPx $yColumnPx $xColumnWCS $yColumnWCS
 
     asttable $tmpCatalogName -p4 --colmetadata=2,X,px,"X" \
                             --colmetadata=3,Y,px,"Y" \

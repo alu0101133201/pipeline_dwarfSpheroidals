@@ -71,7 +71,12 @@ framesDir               = sys.argv[1]
 framesDataHdu           = int(sys.argv[2])
 brickIdentificationFile = sys.argv[3]
 outputFile              = sys.argv[4]
-
+survey                  = sys.argv[5]
+if survey=="DECaLS":
+    DECALS_BRICK_WIDTH_DEG = 15.5 / 60
+elif survey=="PANSTARRS":
+    #In Panstarrs we are downloading 3600 pix = 900 asec = 0.25 deg
+    DECALS_BRICK_WIDTH_DEG = 0.25
 
 for currentFrame in glob.glob(framesDir + "/*.fits"):
     associatedBricks = getAssociatedBricksToFrame(currentFrame, brickIdentificationFile, framesDataHdu)
