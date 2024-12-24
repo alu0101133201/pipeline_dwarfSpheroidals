@@ -103,7 +103,7 @@ def saveHistogram(values, median, std, badValues, imageName, numOfStd, title):
         
         ax.legend()
     ax.text(0.3655,0.85,"Rej. Frames: "+str(len(badValues)),transform=ax.transAxes,
-                fontsize=20,verticaligment='top',horizontalaligment='left')
+                fontsize=20,verticalalignment='top',horizontalalignment='left')
     plt.savefig(imageName)
     return()
 
