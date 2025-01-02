@@ -1183,7 +1183,7 @@ if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-photometry_perBrick_it1 \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir
+                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir $surveyForPhotometry
 fi
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
