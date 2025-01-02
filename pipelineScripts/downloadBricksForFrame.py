@@ -125,6 +125,8 @@ def writeBricksAndItsCoordinates(file, brickNames, ra, dec, survey):
             if survey=='PANSTARRS':
                 #Just to avoid the .fits in the brick identification file, will be useful in the future
                 brickName=brickNames[i][:-5]
+            elif survey=='DECaLS':
+                brickName=brickNames[i]
             f.write(brickName + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
 
 
