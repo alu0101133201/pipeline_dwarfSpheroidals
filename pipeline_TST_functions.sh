@@ -1932,7 +1932,8 @@ produceCalibrationCheckPlot() {
     calibrationFaintLimit=$8
     numberOfFWHMToUse=$9
     outputDir=${10}
-
+    survey=${11}
+    
     tmpDir="./calibrationDiagnosisTmp"
     if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
 
@@ -1965,7 +1966,7 @@ produceCalibrationCheckPlot() {
         rm $tmpDir/$frameNumber.cat
     done
 
-    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
+    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey
     rm -rf $tmpDir
 }
 export -f produceCalibrationCheckPlot
