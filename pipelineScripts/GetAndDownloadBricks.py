@@ -280,6 +280,20 @@ def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filter
     
     return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
 
+def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters):
+    
+    tab_panstarrs=getPanstarrsQuery(raCen,decCen,filters="".join(filters))
+    bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
+    bricksRA=[ra for ra in tab_panstarrs['ra']]
+    bricksDec=[dec for dec in tab_panstarrs['dec']]
+    bricksNames=[]
+    for i in range(len(bricks_fullNames)):
+        filter=tab_panstarrs['filter'][i]
+        bricksNames.append("t{:08.4f}{:+07.4f}.{}.fits".format(bricksRA[i],bricksDec[i],filter))
+    
+    return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
+
+
 def downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDEC,destinationFolder,overwrite=True):
     
     fitscut="https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
