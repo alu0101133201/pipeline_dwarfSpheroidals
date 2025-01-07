@@ -11,7 +11,8 @@ from astropy.wcs import WCS
 
 from matplotlibConf import *
 from GetAndDownloadBricks import *
-
+import pandas as pd
+import os
 
 def getCoordsAndMagFromBrightStars(catalogue, threshold):
     ra = []
@@ -196,4 +197,41 @@ bricksToDownload = bricksNames[~maskCombined]
 plotEllipseAndBricks(galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA, bricksRA, bricksDec, mask_bricksInsideGalaxy, mask_bricksWithBrightStar, maskCombined, mosaicDir)
 """
 writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames, bricksRA, bricksDec, survey)
+"""
+For Panstarrs, sometimes the ping does not download the full frame, but the .fits file is created.
+Ie, we have a file brick.fits with no data (a size of ~200Kby). Because of that, we will make the following:
+we will check the size of each file created and stored in writeBricksAndItsCoordinates. If the file is ok, we
+don't do anything, but if the file is not ok, we will re-make the download, and check again. If it still does not work,
+we directly remove the brick from the IdentificationFile and the folder.
+"""
+if survey=='PANSTARRS':
+    bricksIdFile=pd.read_csv(bricksIdentificationFile,sep='\t')
+    #3600x3600 pix panstarrs brick has a size of ~50Mb
+    badRows=[]
+    for row in range(len(bricksIdFile)):
+        fname=downloadDestination+'/'+bricksIdFile.loc[row]['BrickName']+'.fits'
+        fsize=os.stat(fname).st_size/1e6
+        if fsize>5:
+            continue
+        else:
+            #We are assuming a reasonable fit has a size >5Mb
+            ra_brick=bricksIdFile.loc[row]['RA_centre']
+            dec_brick=bricksIdFile.loc[row]['DEC_centre']
+            brick_fullName,brickRA,brickDec,brickName=getPanstarrsBricksFromCentralPoint(ra_brick,dec_brick,filters)
+            downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDec,downloadDestination,overwrite=True)
+            #We check again the download
+            fname=downloadDestination+'/'+brickName
+            fsize=os.stat(fname).st_size/1e6
+            #Decission: if download is ok, we change the dataframe and store, if not, we remove the row
+            if fsize>5:
+                bricksIdFile.loc[row,'BrickName']=brickName[:-5]
+                bricksIdFile.loc[row,'RA_centre']=brickRA
+                bricksIdFile.loc[row,'DEC_centre']=brickDec
+            else:
+                #We remove the fits file and store the bad row
+                os.system(f'rm {fname}')
+                badRows.append(row)
+    ##Now we remove the bad rows and store the new bricksIdentificationFile
+    bricksIdFile=bricksIdFile.drop(index=badRows)
+    bricksIdFile.to_csv(bricksIdentificationFile,sep='\t',index=False)
 
