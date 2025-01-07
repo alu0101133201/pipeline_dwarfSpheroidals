@@ -216,7 +216,7 @@ if survey=='PANSTARRS':
         else:
             #We are assuming a reasonable fit has a size >5Mb
             ra_brick=bricksIdFile.loc[row]['RA_centre']
-            dec_brick=bricksIdFile.loc[row]['DEC_centre']
+            dec_brick=bricksIdFile.loc[row]['Dec_centre']
             brick_fullName,brickRA,brickDec,brickName=getPanstarrsBricksFromCentralPoint(ra_brick,dec_brick,filters)
             downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDec,downloadDestination,overwrite=True)
             #We check again the download
@@ -226,7 +226,7 @@ if survey=='PANSTARRS':
             if fsize>5:
                 bricksIdFile.loc[row,'BrickName']=brickName[:-5]
                 bricksIdFile.loc[row,'RA_centre']=brickRA
-                bricksIdFile.loc[row,'DEC_centre']=brickDec
+                bricksIdFile.loc[row,'Dec_centre']=brickDec
             else:
                 #We remove the fits file and store the bad row
                 os.system(f'rm {fname}')
