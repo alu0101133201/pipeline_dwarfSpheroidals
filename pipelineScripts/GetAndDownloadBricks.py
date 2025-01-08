@@ -281,7 +281,8 @@ def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filter
     return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
 
 def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters):
-    
+    if isinstance(raCen,np.floating):
+        raCen=[raCen]; decCen=[decCen]
     tab_panstarrs=getPanstarrsQuery(raCen,decCen,filters="".join(filters))
     bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
     bricksRA=[ra for ra in tab_panstarrs['ra']]
