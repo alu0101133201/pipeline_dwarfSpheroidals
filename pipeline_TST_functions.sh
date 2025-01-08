@@ -1321,7 +1321,9 @@ prepareDecalsDataForPhotometricCalibration() {
         # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
         # practically the same wavelenght width, so dividing by 2 is enough
         addTwoFiltersAndDivideByTwo $surveyImagesDir "g" "r"
-    elif [ "$filter" = "i" ] && [ "$survey" = "DECaLS" ]; then
+    elif [ "$filter" = "i" ] && [ "$survey" = "DECaLS_rz" ]; then
+        survey=DECaLS
+        surveyForPhotometry=DECaLS #To work better later on that DECaLS is needed
         filters="r,z" # We download 'r' and 'z' because filter 'i' is not in all DECaLs
         downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey
         addTwoFiltersAndDivideByTwo $decalsImagesDir "r" "z"
