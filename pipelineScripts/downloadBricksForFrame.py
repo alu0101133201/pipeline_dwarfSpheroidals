@@ -218,6 +218,8 @@ if survey=='PANSTARRS':
             ra_brick=bricksIdFile.loc[row]['RA_centre']
             dec_brick=bricksIdFile.loc[row]['Dec_centre']
             brick_fullName,brickRA,brickDec,brickName=getPanstarrsBricksFromCentralPoint(ra_brick,dec_brick,filters)
+            brick_fullName=brick_fullName[0]; brickRA=brickRA[0]; brickDec=brickDec[0]
+            brickName=brickName[0]
             downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDec,downloadDestination,overwrite=True)
             #We check again the download
             fname=downloadDestination+'/'+brickName
