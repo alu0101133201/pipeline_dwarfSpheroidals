@@ -139,7 +139,7 @@ magDiffAbs, _, _ = sigmaclip(magDiffAbs, low=5.0, high=5.0)
 totalScatter = np.sqrt(np.mean(magDiffAbs**2))
 plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, outputName, survey)
 
-
+"""
 # Individual calibration plot for a set of frames
 numberOfFilesToShowCalibrationPlotIndividually = 4
 allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
@@ -158,3 +158,19 @@ else:
         totalScatter = np.sqrt(np.mean(magDiffAbs**2))
         scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
         plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir + "/calibrationPlot_" + number + ".png",survey)
+"""
+#Individual calibration plot for all frames
+allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
+outputDir_individual=outputDir+"/calibrationPlot_frames"
+if not os.path.exists(outputDir_individual):
+    os.makedirs(outputDir_individual)
+
+for file_name in allFrames:
+    number = file_name.split('_')[0]
+    mag1, mag2 = read_columns_from_file(directoryWithTheCatalogues + "/" + file_name)
+    magDiff = np.array((mag1 - mag2))
+    magDiffAbs = np.array(np.abs(mag1 - mag2))
+
+    totalScatter = np.sqrt(np.mean(magDiffAbs**2))
+    scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+    plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir_individual + "/calibrationPlot_" + number + ".png",survey)
