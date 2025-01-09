@@ -8,7 +8,7 @@ import astropy
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-
+import pandas as pd
 from astropy.stats import sigma_clip
 from astropy.stats import sigma_clipped_stats
 from matplotlib.ticker import MultipleLocator
@@ -106,7 +106,24 @@ def saveHistogram(values, median, std, badValues, imageName, numOfStd, title):
                 fontsize=20,verticalalignment='top',horizontalalignment='left')
     plt.savefig(imageName)
     return()
-
+def saveFWHMevol(allTable,badFiles,badFwhm,imageName):
+    fig, ax = plt.subplots(1, 1, figsize=(10,10))
+    configureAxis(ax, 'Frame Number','FWHM (px)', logScale=False)
+    ax.set_title('FWHM evolution',fontsize=22,pad=17)
+    pattern=r"entirecamera_(\d+)"
+    for row in range(len(allTable)):
+        file=allTable.loc[row]['File']
+        match=re.search(pattern,file)
+        frame=float(match.group(1))
+        fwhm=allTable.loc[row]['FWHM']
+        ax.scatter(frame,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+    for j in range(len(badFiles)):
+        match=re.search(pattern,badFiles[j])
+        frame=float(match.group(1))
+        ax.scatter(frame,badFwhm[j],marker='P',edgecolor='k',color='mediumorchid',s=80,zorder=6,label='Rejected FWHM')
+    ax.legend()
+    plt.savefig(imageName)
+    return()
 
 folderWithFWHM            = sys.argv[1]
 outputFolder              = sys.argv[2]
@@ -144,13 +161,15 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
     mask = sigma_clip(allFWHM, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
 
     allFiles = np.array(allFiles)
+    allTogether=pd.DataFrame({'File':allFiles,'FWHM':allFWHM})
     badFiles = allFiles[mask]
     badFWHM = allFWHM[mask]
-    return(badFiles,badFWHM)
+    return(badFiles,badFWHM,allTogether)
     
 # 2.- Identify what frames are outside the acceptance region -----------------------
-badFiles,badFWHM = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
-
+badFiles,badFWHM,allData = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
+allData.to_csv(outputFolder+"/FileFWHMtable.csv")
+saveFWHMevol(allData,badFiles,badFWHM,outputFolder+"fwhmEvol.png")
 pattern = r"entirecamera_\d+"
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:

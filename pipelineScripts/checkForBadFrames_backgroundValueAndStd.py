@@ -5,7 +5,7 @@ import glob
 import math
 import fnmatch
 import astropy
-
+import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -203,6 +203,42 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         return(float('nan'), float('nan')) 
     return(backgroundValue / airmass, backgroundStd)
 
+def saveBACKevol(allTable,badFiles,badBack,imageName):
+    fig, ax = plt.subplots(1, 1, figsize=(10,10))
+    configureAxis(ax, 'Frame Number', 'Background (ADU)',logScale=False)
+    ax.set_title('Background evolution',fontsize=22,pad=17)
+    pattern=r"entirecamera_(\d+)"
+    for row in range(len(allTable)):
+        file=allTable.loc[row]['File']
+        match=re.search(pattern,file)
+        frame=float(match.group(1))
+        bck=allTable.loc[row]['Background']
+        ax.scatter(frame,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+    for j in range(len(badFiles)):
+        match=re.search(pattern,badFiles[j])
+        frame=float(match.group(1))
+        ax.scatter(frame,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
+    ax.legend()
+    plt.savefig(imageName)
+    return()
+def saveSTDevol(allTable,badFiles,badSTD,imageName):
+    fig, ax = plt.subplots(1, 1, figsize=(10,10))
+    configureAxis(ax, 'Frame Number', 'Background STD (ADU)',logScale=False)
+    ax.set_title('STD evolution',fontsize=22,pad=17)
+    pattern=r"entirecamera_(\d+)"
+    for row in range(len(allTable)):
+        file=allTable.loc[row]['File']
+        match=re.search(pattern,file)
+        frame=float(match.group(1))
+        bck=allTable.loc[row]['STD']
+        ax.scatter(frame,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+    for j in range(len(badFiles)):
+        match=re.search(pattern,badFiles[j])
+        frame=float(match.group(1))
+        ax.scatter(frame,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
+    ax.legend()
+    plt.savefig(imageName)
+    return()
 def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting):
     badFiles   = []
     allFiles   = []
@@ -228,10 +264,12 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
 
     combined_mask = values_mask | std_mask
     allFiles = np.array(allFiles)
+    allTogether=pd.DataFrame({'File':allFiles,'Background':allBackgroundValues,'STD':allStd})
+
     badFiles = allFiles[combined_mask]
     badValues=allBackgroundValues[values_mask]
     badStd=allStd[std_mask]
-    return(badFiles,badValues,badStd)
+    return(badFiles,badValues,badStd,allTogether)
 
 
 HDU_TO_FIND_AIRMASS = 1
@@ -263,7 +301,9 @@ print("\n\n")
 
 
 # 2.- Identify what frames are outside the acceptance region ------------------
-badFiles,badValues,badStd = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
+badFiles,badValues,badStd,allData = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
+saveBACKevol(allData,badFiles,badValues,outputFolder+"/backgroundEvolution.png")
+saveSTDevol(allData,badFiles,badStd,outputFolder+"/stdEvolution.png")
 
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
