@@ -2256,12 +2256,12 @@ limitingSurfaceBrightness() {
     numOfSigmasForMetric=3
 
     out_mask=$directoryOfImages/mask_det.fits
-    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask 1>/dev/null
+    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
 
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
     exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
-    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
+    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp >/dev/null 2>&1
     zp_asec=$(astarithmetic $pixelScale log10 5 x 22.5 + -q)
     sigma=$(aststatistics $out_maskexp --sigclip-std -q)
     
