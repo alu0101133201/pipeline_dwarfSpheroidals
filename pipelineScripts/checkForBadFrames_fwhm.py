@@ -117,11 +117,14 @@ def saveFWHMevol(allTable,badFiles,badFwhm,imageName):
         frame=float(match.group(1))
         fwhm=allTable.loc[row]['FWHM']
         ax.scatter(frame,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-    for j in range(len(badFiles)):
-        match=re.search(pattern,badFiles[j])
-        frame=float(match.group(1))
-        ax.scatter(frame,badFwhm[j],marker='P',edgecolor='k',color='mediumorchid',s=80,zorder=6,label='Rejected FWHM')
-    ax.legend()
+    
+    if len(badFiles)!=0:
+        for j in range(len(badFiles)):
+            match=re.search(pattern,badFiles[j])
+            frame=float(match.group(1))
+            ax.scatter(frame,badFwhm[j],marker='P',edgecolor='k',color='mediumorchid',s=80,zorder=6,label='Rejected FWHM')
+        ax.legend()
+    plt.tight_layout()
     plt.savefig(imageName)
     return()
 
@@ -169,7 +172,7 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
 # 2.- Identify what frames are outside the acceptance region -----------------------
 badFiles,badFWHM,allData = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
 allData.to_csv(outputFolder+"/FileFWHMtable.csv")
-saveFWHMevol(allData,badFiles,badFWHM,outputFolder+"fwhmEvol.png")
+saveFWHMevol(allData,badFiles,badFWHM,outputFolder+"/fwhmEvol.png")
 pattern = r"entirecamera_\d+"
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:

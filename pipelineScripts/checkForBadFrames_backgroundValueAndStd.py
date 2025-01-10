@@ -214,11 +214,14 @@ def saveBACKevol(allTable,badFiles,badBack,imageName):
         frame=float(match.group(1))
         bck=allTable.loc[row]['Background']
         ax.scatter(frame,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-    for j in range(len(badFiles)):
-        match=re.search(pattern,badFiles[j])
-        frame=float(match.group(1))
-        ax.scatter(frame,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
-    ax.legend()
+    
+    if len(badFiles)!=0:
+        for j in range(len(badFiles)):
+            match=re.search(pattern,badFiles[j])
+            frame=float(match.group(1))
+            ax.scatter(frame,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
+        ax.legend()
+    plt.tight_layout()
     plt.savefig(imageName)
     return()
 def saveSTDevol(allTable,badFiles,badSTD,imageName):
@@ -232,11 +235,14 @@ def saveSTDevol(allTable,badFiles,badSTD,imageName):
         frame=float(match.group(1))
         bck=allTable.loc[row]['STD']
         ax.scatter(frame,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-    for j in range(len(badFiles)):
-        match=re.search(pattern,badFiles[j])
-        frame=float(match.group(1))
-        ax.scatter(frame,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
-    ax.legend()
+    
+    if len(badFiles)!=0:
+        for j in range(len(badFiles)):
+            match=re.search(pattern,badFiles[j])
+            frame=float(match.group(1))
+            ax.scatter(frame,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
+        ax.legend()
+    plt.tight_layout()
     plt.savefig(imageName)
     return()
 def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting):
@@ -267,9 +273,9 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     allTogether=pd.DataFrame({'File':allFiles,'Background':allBackgroundValues,'STD':allStd})
 
     badFiles = allFiles[combined_mask]
-    badValues=allBackgroundValues[values_mask]
-    badStd=allStd[std_mask]
-    return(badFiles,badValues,badStd,allTogether)
+    badValues=allBackgroundValues[values_mask]; badFilesBCK=allFiles[values_mask]
+    badStd=allStd[std_mask]; badFilesSTD=allFiles[std_mask]
+    return(badFiles,badValues,badStd,allTogether,badFilesBCK,badFilesSTD)
 
 
 HDU_TO_FIND_AIRMASS = 1
@@ -301,9 +307,9 @@ print("\n\n")
 
 
 # 2.- Identify what frames are outside the acceptance region ------------------
-badFiles,badValues,badStd,allData = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
-saveBACKevol(allData,badFiles,badValues,outputFolder+"/backgroundEvolution.png")
-saveSTDevol(allData,badFiles,badStd,outputFolder+"/stdEvolution.png")
+badFiles,badValues,badStd,allData,badFilesBCK,badFilesSTD = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
+saveBACKevol(allData,badFilesBCK,badValues,outputFolder+"/backgroundEvolution.png")
+saveSTDevol(allData,badFilesSTD,badStd,outputFolder+"/stdEvolution.png")
 
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
