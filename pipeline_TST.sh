@@ -1142,7 +1142,7 @@ if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; f
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir
   echo done > $badFilesWarningsDone
 fi
 

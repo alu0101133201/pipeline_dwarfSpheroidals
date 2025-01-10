@@ -410,6 +410,53 @@ getStdValueInsideRing() {
 }
 export -f getStdValueInsideRing
 
+getSkewKurtoValueInsideRing(){
+    i=$1
+    commonRing=$2
+    doubleRing_first=$3
+    doubleRing_second=$4
+    useCommonRing=$5
+    keyWordToDecideRing=$6
+    keyWordThreshold=$7
+    keyWordValueForFirstRing=$8
+    keyWordValueForSecondRing=$9
+
+    if [ "$useCommonRing" = true ]; then
+            # Case when we have one common normalisation ring
+            astarithmetic $i -h1 $commonRing -h1 0 eq nan where -o ring_masked.fits
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits SKEWNESS)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits KURTOSIS)
+            rm ring_masked.fits
+    else
+        # Case when we do NOT have one common normalisation ring
+        # All the following logic is to decide which normalisation ring apply
+        variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
+        firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
+        firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
+        secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
+        secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
+
+        if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
+            astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -o ring_masked.fits
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits SKEWNESS)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits KURTOSIS)
+            rm ring_masked.fits
+        elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
+            astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -o ring_masked.fits
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits SKEWNESS)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits KURTOSIS)
+            rm ring_masked.fits
+        else
+            errorNumber=5
+            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
+            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+            exit $errorNumber 
+        fi
+    fi
+    echo "$skew $kurto"
+}
+export -f getSkewKurtoValueInsideRing
+
 normaliseImagesWithRing() {
     imageDir=$1
     outputDir=$2
@@ -677,7 +724,9 @@ computeSkyForFrame(){
 
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            echo "$base $me $std" > $noiseskydir/$out
+            read skew kurto < <(getSkewKurtoValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+
+            echo "$base $me $std $skew $kurto" > $noiseskydir/$out
 
             # rm $ringDir/$tmpRingDefinition
             rm $ringDir/$tmpRingFits
