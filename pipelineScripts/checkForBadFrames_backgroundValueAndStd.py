@@ -16,6 +16,9 @@ from astropy.stats import sigma_clip
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
 
+from datetime import datetime
+import time
+
 def setMatplotlibConf():
     rc_fonts = {
         "font.family": "serif",
@@ -187,9 +190,11 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
-        if (numberOfFields == 3):
+        if (numberOfFields == 5):
             backgroundValue = float(splittedLine[1])
             backgroundStd   = float(splittedLine[2])
+            backgroundSkew = float(splittedLine[3])
+            backgroundKurto = float(splittedLine[4])
         elif (numberOfFields == 1):
             return(float('nan'), float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
@@ -201,50 +206,93 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
     except:
         print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + ")")
         return(float('nan'), float('nan')) 
-    return(backgroundValue / airmass, backgroundStd)
+    return(backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
 
 def saveBACKevol(allTable,badFiles,badBack,imageName):
-    fig, ax = plt.subplots(1, 1, figsize=(10,10))
-    configureAxis(ax, 'Frame Number', 'Background (ADU)',logScale=False)
-    ax.set_title('Background evolution',fontsize=22,pad=17)
+    fig, ax = plt.subplots(1, 2, figsize=(10,10))
+    configureAxis(ax[0], 'UTC', 'Background (ADU)',logScale=False)
+    configureAxis(ax[1], 'Airmass', 'Background (ADU)',logScale=False)
+    fig.suptitle('Background evolution',fontsize=22,pad=17)
     pattern=r"entirecamera_(\d+)"
     for row in range(len(allTable)):
         file=allTable.loc[row]['File']
         match=re.search(pattern,file)
         frame=float(match.group(1))
+        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
         bck=allTable.loc[row]['Background']
-        ax.scatter(frame,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-    
+        ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+        ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+
     if len(badFiles)!=0:
         for j in range(len(badFiles)):
             match=re.search(pattern,badFiles[j])
             frame=float(match.group(1))
-            ax.scatter(frame,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
-        ax.legend()
+            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+            date=obtainKeyWordFromFits(file,'DATE-OBS')
+            air=obtainKeyWordFromFits(file,'AIRMASS')
+            date_ok=datetime.fromisoformat(date)
+            ax[0].scatter(date_ok,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
+            ax[1].scatter(air,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
+           
+        ax[0].legend()
+    for label in ax[0].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
     plt.tight_layout()
     plt.savefig(imageName)
     return()
 def saveSTDevol(allTable,badFiles,badSTD,imageName):
-    fig, ax = plt.subplots(1, 1, figsize=(10,10))
-    configureAxis(ax, 'Frame Number', 'Background STD (ADU)',logScale=False)
-    ax.set_title('STD evolution',fontsize=22,pad=17)
+    fig, ax = plt.subplots(1, 2, figsize=(10,10))
+    configureAxis(ax[0], 'UTC', 'Background STD (ADU)',logScale=False)
+    configureAxis(ax[1],'Airmass','Background STD (ADU)',logScale=False)
+    fig.suptitle('STD evolution',fontsize=22,pad=17)
     pattern=r"entirecamera_(\d+)"
     for row in range(len(allTable)):
         file=allTable.loc[row]['File']
         match=re.search(pattern,file)
         frame=float(match.group(1))
+        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
         bck=allTable.loc[row]['STD']
-        ax.scatter(frame,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+        ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+        ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
     
     if len(badFiles)!=0:
         for j in range(len(badFiles)):
             match=re.search(pattern,badFiles[j])
             frame=float(match.group(1))
-            ax.scatter(frame,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
-        ax.legend()
+            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+            date=obtainKeyWordFromFits(file,'DATE-OBS')
+            air=obtainKeyWordFromFits(file,'AIRMASS')
+            date_ok=datetime.fromisoformat(date)
+            ax[0].scatter(date_ok,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
+            ax[1].scatter(air,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
+        ax[0].legend()
+    for label in ax[0].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
+
     plt.tight_layout()
     plt.savefig(imageName)
     return()
+
+def saveValuesVSStats(Values,STD,Skew,kurto,imageName):
+    fig, ax = plt.subplots(1,3,figsize=(30,10))
+    configureAxis(ax[0],r'$\sqrt{BACKGROUND}$','STD',logScale=False)
+    configureAxis(ax[1],'BACKGROUND','Skewness',logScale=False)
+    configureAxis(ax[2],'BACKGROUND','Kurtosis',logScale=False)
+    ax[0].scatter(np.sqrt(Values),STD,marker='o',s=60,edgecolor='k',color='teal')
+    ax[1].scatter(Values,Skew,marker='x',s=60,edgecolor='k',color='mediumorchid')
+    ax[2].scatter(Values,kurto,marker='P',s=60,edgecolor='k',color='darkred')
+    plt.tight_layout()
+    plt.savefig(imageName)
+    return()
+
 def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting):
     badFiles   = []
     allFiles   = []
@@ -254,7 +302,7 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     for currentFile in glob.glob(folderWithFrames + "/*.txt"):
         if fnmatch.fnmatch(currentFile, '*done*.txt'):
             continue
-        currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+        currentValue, currentStd, currentSkew, currentKurto  = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
 
         if (math.isnan(currentValue)):
             continue
@@ -292,17 +340,22 @@ setMatplotlibConf()
 # 1.- Obtain the normalised background values and std values ------------------
 normalisedBackgroundValues = []
 backgroundStds             = []
+backgroundSkews            = []
+backgroundKurtos           = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     print("current file: ", currentFile)
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
-    currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+    currentValue, currentStd, currentSkew, currentKurto = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
     normalisedBackgroundValues.append(currentValue)
     backgroundStds.append(currentStd)
+    backgroundSkews.append(currentSkew)
+    backgroundKurtos.append(currentKurto)
     
 normalisedBackgroundValues = np.array(normalisedBackgroundValues)
 backgroundStds = np.array(backgroundStds)
-
+backgroundSkews = np.array(backgroundSkews)
+backgroundKurtos = np.array(backgroundKurtos)
 print("\n\n")
 
 
@@ -310,7 +363,7 @@ print("\n\n")
 badFiles,badValues,badStd,allData,badFilesBCK,badFilesSTD = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
 saveBACKevol(allData,badFilesBCK,badValues,outputFolder+"/backgroundEvolution.png")
 saveSTDevol(allData,badFilesSTD,badStd,outputFolder+"/stdEvolution.png")
-
+saveValuesVSStats(normalisedBackgroundValues,backgroundStds,backgroundSkews,backgroundKurtos,outputFolder+"/backgroundStats.png")
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
         file.write(fileName + '\n')
