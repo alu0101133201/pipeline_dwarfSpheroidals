@@ -165,7 +165,7 @@ def obtainKeyWordFromFits(file, keyword):
             else:
                 raise Exception(f"Keyword '{keyword}' not found in the header.")
     else:
-        raise Exception(f"File {fits_file_path} does not exist.")
+        raise Exception(f"File {file} does not exist.")
 
 def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     frameNumber = obtainNumberFromFrame(currentFile)
@@ -209,16 +209,16 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
     return(backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
 
 def saveBACKevol(allTable,badFiles,badBack,imageName):
-    fig, ax = plt.subplots(1, 2, figsize=(10,10))
+    fig, ax = plt.subplots(2,1, figsize=(20,10))
     configureAxis(ax[0], 'UTC', 'Background (ADU)',logScale=False)
     configureAxis(ax[1], 'Airmass', 'Background (ADU)',logScale=False)
-    fig.suptitle('Background evolution',fontsize=22,pad=17)
+    fig.suptitle('Background evolution',fontsize=22)
     pattern=r"entirecamera_(\d+)"
     for row in range(len(allTable)):
         file=allTable.loc[row]['File']
         match=re.search(pattern,file)
-        frame=float(match.group(1))
-        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        frame=match.group(1)
+        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,'DATE-OBS')
         air=obtainKeyWordFromFits(file,'AIRMASS')
         date_ok=datetime.fromisoformat(date)
@@ -229,15 +229,15 @@ def saveBACKevol(allTable,badFiles,badBack,imageName):
     if len(badFiles)!=0:
         for j in range(len(badFiles)):
             match=re.search(pattern,badFiles[j])
-            frame=float(match.group(1))
-            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+            frame=match.group(1)
+            file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
             date=obtainKeyWordFromFits(file,'DATE-OBS')
             air=obtainKeyWordFromFits(file,'AIRMASS')
             date_ok=datetime.fromisoformat(date)
             ax[0].scatter(date_ok,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
             ax[1].scatter(air,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
-           
-        ax[0].legend()
+            if j==0:
+                ax[0].legend()
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
         label.set_horizontalalignment('right')
@@ -245,16 +245,16 @@ def saveBACKevol(allTable,badFiles,badBack,imageName):
     plt.savefig(imageName)
     return()
 def saveSTDevol(allTable,badFiles,badSTD,imageName):
-    fig, ax = plt.subplots(1, 2, figsize=(10,10))
-    configureAxis(ax[0], 'UTC', 'Background STD (ADU)',logScale=False)
-    configureAxis(ax[1],'Airmass','Background STD (ADU)',logScale=False)
-    fig.suptitle('STD evolution',fontsize=22,pad=17)
+    fig, ax = plt.subplots(2,1, figsize=(20,10))
+    configureAxis(ax[0], 'UTC', 'STD (ADU)')
+    configureAxis(ax[1],'Airmass','STD (ADU)')
+    fig.suptitle('STD evolution',fontsize=22)
     pattern=r"entirecamera_(\d+)"
     for row in range(len(allTable)):
         file=allTable.loc[row]['File']
         match=re.search(pattern,file)
-        frame=float(match.group(1))
-        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        frame=match.group(1)
+        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,'DATE-OBS')
         air=obtainKeyWordFromFits(file,'AIRMASS')
         date_ok=datetime.fromisoformat(date)
@@ -265,14 +265,15 @@ def saveSTDevol(allTable,badFiles,badSTD,imageName):
     if len(badFiles)!=0:
         for j in range(len(badFiles)):
             match=re.search(pattern,badFiles[j])
-            frame=float(match.group(1))
-            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+            frame=match.group(1)
+            file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
             date=obtainKeyWordFromFits(file,'DATE-OBS')
             air=obtainKeyWordFromFits(file,'AIRMASS')
             date_ok=datetime.fromisoformat(date)
             ax[0].scatter(date_ok,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
             ax[1].scatter(air,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
-        ax[0].legend()
+            if j==0:
+                ax[0].legend()
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
         label.set_horizontalalignment('right')
