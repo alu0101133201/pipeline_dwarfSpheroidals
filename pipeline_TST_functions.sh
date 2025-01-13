@@ -423,9 +423,9 @@ getSkewKurtoValueInsideRing(){
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
-            astarithmetic $i -h1 $commonRing -h1 0 eq nan where -o ring_masked.fits
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits SKEWNESS)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits KURTOSIS)
+            #astarithmetic $i -h1 $commonRing -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing)
+            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing)
             rm ring_masked.fits
     else
         # Case when we do NOT have one common normalisation ring
@@ -437,14 +437,14 @@ getSkewKurtoValueInsideRing(){
         secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -o ring_masked.fits
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits SKEWNESS)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits KURTOSIS)
+            #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first)
+            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first)
             rm ring_masked.fits
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -o ring_masked.fits
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits SKEWNESS)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py ring_masked.fits KURTOSIS)
+            #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second)
+            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second)
             rm ring_masked.fits
         else
             errorNumber=5

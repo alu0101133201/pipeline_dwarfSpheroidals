@@ -104,12 +104,12 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
-        if (numberOfFields == 3):
+        if (numberOfFields == 5):
             backgroundValue = float(splittedLine[1])
         elif (numberOfFields == 1):
             return(float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
-            raise Exception("Wrong number of fields in the file of background estimation. Expected 3 (constant estimation of the background), got " + str(numberOfFields))
+            raise Exception("Wrong number of fields in the file of background estimation. Expected 5 (constant estimation of the background), got " + str(numberOfFields))
 
     # Then we read the airmass
     try:
