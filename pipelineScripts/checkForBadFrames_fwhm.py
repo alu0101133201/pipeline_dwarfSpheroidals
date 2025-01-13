@@ -113,7 +113,7 @@ def saveHistogram(values, median, std, badValues, imageName, numOfStd, title):
     plt.savefig(imageName)
     return()
 def saveFWHMevol(allTable,badFiles,badFwhm,imageName):
-    fig, ax = plt.subplots(1, 1, figsize=(10,10))
+    fig, ax = plt.subplots(1, 2, figsize=(10,10))
     configureAxis(ax[0], 'UTC', 'FWHM (pix)',logScale=False)
     configureAxis(ax[1], 'Airmass', 'FWHM (pix)',logScale=False)
     fig.suptitle('FWHM evolution',fontsize=22,pad=17)
