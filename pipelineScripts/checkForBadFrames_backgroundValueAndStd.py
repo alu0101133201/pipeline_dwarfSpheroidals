@@ -218,7 +218,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         elif (numberOfFields == 1):
             return(float('nan'), float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
-            raise Exception("Wrong number of fields in the file of background estimation. Expected 3 (constant estimation of the background), got " + str(numberOfFields))
+            raise Exception("Wrong number of fields in the file of background estimation. Expected 5 (constant estimation of the background), got " + str(numberOfFields))
 
     # Then we read the airmass
     try:
@@ -314,7 +314,7 @@ def saveValuesVSStats(Values,STD,Skew,kurto,imageName):
     plt.savefig(imageName)
     return()
 
-def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting, onlyCheckForStd):
+def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting):
     badFiles   = []
     allFiles   = []
     allStd     = []
@@ -355,12 +355,7 @@ airMassKeyWord                = sys.argv[3]
 outputFolder                  = sys.argv[4]
 outputFile                    = sys.argv[5]
 numberOfStdForRejecting       = float(sys.argv[6])
-onlyCheckForStd               = sys.argv[7]
 
-if ((onlyCheckForStd == "True") or (onlyCheckForStd == "true")):
-    onlyCheckForStd = True
-else:
-    onlyCheckForStd = False
 
 setMatplotlibConf()
 
