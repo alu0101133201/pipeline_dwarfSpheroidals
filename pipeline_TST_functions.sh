@@ -96,6 +96,7 @@ outputConfigurationVariablesInformation() {
         "·Approximately size of the field:$sizeOfOurFieldDegrees:[deg]"
         "·Size of the coadd:$coaddSizePx:[px]"
         " "
+        "·Width of the normalisation ring:$ringWidth:[px]"
         "·Common normalisation ring:$USE_COMMON_RING"
         "  If so, the file with the ring specification is:$commonRingDefinitionFile"
         ""
@@ -192,6 +193,7 @@ checkIfAllVariablesAreSet() {
                 calibrationFaintLimit \
                 numberOfFWHMForPhotometry \
                 starMagnitudeThresholdToReject_gBand \
+                ringWidth \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
                 keyWordToDecideRing
@@ -530,7 +532,6 @@ runNoiseChiselOnFrame() {
 
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
-    echo astnoisechisel $imageToUse $noiseChiselParams -o $output
     astnoisechisel $imageToUse $noiseChiselParams -o $output
 }
 export -f runNoiseChiselOnFrame
@@ -620,6 +621,7 @@ computeSkyForFrame(){
     keyWordThreshold=${11}
     keyWordValueForFirstRing=${12}
     keyWordValueForSecondRing=${13}
+    ringWidth=${14}
 
     i=$entiredir/$1
 
@@ -666,7 +668,7 @@ computeSkyForFrame(){
 
             ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
             echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
-            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=200 --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
+            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
 
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
@@ -728,20 +730,26 @@ computeSky() {
     keyWordThreshold=${11}
     keyWordValueForFirstRing=${12}
     keyWordValueForSecondRing=${13}
+    ringWidth=${14}
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
         echo -e "\n\tScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
     else
         framesToComputeSky=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            base="entirecamera_"$a.fits
+        # for a in $(seq 1 $totalNumberOfFrames); do
+        #     base="entirecamera_"$a.fits
+        #     framesToComputeSky+=("$base")
+        # done
+        for a in $( ls $framesToUseDir/*.fits ); do
+            base=$( basename $a )
             framesToComputeSky+=("$base")
         done
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
         echo done > $noiseskydone
     fi
 }
+export -f computeSky
 
 subtractSkyForFrame() {
     a=$1
@@ -1526,7 +1534,7 @@ combineDecalsBricksCataloguesForEachFrame() {
         echo "done" > $combinationDone
     fi
 }
-export -f combineDecalsCataloguesForEachBrick
+export -f combineDecalsBricksCataloguesForEachFrame
 
 computeCalibrationFactors() {
     iteration=$1
@@ -1543,8 +1551,8 @@ computeCalibrationFactors() {
     numberOfFWHMForPhotometry=${12}
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
-    methodToUse="noisechisel"
 
+    methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize
 
@@ -1823,34 +1831,40 @@ produceCalibrationCheckPlot() {
     for i in $myCatalogue_nonCalibrated/*.cat; do
         myFrame=$i
         frameNumber=$(echo "$i" | awk -F '[/]' '{print $(NF)}' | awk -F '[.]' '{print $(1)}' | awk -F '[_]' '{print $(NF)}')
-        referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
 
-        myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
-        myNonCalibratedCatalogue=$myCatalogue_nonCalibrated/entirecamera_$frameNumber.fits*
-        fileWithMyApertureData=$aperturesForMyData_dir/range_entirecamera_$frameNumber*
+        # In the nominal resolution it takes sooo long for doing this plots. So only a set of frames are used for the
+        # calibration check
+        if [ "$frameNumber" -gt 3 ]; then
+            break
+        else
+            referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
 
-        r_myData_pix_=$(awk 'NR==1 {printf $1}' $fileWithMyApertureData)
-        r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfFWHMToUse. x -q )
+            myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
+            myNonCalibratedCatalogue=$myCatalogue_nonCalibrated/entirecamera_$frameNumber.fits*
+            fileWithMyApertureData=$aperturesForMyData_dir/range_entirecamera_$frameNumber*
 
-        # raColumnName=RA
-        # decColumnName=DEC
-        # photometryOnImage_noisechisel -1 $tmpDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $tmpDir/$frameNumber.cat 22.5 \
-        #                                 $raColumnName $decColumnName
+            r_myData_pix_=$(awk 'NR==1 {printf $1}' $fileWithMyApertureData)
+            r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfFWHMToUse. x -q )
 
-        dataHdu=1
-        columnWithXCoordForOutDataPx=1 # These numbers come from how the catalogue of the matches stars is built. This is not very clear right now, should be improved
-        columnWithYCoordForOutDataPx=2
-        columnWithXCoordForOutDataWCS=3
-        columnWithYCoordForOutDataWCS=4
-        photometryOnImage_photutils -1 $tmpDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $tmpDir/$frameNumber.cat 22.5 $dataHdu \
-                                    $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
+            # raColumnName=RA
+            # decColumnName=DEC
+            # photometryOnImage_noisechisel -1 $tmpDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $tmpDir/$frameNumber.cat 22.5 \
+            #                                 $raColumnName $decColumnName
+            dataHdu=1
+            columnWithXCoordForOutDataPx=1 # These numbers come from how the catalogue of the matches stars is built. This is not very clear right now, should be improved
+            columnWithYCoordForOutDataPx=2
+            columnWithXCoordForOutDataWCS=3
+            columnWithYCoordForOutDataWCS=4
+            photometryOnImage_photutils -1 $tmpDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $tmpDir/$frameNumber.cat 22.5 $dataHdu \
+                                        $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
 
-        astmatch $referenceCatalogue --hdu=1 $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$tmpDir/"$frameNumber"_matched.cat
-        rm $tmpDir/$frameNumber.cat
+            astmatch $referenceCatalogue --hdu=1 $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$tmpDir/"$frameNumber"_matched.cat
+            # rm $tmpDir/$frameNumber.cat
+        fi
     done
 
     python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
-    rm -rf $tmpDir
+    # rm -rf $tmpDir
 }
 export -f produceCalibrationCheckPlot
 

@@ -11,6 +11,7 @@ This repository contains the source code of a pipeline implemented for reducing 
 * Scamp (using 2.10)
 * Swarp (using 2.41.4)
 * SExtractor (using 2.25) 
+* funpack (using 1.7.0)
 
 * Astropy (using 5.3.4)
 
