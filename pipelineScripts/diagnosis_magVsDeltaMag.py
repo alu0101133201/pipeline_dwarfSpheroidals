@@ -140,20 +140,30 @@ plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magD
 
 
 # Individual calibration plot for a set of frames
-numberOfFilesToShowCalibrationPlotIndividually = 4
-allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
+for file_name in glob.glob(directoryWithTheCatalogues + "/*.cat"):
+    number = file_name.split('_')[0]
+    mag1, mag2 = read_columns_from_file(file_name)
+    magDiff = np.array((mag1 - mag2))
+    magDiffAbs = np.array(np.abs(mag1 - mag2))
 
-if len(allFrames) < numberOfFilesToShowCalibrationPlotIndividually:
-    print(f"Not enough files to perform the calibration plot of 4 frames. Only found {len(allFrames)} frames.")
-else:
-    selected_files = random.sample(allFrames, numberOfFilesToShowCalibrationPlotIndividually)
+    totalScatter = np.sqrt(np.mean(magDiffAbs**2))
+    scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+    plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir + "/calibrationPlot_" + number + ".png")
 
-    for file_name in selected_files:
-        number = file_name.split('_')[0]
-        mag1, mag2 = read_columns_from_file(directoryWithTheCatalogues + "/" + file_name)
-        magDiff = np.array((mag1 - mag2))
-        magDiffAbs = np.array(np.abs(mag1 - mag2))
+# numberOfFilesToShowCalibrationPlotIndividually = 4
+# allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
 
-        totalScatter = np.sqrt(np.mean(magDiffAbs**2))
-        scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
-        plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir + "/calibrationPlot_" + number + ".png")
+# if len(allFrames) < numberOfFilesToShowCalibrationPlotIndividually:
+#     print(f"Not enough files to perform the calibration plot of 4 frames. Only found {len(allFrames)} frames.")
+# else:
+#     selected_files = random.sample(allFrames, numberOfFilesToShowCalibrationPlotIndividually)
+
+#     for file_name in selected_files:
+#         number = file_name.split('_')[0]
+#         mag1, mag2 = read_columns_from_file(directoryWithTheCatalogues + "/" + file_name)
+#         magDiff = np.array((mag1 - mag2))
+#         magDiffAbs = np.array(np.abs(mag1 - mag2))
+
+#         totalScatter = np.sqrt(np.mean(magDiffAbs**2))
+#         scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+#         plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir + "/calibrationPlot_" + number + ".png")

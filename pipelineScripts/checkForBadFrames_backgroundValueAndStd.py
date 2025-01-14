@@ -54,6 +54,20 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
     if(logScale): ax.set_yscale('log')
 
 
+def getFilenameWithPattern(folderPath, n):
+
+    pattern = f"f{n}" 
+    for filename in os.listdir(folderPath):  
+        if pattern in filename:  
+            return filename  
+    
+    pattern = f"{n}" 
+    for filename in os.listdir(folderPath):  
+        if pattern in filename:  
+            return filename  
+    
+    return None  
+
 def extractNumberFromName(filename):
     match = re.search(r"entirecamera_(\d+).txt", filename)
     if match:
@@ -116,7 +130,7 @@ def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
     configureAxis(ax, labelX, 'Number of frames', logScale=False)
     ax.set_title(title, fontsize=22, pad=17)
 
-    counts, bins, patches = ax.hist(valuesToPlot, color="teal") #, bins=myBins)
+    counts, bins, patches = ax.hist(valuesToPlot, color="teal", bins=myBins)
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
 
@@ -124,6 +138,12 @@ def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
         fontsize=20, verticalalignment='top', horizontalalignment='left')
     ax.text(0.375, 0.9, "Std: " + str(int(std)), transform=ax.transAxes, 
         fontsize=20, verticalalignment='top', horizontalalignment='left')
+
+    upperLimit=median + numOfStd*std
+    lowerLimit=median - numOfStd*std
+
+    ax.vlines(x=upperLimit, ymin = 0, ymax = max_bin_height, lw=2.5, color="red", linestyle="--")
+    ax.vlines(x=lowerLimit, ymin = 0, ymax = max_bin_height, lw=2.5, color="red", linestyle="--")
 
     # ax.text(0.1, 0.9, 'Mean: ' + "{:.0}".format(median), transform=ax.transAxes, 
     #     fontsize=18, verticalalignment='top', horizontalalignment='left')
@@ -134,12 +154,21 @@ def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
 
 
 def obtainNumberFromFrame(currentFile):
+    # I know this code is awful but I use the function in two different places and the names are different
+    # Since the names can have multiple numbers it's not trivial to identify the frame number so I have 
+    # hardcoded the names used... 
     match = re.search(r'entirecamera_(\d+)\.txt', currentFile)
+
     if match:
         frameNumber = int(match.group(1))
         return(frameNumber)
     else:
-        raise Exception("Something when wrong when trying to obtain the number frame (needed for accessing the airmass of it)")
+        match = re.search(r'_f(\d+)_', currentFile)
+        if match:
+            frameNumber = int(match.group(1))
+            return(frameNumber)
+        else:
+            raise Exception("Something when wrong when trying to obtain the number frame (needed for accessing the airmass of it)")
 
 def obtainKeyWordFromFits(file, keyword):
     if os.path.exists(file):
@@ -156,11 +185,8 @@ def obtainKeyWordFromFits(file, keyword):
 
 def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     frameNumber = obtainNumberFromFrame(currentFile)
-
-    fitsFileNamePatter = f"{frameNumber}.fits"
-    fitsFilePath = os.path.join(airMassesFolder, fitsFileNamePatter)
-
-    print("file for obtaining airmass: ", fitsFilePath)
+    fitsFileNamePattern = getFilenameWithPattern(airMassesFolder, frameNumber)
+    fitsFilePath = os.path.join(airMassesFolder, fitsFileNamePattern)
 
     airMass = obtainKeyWordFromFits(fitsFilePath, airMassKeyWord)
     return(airMass)
@@ -193,7 +219,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         return(float('nan'), float('nan')) 
     return(backgroundValue / airmass, backgroundStd)
 
-def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting):
+def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting, onlyCheckForStd):
     badFiles   = []
     allFiles   = []
     allStd     = []
@@ -216,9 +242,13 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     std_mask = sigma_clip(allStd, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
     values_mask = sigma_clip(allBackgroundValues, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
 
-    combined_mask = values_mask | std_mask
-    allFiles = np.array(allFiles)
-    badFiles = allFiles[combined_mask]
+    if (onlyCheckForStd):
+        allFiles = np.array(allFiles)
+        badFiles = allFiles[std_mask]
+    else:
+        combined_mask = values_mask | std_mask
+        allFiles = np.array(allFiles)
+        badFiles = allFiles[combined_mask]
     return(badFiles)
 
 
@@ -230,6 +260,12 @@ airMassKeyWord                = sys.argv[3]
 outputFolder                  = sys.argv[4]
 outputFile                    = sys.argv[5]
 numberOfStdForRejecting       = float(sys.argv[6])
+onlyCheckForStd               = sys.argv[7]
+
+if ((onlyCheckForStd == "True") or (onlyCheckForStd == "true")):
+    onlyCheckForStd = True
+else:
+    onlyCheckForStd = False
 
 setMatplotlibConf()
 
@@ -237,9 +273,9 @@ setMatplotlibConf()
 normalisedBackgroundValues = []
 backgroundStds             = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
-    print("current file: ", currentFile)
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
+    print("current file: ", currentFile)
     currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
     normalisedBackgroundValues.append(currentValue)
     backgroundStds.append(currentStd)
@@ -249,17 +285,24 @@ backgroundStds = np.array(backgroundStds)
 
 print("\n\n")
 # 2.- Obtain the median and std and do the histograms ------------------
-backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
-saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, \
-                outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
+if onlyCheckForStd:
+    backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
+    saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
+                    outputFolder + "/backgroundStdHist_preFlat.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
+else:
+    backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
+    saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
+                    outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
 
-backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
-saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
-                outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
+    backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
+    saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, \
+                    outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
+
 
 
 # 3.- Identify what frames are outside the acceptance region ------------------
-badFiles = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
+badFiles = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting, onlyCheckForStd)
+
 
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
