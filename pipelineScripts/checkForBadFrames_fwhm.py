@@ -112,6 +112,7 @@ def saveHistogram(values, median, std, badValues, imageName, numOfStd, title):
                 fontsize=20,verticalalignment='top',horizontalalignment='left')
     plt.savefig(imageName)
     return()
+    
 def saveFWHMevol(allTable,badFiles,badFwhm,imageName):
     fig, ax = plt.subplots(1, 2, figsize=(10,10))
     configureAxis(ax[0], 'UTC', 'FWHM (pix)',logScale=False)

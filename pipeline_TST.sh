@@ -94,7 +94,7 @@ if [ -z $num_cpus ]; then
   num_cpus=$defaultNumOfCPUs
 fi
 
-echo "Number of CPUs allocated: $num_cpus"
+echo -e "\nNumber of CPUs allocated: $num_cpus"
 export num_cpus
 
 
@@ -562,7 +562,10 @@ oneNightPreProcessing() {
 
   # I use the flatit2WholeNightIma because maybe the running flat has not been selected, but the whole night flat is 
   # going to be constructed always (either by user selection or for correcting the running)
-  onlyCheckForStd=True
+
+  # This is a simplified version of the more thorough check that is done in the future (with normalised background, std, skewness and kurtosis)
+  # but since the data here is not much processed and I'm not sure how reliable is the background for that detailed study, we use a simplified version
+  # using only the std in order to remove the frames with moved sections
   tmpNoiseDir=$BDIR/noisesky_forCleaningBadFramesBeforeFlat
   tmpNoiseDone=$tmpNoiseDir/done.txt
   if ! [ -d $tmpNoiseDir ]; then mkdir $tmpNoiseDir; fi
@@ -575,21 +578,19 @@ oneNightPreProcessing() {
       echo -e "\n\tFrames with strange background value and std values already cleaned\n"
   else
     computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
-    python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpNoiseDir $flatit2WholeNightimaDir $airMassKeyWord $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $onlyCheckForStd
-    echo done > $badFilesWarningsDone
+    python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
+    echo "done" > $badFilesWarningsDone
   fi
   
-
   rejectedFramesDir=$BDIR/rejectedFrames_std_preFlat
   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
   removeBadFramesFromReduction $flatit2WholeNightimaDir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
   removeBadFramesFromReduction $flatit2imadir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-
   removeBadFramesFromReduction $mbiascorrdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+
 
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
-
 
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
@@ -609,7 +610,7 @@ oneNightPreProcessing() {
     fi
   fi
 
-  
+
   # Obtain a mask using noisechisel on the whole night flat images
   noiseit3WholeNightDir=$BDIR/noise-it3-WholeNight_n$currentNight
   noiseit3WholeNightdone=$noiseit3WholeNightDir/done_"$filter"_ccd"$h".txt
@@ -831,6 +832,8 @@ done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
 
+
+
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
@@ -1006,6 +1009,8 @@ else
   echo done > $badFilesWarningsDone
 fi
 
+exit 0
+
 rejectedFramesDir=$BDIR/rejectedFrames_astrometry
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bas astrometrised"
@@ -1151,7 +1156,7 @@ decalsImagesDir=$mosaicDir/decalsImages
 
 
 writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
-prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir \
+prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir \
                                             $pixelScale $surveyForPhotometry $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees $galaxySMA $galaxyAxisRatio $galaxyPA $catName $starMagnitudeThresholdToReject_gBand \
                                             $numberOfFWHMForPhotometry
 

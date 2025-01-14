@@ -426,8 +426,8 @@ getSkewKurtoValueInsideRing(){
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
             #astarithmetic $i -h1 $commonRing -h1 0 eq nan where -q -o ring_masked.fits
-            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing)
-            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing)
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing)
             rm ring_masked.fits
     else
         # Case when we do NOT have one common normalisation ring
@@ -440,13 +440,13 @@ getSkewKurtoValueInsideRing(){
 
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
             #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
-            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first)
-            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first)
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first)
             rm ring_masked.fits
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
             #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
-            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second)
-            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second)
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second)
             rm ring_masked.fits
         else
             errorNumber=5
@@ -730,7 +730,7 @@ computeSkyForFrame(){
 
             echo "$base $me $std $skew $kurto" > $noiseskydir/$out
 
-            # rm $ringDir/$tmpRingDefinition
+            rm $ringDir/$tmpRingDefinition
             rm $ringDir/$tmpRingFits
 
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
@@ -793,10 +793,6 @@ computeSky() {
         echo -e "\n\tScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
     else
         framesToComputeSky=()
-        # for a in $(seq 1 $totalNumberOfFrames); do
-        #     base="entirecamera_"$a.fits
-        #     framesToComputeSky+=("$base")
-        # done
         for a in $( ls $framesToUseDir/*.fits ); do
             base=$( basename $a )
             framesToComputeSky+=("$base")
@@ -861,7 +857,7 @@ subtractSky() {
 export -f subtractSky
 
 # Functions for decals data
-# The function that is to be used (the 'public' function using OOP terminology) is 'prepareDecalsDataForPhotometricCalibration'
+# The function that is to be used (the 'public' function using OOP terminology) is 'prepareSurveyDataForPhotometricCalibration'
 getBricksWhichCorrespondToFrame() {
     frame=$1
     frameBrickMapFile=$2
@@ -1344,7 +1340,7 @@ performAperturePhotometryToBricks() {
 export -f performAperturePhotometryToBricks
 
 
-prepareDecalsDataForPhotometricCalibration() {
+prepareSurveyDataForPhotometricCalibration() {
     referenceImagesForMosaic=$1
     surveyImagesDir=$2
     filter=$3
@@ -1424,7 +1420,7 @@ prepareDecalsDataForPhotometricCalibration() {
     fi
     python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
 }
-export -f prepareDecalsDataForPhotometricCalibration
+export -f prepareSurveyDataForPhotometricCalibration
 
 # Photometric calibration functions
 # The function that is to be used (the 'public' function using OOP terminology)
@@ -2002,8 +1998,8 @@ produceCalibrationCheckPlot() {
 
         # In the nominal resolution it takes sooo long for doing this plots. So only a set of frames are used for the
         # calibration check
-        if [ "$frameNumber" -gt 3 ]; then
-            break
+        if [ "$frameNumber" -gt 5 ]; then
+            :
         else
             referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
 
