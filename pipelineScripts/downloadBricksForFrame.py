@@ -10,8 +10,9 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from matplotlibConf import *
-from decals_GetAndDownloadBricks import *
-
+from GetAndDownloadBricks import *
+import pandas as pd
+import os
 
 def getCoordsAndMagFromBrightStars(catalogue, threshold):
     ra = []
@@ -118,11 +119,16 @@ def plotEllipseAndBricks(x0, y0, sma, axis_ratio, pa, x, y, pointsmask_bricksIns
     plt.axis("equal")
     plt.savefig(mosaicDir + "/downloadedBricks.png")
 
-def writeBricksAndItsCoordinates(file, brickNames, ra, dec):
+def writeBricksAndItsCoordinates(file, brickNames, ra, dec, survey):
     with open(file, 'w') as f:
         f.write("BrickName\tRA_centre\tDec_centre\n")
         for i in range(len(brickNames)):
-            f.write(brickNames[i] + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
+            if survey=='PANSTARRS':
+                #Just to avoid the .fits in the brick identification file, will be useful in the future
+                brickName=brickNames[i][:-5]
+            elif survey=='DECaLS':
+                brickName=brickNames[i]
+            f.write(brickName + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
 
 
 if (len(sys.argv) < 8):
@@ -140,10 +146,10 @@ mosaicDir                       = sys.argv[9]
 bricksIdentificationFile        = sys.argv[10]
 gaiaCatalogue                   = sys.argv[11]
 starThresholdForRejectingBricks = float(sys.argv[12])
-
+survey                          = sys.argv[13]
 setMatplotlibConf()
-
 decalsBrickWidthDeg = 15.5 / 60 
+panstarrsBrickWidthDeg=15.0 / 60
 
 # Compute corners of the field
 galaxyMinimumRA  = galaxyRA  - (fieldSize / 2)
@@ -152,7 +158,34 @@ galaxyMinimumDec = galaxyDec - (fieldSize / 2)
 galaxyMaximumDec = galaxyDec + (fieldSize / 2)
 cornersWCSCoords = [(galaxyMinimumRA, galaxyMinimumDec), (galaxyMaximumRA, galaxyMaximumDec)]
 
-bricksNames, bricksRA, bricksDec = getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(cornersWCSCoords[0], cornersWCSCoords[1])
+if survey=='DECaLS':
+    bricksNames, bricksRA, bricksDec = getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(cornersWCSCoords[0], cornersWCSCoords[1])
+    threadList = []
+
+    for i in bricksNames:
+        threadList.append(threading.Thread(target=downloadBrickDecals, args=(i, filters, downloadDestination, False)))
+    for i in threadList:
+        i.start()
+    for i in threadList:
+        i.join()
+elif survey=='PANSTARRS':
+    bricks_fullNames,bricksRA,bricksDec,bricksNames = getPanstarrsBricksFromRegionDefinedByTwoPoints(cornersWCSCoords[0],cornersWCSCoords[1],filters)
+    threadList = []
+    for i in range(len(bricks_fullNames)):
+        b_fname=bricks_fullNames[i]
+        b_ra=bricksRA[i]
+        b_dec=bricksDec[i]
+        b_name=bricksNames[i]
+        threadList.append(threading.Thread(target=downloadBrickPanstarrs,args=(b_fname,b_name,b_ra,b_dec,downloadDestination,False)))
+    for i in threadList:
+        i.start()
+    for i in threadList:
+        i.join()
+else:
+    raise Exception (f"Survey {survey} not supported for Photometric calibration")
+    
+#All this comments concern the fact that we can mask bricks where galaxy or bright stars are allocated
+"""
 mask_bricksInsideGalaxy = brickContainTheGalaxy(np.array(bricksRA), np.array(bricksDec), galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA)
 
 ra, dec = getCoordsAndMagFromBrightStars(gaiaCatalogue, starThresholdForRejectingBricks)
@@ -162,14 +195,45 @@ maskCombined = mask_bricksInsideGalaxy | mask_bricksWithBrightStar
 
 bricksToDownload = bricksNames[~maskCombined]
 plotEllipseAndBricks(galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA, bricksRA, bricksDec, mask_bricksInsideGalaxy, mask_bricksWithBrightStar, maskCombined, mosaicDir)
-writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames[~maskCombined], bricksRA[~maskCombined], bricksDec[~maskCombined])
+"""
+writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames, bricksRA, bricksDec, survey)
+"""
+For Panstarrs, sometimes the ping does not download the full frame, but the .fits file is created.
+Ie, we have a file brick.fits with no data (a size of ~200Kby). Because of that, we will make the following:
+we will check the size of each file created and stored in writeBricksAndItsCoordinates. If the file is ok, we
+don't do anything, but if the file is not ok, we will re-make the download, and check again. If it still does not work,
+we directly remove the brick from the IdentificationFile and the folder.
+"""
+if survey=='PANSTARRS':
+    bricksIdFile=pd.read_csv(bricksIdentificationFile,sep='\t')
+    #3600x3600 pix panstarrs brick has a size of ~50Mb
+    badRows=[]
+    for row in range(len(bricksIdFile)):
+        fname=downloadDestination+'/'+bricksIdFile.loc[row]['BrickName']+'.fits'
+        fsize=os.stat(fname).st_size/1e6
+        if fsize>5:
+            continue
+        else:
+            #We are assuming a reasonable fit has a size >5Mb
+            ra_brick=bricksIdFile.loc[row]['RA_centre']
+            dec_brick=bricksIdFile.loc[row]['Dec_centre']
+            brick_fullName,brickRA,brickDec,brickName=getPanstarrsBricksFromCentralPoint(ra_brick,dec_brick,filters)
+            brick_fullName=brick_fullName[0]; brickRA=brickRA[0]; brickDec=brickDec[0]
+            brickName=brickName[0]
+            downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDec,downloadDestination,overwrite=True)
+            #We check again the download
+            fname=downloadDestination+'/'+brickName
+            fsize=os.stat(fname).st_size/1e6
+            #Decission: if download is ok, we change the dataframe and store, if not, we remove the row
+            if fsize>5:
+                bricksIdFile.loc[row,'BrickName']=brickName[:-5]
+                bricksIdFile.loc[row,'RA_centre']=brickRA
+                bricksIdFile.loc[row,'Dec_centre']=brickDec
+            else:
+                #We remove the fits file and store the bad row
+                os.system(f'rm {fname}')
+                badRows.append(row)
+    ##Now we remove the bad rows and store the new bricksIdentificationFile
+    bricksIdFile=bricksIdFile.drop(index=badRows)
+    bricksIdFile.to_csv(bricksIdentificationFile,sep='\t',index=False)
 
-threadList = []
-for i in bricksToDownload:
-    threadList.append(threading.Thread(target=downloadBrick, args=(i, filters, downloadDestination, False)))
-
-for i in threadList:
-    i.start()
-
-for i in threadList:
-    i.join()

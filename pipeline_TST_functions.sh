@@ -85,11 +85,12 @@ outputConfigurationVariablesInformation() {
         "  Bright limit:$calibrationBrightLimit:[mag]"
         "  Faint limit:$calibrationFaintLimit:[mag]"
         "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry:[FWHM]"
-        "The definition of the galaxy region for not using these DECaLS bricks in calibration:"
+        "The calibration will be done using data from survey: $surveyForPhotometry"
+        "The definition of the galaxy region for not using these bricks in calibration:"
         "  Galaxy's Semi-major axis:$galaxySMA:[deg] "
         "  Galaxy's axis ratio:$galaxyAxisRatio"
         "  Galaxy's position angle:$galaxyPA:[deg]"
-        "DECaLS bricks rejected if present stars brighter (g-band) than:$starMagnitudeThresholdToReject_gBand:[mag]"
+        "Bricks rejected if present stars brighter (g-band) than:$starMagnitudeThresholdToReject_gBand:[mag]"
         ""
         "·Saturation threshold:$saturationThreshold:[ADU]"
         "·Gain:$gain:[e-/ADU]"
@@ -192,6 +193,7 @@ checkIfAllVariablesAreSet() {
                 calibrationBrightLimit \
                 calibrationFaintLimit \
                 numberOfFWHMForPhotometry \
+                surveyForPhotometry \
                 starMagnitudeThresholdToReject_gBand \
                 ringWidth \
                 USE_COMMON_RING \
@@ -410,6 +412,53 @@ getStdValueInsideRing() {
 }
 export -f getStdValueInsideRing
 
+getSkewKurtoValueInsideRing(){
+    i=$1
+    commonRing=$2
+    doubleRing_first=$3
+    doubleRing_second=$4
+    useCommonRing=$5
+    keyWordToDecideRing=$6
+    keyWordThreshold=$7
+    keyWordValueForFirstRing=$8
+    keyWordValueForSecondRing=$9
+
+    if [ "$useCommonRing" = true ]; then
+            # Case when we have one common normalisation ring
+            #astarithmetic $i -h1 $commonRing -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing)
+            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing)
+            rm ring_masked.fits
+    else
+        # Case when we do NOT have one common normalisation ring
+        # All the following logic is to decide which normalisation ring apply
+        variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
+        firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
+        firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
+        secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
+        secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
+
+        if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
+            #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first)
+            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first)
+            rm ring_masked.fits
+        elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
+            #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second)
+            kurto=$(python $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second)
+            rm ring_masked.fits
+        else
+            errorNumber=5
+            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
+            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+            exit $errorNumber 
+        fi
+    fi
+    echo "$skew $kurto"
+}
+export -f getSkewKurtoValueInsideRing
+
 normaliseImagesWithRing() {
     imageDir=$1
     outputDir=$2
@@ -446,7 +495,12 @@ calculateFlat() {
     # So we have to be a little bit aggresive in order to be able to remove the outliers
     sigmaValue=2
     iterations=10
-    astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 -o $flatName
+    gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+    if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 --writeall -o $flatName
+    else
+        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 -o $flatName
+    fi
 }
 export -f calculateFlat
 
@@ -672,7 +726,9 @@ computeSkyForFrame(){
 
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            echo "$base $me $std" > $noiseskydir/$out
+            read skew kurto < <(getSkewKurtoValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+
+            echo "$base $me $std $skew $kurto" > $noiseskydir/$out
 
             # rm $ringDir/$tmpRingDefinition
             rm $ringDir/$tmpRingFits
@@ -845,9 +901,9 @@ getParametersFromHalfMaxRadius() {
 export -f getParametersFromHalfMaxRadius
 
 
-downloadDecalsData() {
+downloadData() {
     mosaicDir=$1
-    decalsImagesDir=$2
+    surveyImagesDir=$2
     bricksIdentificationFile=$3
     filters=$4
     ra=$5
@@ -858,22 +914,21 @@ downloadDecalsData() {
     fieldSizeDeg=${10}
     gaiaCatalogue=${11}
     starThresholdForRejectingBricks=${12}
-
-
-    echo -e "\n·Downloading Decals bricks"
-    donwloadMosaicDone=$mosaicDir/decalsImages/done_downloads.txt
+    survey=${13}
+    echo -e "\n·Downloading ${survey} bricks"
+    donwloadMosaicDone=$surveyImagesDir/done_downloads.txt
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
-    if ! [ -d $decalsImagesDir ]; then mkdir $decalsImagesDir; fi
+    if ! [ -d $surveyImagesDir ]; then mkdir $surveyImagesDir; fi
     if [ -f $donwloadMosaicDone ]; then
         echo -e "\n\tMosaic images already downloaded\n"
     else
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions        
-        echo "Downloading decals bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
-        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $decalsImagesDir $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $starThresholdForRejectingBricks
-        echo done > $donwloadMosaicDone
+        echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
+        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $starThresholdForRejectingBricks $survey
+        echo "done" > $donwloadMosaicDone
     fi
 }
-export -f downloadDecalsData
+export -f downloadData
 
 addTwoFiltersAndDivideByTwo() {
     decalsImagesDir=$1
@@ -1090,10 +1145,44 @@ decompressBricks() {
 }
 export -f decompressBricks
 
-selectStarsAndSelectionRangeDecals(){
+calibratePanstarrsFrame() {
+    brickName=$1
+    dirWithBricks=$2
+
+    cal_tm="cal_tm_"$brickName
+    ##We need to divide /10 to get into zp=22.5, and to divide between exposure time
+    texp=$(astfits $dirWithBricks/$brickName -h0 --keyvalue=EXPTIME -q )
+    astarithmetic $dirWithBricks/$brickName -h0 10 / $texp / -o $dirWithBricks/$cal_tm
+    cal="cal_"$brickName
+    astfits $dirWithBricks/$cal_tm --copy=1 --primaryimghdu -o $dirWithBricks/$cal
+    astfits $dirWithBricks/$cal -h0 --write=ZP,22.5
+    rm $dirWithBricks/$cal_tm
+}
+export -f calibratePanstarrsFrame
+
+calibratePanstarrs() {
+    dirWithBricks=$1
+
+    calibratedBricks=$dirWithBricks/recalibrated_done.txt
+    if [ -f $calibratedBricks ]; then
+        echo -e "\n\tPanstarrs bricks already re-calibrated\n"
+    else
+        brickList=()
+        for i in $( ls $dirWithBricks/t*.fits); do
+            currentName=$( basename $i )
+            brickList+=("$currentName")
+        done
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" calibratePanstarrsFrame {} $dirWithBricks
+        echo "done" > $calibratedBricks
+    fi
+}
+export -f calibratePanstarrs
+
+selectStarsAndSelectionRangeSurvey() {
     dirWithBricks=$1
     cataloguedir=$2
     methodToUse=$3
+    survey=$4
 
     starSelectionDone=$cataloguedir/done.txt
     if ! [ -d $cataloguedir ]; then mkdir $cataloguedir; fi
@@ -1101,10 +1190,17 @@ selectStarsAndSelectionRangeDecals(){
         echo -e "\n\tStar and range selection for calibration already done\n"
     else
         brickList=()
-        for i in $( ls $dirWithBricks/decompressed_*.fits); do
-            currentName=$( basename $i )
-            brickList+=("$currentName")
-        done
+        if [ "$survey" = "DECaLS" ]; then
+            for i in $( ls $dirWithBricks/decompressed_*.fits); do
+                currentName=$( basename $i )
+                brickList+=("$currentName")
+            done
+        elif [ "$survey" = "PANSTARRS" ]; then
+            for i in $( ls $dirWithBricks/cal_*.fits); do
+                currentName=$( basename $i )
+                brickList+=("$currentName")
+            done
+        fi
 
         headerWithData=0 # After decompressing the data ends up in the hdu 0
         noisechiselTileSize=50
@@ -1112,7 +1208,7 @@ selectStarsAndSelectionRangeDecals(){
         echo "done" > $starSelectionDone
     fi
 }
-export -f selectStarsAndSelectionRangeDecals
+export -f selectStarsAndSelectionRangeSurvey
 
 produceHalfMaxRadiusPlotsForDecals() {
     folderWithCatalogues=$1
@@ -1144,6 +1240,35 @@ produceHalfMaxRadiusPlotsForDecals() {
 }
 export -f produceHalfMaxRadiusPlotsForDecals
 
+produceHalfMaxRadiusPlotsForPanstarrs() {
+    folderWithCatalogues=$1
+    outputDir=$2
+    filter=$3
+    #ps==panstarrs
+    psHalfMaxRadiusPlotsDone=$outputDir/done.txt
+    if ! [ -d $outputDir ]; then mkdir $outputDir; fi
+    if [ -f $psHalfMaxRadiusPlotsDone ]; then
+        echo -e "\n\tHalf-max radius vs magnitude plots already done\n"
+    else
+        for currentFullCatalogue in $( ls $folderWithCatalogues/catalogue_*.cat ); do
+            brickName=$(echo "$currentFullCatalogue" | awk -F'catalogue_' '{print $2}' | awk -F'.cat' '{print $1}')
+            matchedCatalogue=$folderWithCatalogues/match_"$brickName"_my_gaia.txt
+            rangeFile=$folderWithCatalogues/range_"$brickName".txt
+            
+            read minr maxr < <(awk '{print $3, $4}' $rangeFile)
+            plotXLowerLimit=1
+            plotXHigherLimit=10
+            plotYLowerLimit=13
+            plotYHigherLimit=24
+            python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $currentFullCatalogue $matchedCatalogue -1 $minr $maxr $outputDir/$brickName.png  \
+                $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
+        done
+        
+        echo "done" > $psHalfMaxRadiusPlotsDone
+    fi
+}
+export -f produceHalfMaxRadiusPlotsForPanstarrs
+
 performAperturePhotometryToSingleBrick() {
     brick=$1
     brickDir=$2
@@ -1151,8 +1276,12 @@ performAperturePhotometryToSingleBrick() {
     outputCat=$4
     filter=$5
     numberOfFWHMToUse=$6
-
-    brickName=decompressed_decal_image_"$brick"_"$filter".fits
+    survey=$7
+    if [[ "$survey" = "DECaLS" ]]; then
+        brickName=decompressed_decal_image_"$brick"_"$filter".fits
+    elif [[ "$survey" = "PANSTARRS" ]]; then
+        brickName=cal_"$brick".fits
+    fi
     brickImage=$brickDir/$brickName
     fileWithAperture=$automaticallySelectedDir/range_$brickName.txt
     automaticCatalogue=$automaticallySelectedDir/selected_"$brickName"_automatic.txt
@@ -1182,18 +1311,33 @@ performAperturePhotometryToBricks() {
     outputCat=$3
     filter=$4
     numberOfFWHMToUse=$5
-
+    survey=$6
+   
     outputDone=$outputCat/done.txt
     if ! [ -d $outputCat ]; then mkdir $outputCat; fi
     if [ -f $outputDone ]; then
         echo -e "\n\tCatalogues done with aperture photometry already done\n"
     else
         brickList=()
-        for a in $( ls $brickDir/decompressed*.fits); do
-            brickName=$(echo "$a" | awk -F'_image_' '{print $2}' | awk -F'_' '{print $1}')
-            brickList+=("$brickName")
-        done
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfFWHMToUse
+        #If aperture photometry is done in Panstarrs, brickNames are different
+        
+        if [[ "$survey" = "DECaLS" ]]; then
+            for a in $( ls $brickDir/decompressed*.fits); do
+                brickName=$(echo "$a" | awk -F'_image_' '{print $2}' | awk -F'_' '{print $1}')
+                brickList+=("$brickName")
+            done
+        elif [[ "$survey" = "PANSTARRS" ]]; then
+            for a in $( ls $brickDir/cal_*.fits); do
+                brickName=$(echo "$a" | awk -F'cal_' '{print $2}' | awk -F'.fits' '{print $1}')
+                brickList+=("$brickName")
+            done
+        else
+            echo "Error: "$survey" not supported for photometric calibration!"
+            exit 1
+        fi
+        
+        
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfFWHMToUse $survey
         echo "done" > $outputDone
     fi
 }
@@ -1202,45 +1346,47 @@ export -f performAperturePhotometryToBricks
 
 prepareDecalsDataForPhotometricCalibration() {
     referenceImagesForMosaic=$1
-    decalsImagesDir=$2
+    surveyImagesDir=$2
     filter=$3
     ra=$4
     dec=$5
     mosaicDir=$6
-    selectedDecalsStarsDir=$7
-    rangeUsedDecalsDir=$8
+    selectedSurveyStarsDir=$7
+    rangeUsedSurveyDir=$8
     dataPixelScale=$9
-    diagnosis_and_badFilesDir=${10}
-    sizeOfOurFieldDegrees=${11} 
-    galaxySMA=${12}
-    galaxyAxisRatio=${13}
-    galaxyPA=${14}
-    gaiaCatalogue=${15}
-    starThresholdForRejectingBricks=${16}
-    numberOfFWHMForPhotometry=${17}
-
-    echo -e "\n ${GREEN} ---Preparing Decals data--- ${NOCOLOUR}"
-    bricksIdentificationFile=$decalsImagesDir/brickIdentification.txt
-
+    survey=${10}
+    diagnosis_and_badFilesDir=${11}
+    sizeOfOurFieldDegrees=${12} 
+    galaxySMA=${13}
+    galaxyAxisRatio=${14}
+    galaxyPA=${15}
+    gaiaCatalogue=${16}
+    starThresholdForRejectingBricks=${17}
+    numberOfFWHMForPhotometry=${18}
+   
+    echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
+    bricksIdentificationFile=$surveyImagesDir/brickIdentification.txt
+    
     # If the images are donwloaded but the done.txt file is no present, the images won't be donwloaded again but
     # the step takes a while even if the images are already downloaded because we have to do a query to the database
     # in order to obtain the brickname and check if it is already downloaded or no
     if [ "$filter" = "lum" ]; then
         filters="g,r" # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
-        downloadDecalsData $mosaicDir $decalsImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks
-
+        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey  
         # This step creates the images (g+r)/2. This is needed because we are using a luminance filter which is a sort of (g+r)
         # The division by 2 is because in AB system we work with Janskys, which are W Hz^-1 m^-2. So we have to give a flux per wavelenght
         # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
         # practically the same wavelenght width, so dividing by 2 is enough
-        addTwoFiltersAndDivideByTwo $decalsImagesDir "g" "r"
-    elif [ "$filter" = "i" ]; then
+        addTwoFiltersAndDivideByTwo $surveyImagesDir "g" "r"
+    elif [ "$filter" = "i" ] && [ "$survey" = "DECaLS_rz" ]; then
+        survey=DECaLS
+        surveyForPhotometry=DECaLS #To work better later on that DECaLS is needed
         filters="r,z" # We download 'r' and 'z' because filter 'i' is not in all DECaLs
-        downloadDecalsData $mosaicDir $decalsImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks
+        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey
         addTwoFiltersAndDivideByTwo $decalsImagesDir "r" "z"
     else 
         filters=$filter
-        downloadDecalsData $mosaicDir $decalsImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks
+        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey
     fi
 
 
@@ -1250,23 +1396,33 @@ prepareDecalsDataForPhotometricCalibration() {
     # resampledDecalsBricks=$mosaicDir/resampled
     # buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $resampledDecalsBricks $dataPixelScale $sizeOfOurFieldDegrees   
     
-    decompressBricks $decalsImagesDir # I have to decompressed them, I don't know what DECaLS does exactly but otherwise I can't run sextractor directly on the downloaded bricks
-                                      # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
+    if [ "$survey" = "DECaLS" ]; then 
+        decompressBricks $surveyImagesDir # I have to decompressed them, I don't know what DECaLS does exactly but otherwise I can't run sextractor directly on the downloaded bricks
+                                             # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
+    elif [ "$survey" = "PANSTARRS" ]; then
+        #Panstarrs is calibrated at ZP=25. In order to be the most general possible, we transform panstarrs data so it is at zp=22.5, and we do not need to change anything else
+        calibratePanstarrs $surveyImagesDir
+    fi
+    
     methodToUse="sextractor"
-    selectStarsAndSelectionRangeDecals $decalsImagesDir $selectedDecalsStarsDir $methodToUse
-
+    selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey
+    
     halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
-    produceHalfMaxRadiusPlotsForDecals $selectedDecalsStarsDir $halfMaxRad_Mag_plots $filter
-
+    if [ "$survey" = "DECalS" ]; then
+        produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
+    elif [ "$survey" = "PANSTARRS" ]; then
+        produceHalfMaxRadiusPlotsForPanstarrs $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
+    fi
+    
     aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues
-    performAperturePhotometryToBricks $decalsImagesDir $selectedDecalsStarsDir $aperturePhotDir $filter $numberOfFWHMForPhotometry 
-
+    performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $numberOfFWHMForPhotometry $survey
+    
     imagesHdu=1
     brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
     if [[ -f $brickDecalsAssociationFile ]]; then
         rm $brickDecalsAssociationFile
     fi
-    python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile
+    python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
 }
 export -f prepareDecalsDataForPhotometricCalibration
 
@@ -1282,7 +1438,8 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
 
     i=$framesForCalibrationDir/$a
-
+    ##In the case of using it for Decals or Panstarrs, we need the variable survey
+    
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
@@ -1293,8 +1450,11 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         echo "Exiting with error number: $erroNumber"
         exit $erroNumber
     fi
+    
+    
+    
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
-
+    
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
     s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
@@ -1503,7 +1663,9 @@ combineDecalsCataloguesForSingleFrame() {
     bricks=$3
 
     catalogueName=$( echo "$frame" | awk -F'.' '{print $1}')
-    firstBrick=$(echo "$bricks" | awk '{print $1}')    
+    firstBrick=$(echo "$bricks" | awk '{print $1}')  
+    
+    
     asttablePrompt="asttable $decalsCataloguesDir/$firstBrick.cat -o$outputDir/$catalogueName.cat"
 
     remainingBricks=$(echo "$bricks" | cut -d' ' -f2-)  # Get the rest of the bricks
@@ -1528,7 +1690,6 @@ combineDecalsBricksCataloguesForEachFrame() {
             frame=$(echo "$line" | awk '{print $1}')
             frame=$( basename $frame )
             bricks=$(echo "$line" | cut -d' ' -f2-)
-
             combineDecalsCataloguesForSingleFrame $outputDir $frame "$bricks"
         done < "$frameBrickAssociationFile"
         echo "done" > $combinationDone
@@ -1686,9 +1847,15 @@ buildUpperAndLowerLimitsForOutliers() {
             # Compute clipped median and std
             med_im=$clippingdir/median_image.fits
             std_im=$clippingdir/std_image.fits
-
-            astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 -o$med_im
-            astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 -o$std_im
+            gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 --writeall -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 --writeall -o$std_im
+            else
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1  -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1  -o$std_im
+            fi
+            
             # Compute "borders" images
             up_lim=$clippingdir/upperlim.fits
             lo_lim=$clippingdir/lowerlim.fits
@@ -1824,7 +1991,8 @@ produceCalibrationCheckPlot() {
     calibrationFaintLimit=$8
     numberOfFWHMToUse=$9
     outputDir=${10}
-
+    survey=${11}
+    
     tmpDir="./calibrationDiagnosisTmp"
     if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
 
@@ -1863,8 +2031,8 @@ produceCalibrationCheckPlot() {
         fi
     done
 
-    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit
-    # rm -rf $tmpDir
+    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey
+    rm -rf $tmpDir
 }
 export -f produceCalibrationCheckPlot
 
@@ -1930,8 +2098,14 @@ buildCoadd() {
     if [ -f $coaddone ]; then
             echo -e "\n\tThe first weighted (based upon std) mean of the images already done\n"
     else
-            astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_wx.fits
-            astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 -o$coaddir/"$k"_w.fits
+            gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_w.fits
+            else
+                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_w.fits
+            fi
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
             echo done > $coaddone
     fi
@@ -1977,7 +2151,12 @@ computeExposureMap() {
       done
       
       printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
-      astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1 -o$coaddDir/exposureMap.fits
+      gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+      if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+        astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1  --writeall -o$coaddDir/exposureMap.fits
+      else
+        astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1  --writeall -o$coaddDir/exposureMap.fits
+      fi
       rm -rf $exposuremapDir
       echo done > $exposuremapdone
     fi
@@ -2025,19 +2204,33 @@ generateCatalogueFromImage_sextractor(){
     image=$1
     outputDir=$2
     a=$3   
-
+   
     # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
+    #For panstarrs we need to use zp=25
+   
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII  1>/dev/null 2>&1
+
     awk '{ $6 = $6 / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
 
-    # Headers to mimic the noisechisel format
-    sed -i '1i# Column 6: HALF_MAX_RADIUS' $outputDir/$a.cat
-    sed -i '1i# Column 5: MAGNITUDE      ' $outputDir/$a.cat
-    sed -i '1i# Column 4: DEC            ' $outputDir/$a.cat
-    sed -i '1i# Column 3: RA             ' $outputDir/$a.cat
-    sed -i '1i# Column 2: Y              ' $outputDir/$a.cat
-    sed -i '1i# Column 1: X              ' $outputDir/$a.cat
+    # Headers to mimic the noisechisel format. Change between MacOS and Linux
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS (BSD sed)
+        sed -i '' '1s/^/# Column 1: X\
+# Column 2: Y\
+# Column 3: RA\
+# Column 4: DEC\
+# Column 5: MAGNITUDE\
+# Column 6: HALF_MAX_RADIUS\
+/' "$outputDir/$a.cat"
+    else
+        sed -i '1i# Column 6: HALF_MAX_RADIUS' $outputDir/$a.cat
+        sed -i '1i# Column 5: MAGNITUDE      ' $outputDir/$a.cat
+        sed -i '1i# Column 4: DEC            ' $outputDir/$a.cat
+        sed -i '1i# Column 3: RA             ' $outputDir/$a.cat
+        sed -i '1i# Column 2: Y              ' $outputDir/$a.cat
+        sed -i '1i# Column 1: X              ' $outputDir/$a.cat
+    fi
 
     rm $outputDir/"$a"_tmp.cat
 
@@ -2126,12 +2319,12 @@ limitingSurfaceBrightness() {
     numOfSigmasForMetric=3
 
     out_mask=$directoryOfImages/mask_det.fits
-    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask 1>/dev/null
+    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
 
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
     exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
-    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp
+    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp >/dev/null 2>&1
     zp_asec=$(astarithmetic $pixelScale log10 5 x 22.5 + -q)
     sigma=$(aststatistics $out_maskexp --sigclip-std -q)
     

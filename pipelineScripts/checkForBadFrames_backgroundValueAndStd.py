@@ -5,7 +5,7 @@ import glob
 import math
 import fnmatch
 import astropy
-
+import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -15,6 +15,9 @@ from astropy.stats import sigma_clipped_stats
 from astropy.stats import sigma_clip
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
+
+from datetime import datetime
+import time
 
 def setMatplotlibConf():
     rc_fonts = {
@@ -84,12 +87,12 @@ def retrieveBackgroundValues(currentFile):
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
-        if (numberOfFields == 3):
+        if (numberOfFields == 5):
             return(float(splittedLine[1]))
         elif (numberOfFields == 1):
             return(float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
-            raise Exception("Wrong number of fields in the file of background estimation. Expected 3 (constant estimation of the background), got " + str(numberOfFields))
+            raise Exception("Wrong number of fields in the file of background estimation. Expected 5 (constant estimation of the background), got " + str(numberOfFields))
 
 def readAirMassesFromFile(fileName):
     values = []
@@ -121,7 +124,7 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
+def saveHistogram(values, median, std, badValues, imageName, numOfStd, title, labelX):
     valuesToPlot = values[~np.isnan(values)]
     myBins = calculateFreedmanBins(valuesToPlot)
 
@@ -138,13 +141,17 @@ def saveHistogram(values, median, std, imageName, numOfStd, title, labelX):
         fontsize=20, verticalalignment='top', horizontalalignment='left')
     ax.text(0.375, 0.9, "Std: " + str(int(std)), transform=ax.transAxes, 
         fontsize=20, verticalalignment='top', horizontalalignment='left')
+    if len(badValues)!=0:
+        if "STD" in labelX:
+            type_rejection="STD"
+        elif "counts" in labelX:
+            type_rejection="Counts"
+        counts_bad, bins_bad, patches_bad = ax.hist(badValues,bins=np.linspace(np.nanmin(badValues), np.nanmax(badValues), 4),color='red',label='Rejected'+type_rejection)
 
-    upperLimit=median + numOfStd*std
-    lowerLimit=median - numOfStd*std
-
-    ax.vlines(x=upperLimit, ymin = 0, ymax = max_bin_height, lw=2.5, color="red", linestyle="--")
-    ax.vlines(x=lowerLimit, ymin = 0, ymax = max_bin_height, lw=2.5, color="red", linestyle="--")
-
+        
+        ax.legend()
+    ax.text(0.3655, 0.85, "Rejected: " + str(len(badValues)), transform=ax.transAxes, 
+        fontsize=20, verticalalignment='top', horizontalalignment='left')
     # ax.text(0.1, 0.9, 'Mean: ' + "{:.0}".format(median), transform=ax.transAxes, 
     #     fontsize=18, verticalalignment='top', horizontalalignment='left')
     # ax.text(0.1, 0.85, 'Std: ' + "{:.0}".format(std), transform=ax.transAxes, 
@@ -181,7 +188,7 @@ def obtainKeyWordFromFits(file, keyword):
             else:
                 raise Exception(f"Keyword '{keyword}' not found in the header.")
     else:
-        raise Exception(f"File {fits_file_path} does not exist.")
+        raise Exception(f"File {file} does not exist.")
 
 def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     frameNumber = obtainNumberFromFrame(currentFile)
@@ -203,9 +210,11 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
-        if (numberOfFields == 3):
+        if (numberOfFields == 5):
             backgroundValue = float(splittedLine[1])
             backgroundStd   = float(splittedLine[2])
+            backgroundSkew = float(splittedLine[3])
+            backgroundKurto = float(splittedLine[4])
         elif (numberOfFields == 1):
             return(float('nan'), float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
@@ -217,7 +226,93 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
     except:
         print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + ")")
         return(float('nan'), float('nan')) 
-    return(backgroundValue / airmass, backgroundStd)
+    return(backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
+
+def saveBACKevol(allTable,badFiles,badBack,imageName):
+    fig, ax = plt.subplots(2,1, figsize=(20,10))
+    configureAxis(ax[0], 'UTC', 'Background (ADU)',logScale=False)
+    configureAxis(ax[1], 'Airmass', 'Background (ADU)',logScale=False)
+    fig.suptitle('Background evolution',fontsize=22)
+    pattern=r"entirecamera_(\d+)"
+    for row in range(len(allTable)):
+        file=allTable.loc[row]['File']
+        match=re.search(pattern,file)
+        frame=match.group(1)
+        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
+        bck=allTable.loc[row]['Background']
+        ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+        ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+
+    if len(badFiles)!=0:
+        for j in range(len(badFiles)):
+            match=re.search(pattern,badFiles[j])
+            frame=match.group(1)
+            file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+            date=obtainKeyWordFromFits(file,'DATE-OBS')
+            air=obtainKeyWordFromFits(file,'AIRMASS')
+            date_ok=datetime.fromisoformat(date)
+            ax[0].scatter(date_ok,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
+            ax[1].scatter(air,badBack[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected back.')
+            if j==0:
+                ax[0].legend()
+    for label in ax[0].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
+    plt.tight_layout()
+    plt.savefig(imageName)
+    return()
+def saveSTDevol(allTable,badFiles,badSTD,imageName):
+    fig, ax = plt.subplots(2,1, figsize=(20,10))
+    configureAxis(ax[0], 'UTC', 'STD (ADU)')
+    configureAxis(ax[1],'Airmass','STD (ADU)')
+    fig.suptitle('STD evolution',fontsize=22)
+    pattern=r"entirecamera_(\d+)"
+    for row in range(len(allTable)):
+        file=allTable.loc[row]['File']
+        match=re.search(pattern,file)
+        frame=match.group(1)
+        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
+        bck=allTable.loc[row]['STD']
+        ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+        ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+    
+    if len(badFiles)!=0:
+        for j in range(len(badFiles)):
+            match=re.search(pattern,badFiles[j])
+            frame=match.group(1)
+            file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+            date=obtainKeyWordFromFits(file,'DATE-OBS')
+            air=obtainKeyWordFromFits(file,'AIRMASS')
+            date_ok=datetime.fromisoformat(date)
+            ax[0].scatter(date_ok,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
+            ax[1].scatter(air,badSTD[j],marker='X',edgecolor='k',color='darkred',s=80,zorder=6,label='Rejected STD')
+            if j==0:
+                ax[0].legend()
+    for label in ax[0].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
+
+    plt.tight_layout()
+    plt.savefig(imageName)
+    return()
+
+def saveValuesVSStats(Values,STD,Skew,kurto,imageName):
+    fig, ax = plt.subplots(1,3,figsize=(30,10))
+    configureAxis(ax[0],r'$\sqrt{BACKGROUND}$','STD',logScale=False)
+    configureAxis(ax[1],'BACKGROUND','Skewness',logScale=False)
+    configureAxis(ax[2],'BACKGROUND','Kurtosis',logScale=False)
+    ax[0].scatter(np.sqrt(Values),STD,marker='o',s=60,edgecolor='k',color='teal')
+    ax[1].scatter(Values,Skew,marker='x',s=60,edgecolor='k',color='mediumorchid')
+    ax[2].scatter(Values,kurto,marker='P',s=60,edgecolor='k',color='darkred')
+    plt.tight_layout()
+    plt.savefig(imageName)
+    return()
 
 def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting, onlyCheckForStd):
     badFiles   = []
@@ -228,7 +323,7 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     for currentFile in glob.glob(folderWithFrames + "/*.txt"):
         if fnmatch.fnmatch(currentFile, '*done*.txt'):
             continue
-        currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+        currentValue, currentStd, currentSkew, currentKurto  = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
 
         if (math.isnan(currentValue)):
             continue
@@ -242,14 +337,14 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     std_mask = sigma_clip(allStd, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
     values_mask = sigma_clip(allBackgroundValues, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
 
-    if (onlyCheckForStd):
-        allFiles = np.array(allFiles)
-        badFiles = allFiles[std_mask]
-    else:
-        combined_mask = values_mask | std_mask
-        allFiles = np.array(allFiles)
-        badFiles = allFiles[combined_mask]
-    return(badFiles)
+    combined_mask = values_mask | std_mask
+    allFiles = np.array(allFiles)
+    allTogether=pd.DataFrame({'File':allFiles,'Background':allBackgroundValues,'STD':allStd})
+
+    badFiles = allFiles[combined_mask]
+    badValues=allBackgroundValues[values_mask]; badFilesBCK=allFiles[values_mask]
+    badStd=allStd[std_mask]; badFilesSTD=allFiles[std_mask]
+    return(badFiles,badValues,badStd,allTogether,badFilesBCK,badFilesSTD)
 
 
 HDU_TO_FIND_AIRMASS = 1
@@ -272,39 +367,38 @@ setMatplotlibConf()
 # 1.- Obtain the normalised background values and std values ------------------
 normalisedBackgroundValues = []
 backgroundStds             = []
+backgroundSkews            = []
+backgroundKurtos           = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
-    print("current file: ", currentFile)
-    currentValue, currentStd = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+    currentValue, currentStd, currentSkew, currentKurto = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
     normalisedBackgroundValues.append(currentValue)
     backgroundStds.append(currentStd)
+    backgroundSkews.append(currentSkew)
+    backgroundKurtos.append(currentKurto)
     
 normalisedBackgroundValues = np.array(normalisedBackgroundValues)
 backgroundStds = np.array(backgroundStds)
-
+backgroundSkews = np.array(backgroundSkews)
+backgroundKurtos = np.array(backgroundKurtos)
 print("\n\n")
-# 2.- Obtain the median and std and do the histograms ------------------
-if onlyCheckForStd:
-    backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
-    saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
-                    outputFolder + "/backgroundStdHist_preFlat.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
-else:
-    backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
-    saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, \
-                    outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")
-
-    backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
-    saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, \
-                    outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
 
 
-
-# 3.- Identify what frames are outside the acceptance region ------------------
-badFiles = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting, onlyCheckForStd)
-
-
+# 2.- Identify what frames are outside the acceptance region ------------------
+badFiles,badValues,badStd,allData,badFilesBCK,badFilesSTD = identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
+saveBACKevol(allData,badFilesBCK,badValues,outputFolder+"/backgroundEvolution.png")
+saveSTDevol(allData,badFilesSTD,badStd,outputFolder+"/stdEvolution.png")
+saveValuesVSStats(normalisedBackgroundValues,backgroundStds,backgroundSkews,backgroundKurtos,outputFolder+"/backgroundStats.png")
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
         file.write(fileName + '\n')
 
+# 3.- Obtain the median and std and do the histograms ------------------
+backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
+saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd,badValues, \
+                outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
+
+backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
+saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, badStd,\
+                outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")

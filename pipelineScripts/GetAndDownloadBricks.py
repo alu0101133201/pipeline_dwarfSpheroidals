@@ -9,9 +9,10 @@
 
 import os
 import numpy as np
-
+from io import StringIO
 from dl import queryClient as qc
-
+from astropy.table import Table
+import requests
 ### Get brick names utilities ###
 
 # This function retrieves the brick name to which the coordinate provided belongs
@@ -120,10 +121,10 @@ def getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(firstPoint, secondPo
     secondPointDec = secondPoint[1]
     raMin, raMax = (firstPointRa, secondPointRa) if (firstPointRa < secondPointRa) else (secondPointRa, firstPointRa)
     decMin, decMax = (firstPointDec, secondPointDec) if (firstPointDec < secondPointDec) else (secondPointDec, firstPointDec)
-
+    
     tmpQuery = 'SELECT brickname, ra, dec FROM ls_dr10.bricks WHERE \
-                (ra2 > ' + str(raMin) + ' AND ra1 < ' + str(raMax) + \
-                ') AND (dec2 > ' + str(decMin) + ' AND dec1 < ' + str(decMax) + ')'
+            (ra2 > ' + str(raMin) + ' AND ra1 < ' + str(raMax) + \
+            ') AND (dec2 > ' + str(decMin) + ' AND dec1 < ' + str(decMax) + ')'
 
     result = qc.query(tmpQuery)
 
@@ -136,6 +137,9 @@ def getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(firstPoint, secondPo
             bricksNames.append(values[0])
             bricksRA.append(float(values[1]))
             bricksDec.append(float(values[2]))
+    
+        
+    
 
     return(np.array(bricksNames), np.array(bricksRA), np.array(bricksDec))
 
@@ -147,7 +151,7 @@ def getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints(firstPoint, secondPo
 # Returns:
 #   result: Name of the bricks which define the region
 ###
-def getBrickNamesFromRegionDefinedByCentreAndSides(centre, raSize, decSize):
+def getBrickNamesFromRegionDefinedByCentreAndSides(centre, raSize, decSize, survey):
     if (not isinstance(centre, (list, np.ndarray, tuple))):
         raise Exception ("Error in 'getBrickNamesFromRegionDefinedByCentreAndSides'. The centre must be a tuple or array")
     if ((not isinstance(raSize, (int, float))) or (not isinstance(decSize, (int, float)))):
@@ -161,7 +165,7 @@ def getBrickNamesFromRegionDefinedByCentreAndSides(centre, raSize, decSize):
     decMin = centreDec - (decSize / 2)
     decMax = centreDec + (decSize / 2)
 
-    result = getBrickNamesFromRegionDefinedByTwoPoints((raMin, decMin), (raMax, decMax))
+    result = getBrickNamesAndCoordinatesFromRegionDefinedByTwoPoints((raMin, decMin), (raMax, decMax))
 
     return(result)
 
@@ -177,14 +181,15 @@ def getBrickNamesFromRegionDefinedByCentreAndSides(centre, raSize, decSize):
 # Returns:
 #   Nothing
 ###
-def downloadBrick(brickName, filters, destinationFolder, overWrite=True):
+def downloadBrickDecals(brickName, filters, destinationFolder, overWrite=True):
     if (isinstance(filters, str)):
         filters = [filters]
 
     block = getBlockFromBrick(brickName)
     for i in filters:
+        
         if (overWrite or (not os.path.exists(f"{destinationFolder}/decal_image_{brickName}_{i}.fits"))):
-	#Decals dr10 south is not complete, we check dr10 north, dr9 south and dr9 north
+	    #Decals dr10 south is not complete, we check dr10 north, dr9 south and dr9 north
             base_urls = [
                 "https://portal.nersc.gov/cfs/cosmo/data/legacysurvey/dr10/south/coadd",
                 "https://portal.nersc.gov/cfs/cosmo/data/legacysurvey/dr10/north/coadd",
@@ -199,6 +204,8 @@ def downloadBrick(brickName, filters, destinationFolder, overWrite=True):
                     break
             if not success:
                 raise Exception(f"Error in 'downloadBrick': Brick {brickName} not present in Decals DR9 or DR10.")	
+
+       
                 
                     
     return()
@@ -209,6 +216,96 @@ def downloadBrick(brickName, filters, destinationFolder, overWrite=True):
 # Returns:
 #   block name [string]
 ###
+
 def getBlockFromBrick(brickName):
     return(brickName[:3])
 
+
+##Functions for get Panstarrs images
+def getPanstarrsQuery(tra, tdec, size=3600, filters="grizy", format="fits", imagetypes="stack"):
+    ps1filename="https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
+    if format not in ("jpg","png","fits"):
+        raise ValueError("format must be one of jpg, png, fits")
+    # if imagetypes is a list, convert to a comma-separated string
+    if not isinstance(imagetypes,str):
+        imagetypes = ",".join(imagetypes)
+    # put the positions in an in-memory file object
+    cbuf = StringIO()
+    cbuf.write('\n'.join(["{} {}".format(ra, dec) for (ra, dec) in zip(tra,tdec)]))
+    cbuf.seek(0)
+    # use requests.post to pass in positions as a file
+    r = requests.post(ps1filename, data=dict(filters=filters, type=imagetypes),
+        files=dict(file=cbuf))
+    r.raise_for_status()
+    tab = Table.read(r.text, format="ascii")
+ 
+    
+    return tab
+
+
+def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filters):
+    #We want panstarrs bricks of 3600 pix = 900 arcsec = 0.25deg. Field of fiew is up to now square
+    isRaList = isinstance(firstPoint, (list, np.ndarray, tuple))
+    isDecList = isinstance(secondPoint, (list, np.ndarray, tuple))
+    if ((not isRaList) and (not isDecList)):
+        raise Exception ("Error in 'getBrickNamesFromRegion'. Arguments have to be provided in array or tuple")
+    
+    firstPointRa = firstPoint[0]
+    firstPointDec  = firstPoint[1]
+    secondPointRa = secondPoint[0]
+    secondPointDec = secondPoint[1]
+    raMin, raMax = (firstPointRa, secondPointRa) if (firstPointRa < secondPointRa) else (secondPointRa, firstPointRa)
+    decMin, decMax = (firstPointDec, secondPointDec) if (firstPointDec < secondPointDec) else (secondPointDec, firstPointDec)
+    dRA=raMax-raMin #Field of fiew is up to now square
+    nBricks=dRA // 0.25 #Number of bricks per row
+    if dRA % 0.25 >0:
+        nBricks+=1
+    overlap_factor=(0.25*nBricks-dRA)/(nBricks-1) #In a world where dRA//0.25!=0 we need to overlap in order to end in the raMax
+    tra=[]; tdec=[]
+    for brick in range(int(nBricks)):
+        #initial position will be raMin or decMin+(0.25-overlap_factor)*brick
+        iniRa=raMin+(0.25-overlap_factor)*brick
+        for brick in range(int(nBricks)):
+            iniDec=decMin+(0.25-overlap_factor)*brick
+        #We want to store the central position: ini+0.25/2=ini+0.125
+            tra.append(iniRa+0.125); tdec.append(iniDec+0.125)
+    tab_panstarrs=getPanstarrsQuery(tra,tdec,filters="".join(filters))
+    bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
+    bricksRA=[ra for ra in tab_panstarrs['ra']]
+    bricksDec=[dec for dec in tab_panstarrs['dec']]
+    bricksNames=[]
+    for i in range(len(bricks_fullNames)):
+        filter=tab_panstarrs['filter'][i]
+        bricksNames.append("t{:08.4f}{:+07.4f}.{}.fits".format(bricksRA[i],bricksDec[i],filter))
+    
+    return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
+
+def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters):
+    if isinstance(raCen,np.floating):
+        raCen=[raCen]; decCen=[decCen]
+    tab_panstarrs=getPanstarrsQuery(raCen,decCen,filters="".join(filters))
+    bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
+    bricksRA=[ra for ra in tab_panstarrs['ra']]
+    bricksDec=[dec for dec in tab_panstarrs['dec']]
+    bricksNames=[]
+    for i in range(len(bricks_fullNames)):
+        filter=tab_panstarrs['filter'][i]
+        bricksNames.append("t{:08.4f}{:+07.4f}.{}.fits".format(bricksRA[i],bricksDec[i],filter))
+    
+    return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
+
+
+def downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDEC,destinationFolder,overwrite=True):
+    
+    fitscut="https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
+    size=3600
+    urlbase="{}?size={}&format={}".format(fitscut,size,"fits")
+    url="{}&ra={}&dec={}&red={}".format(urlbase,brickRA,brickDEC,brick_fullName)
+    #r=requests.get(url)
+    brick_dir=destinationFolder+'/'+brickName
+    #print(url+' - '+ brickName+' - '+str(len(r.content)))
+    try:
+        os.system(f'wget -O {brick_dir} "{url}"')
+    except:
+        raise Exception(f"Unable to download brick {brickName}")
+    return()

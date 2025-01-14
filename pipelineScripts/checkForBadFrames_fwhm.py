@@ -5,13 +5,19 @@ import math
 import fnmatch
 import astropy
 
+import os
+from astropy.io import fits
+
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-
+import pandas as pd
 from astropy.stats import sigma_clip
 from astropy.stats import sigma_clipped_stats
 from matplotlib.ticker import MultipleLocator
+
+from datetime import datetime
+import time
 
 def setMatplotlibConf():
     rc_fonts = {
@@ -84,7 +90,7 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, median, std, imageName, numOfStd, title):
+def saveHistogram(values, median, std, badValues, imageName, numOfStd, title):
     myBins = calculateFreedmanBins(values)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
@@ -98,15 +104,72 @@ def saveHistogram(values, median, std, imageName, numOfStd, title):
         fontsize=20, verticalalignment='top', horizontalalignment='left')
     ax.text(0.375, 0.9, "Std: " + "{:.2f}".format(std), transform=ax.transAxes, 
         fontsize=20, verticalalignment='top', horizontalalignment='left')
+    if len(badValues)!=0:
+        counts_bad, bins_bad, patches_bad = ax.hist(badValues,bins=np.linspace(np.nanmin(badValues), np.nanmax(badValues), 4),color='red',label='Rejected FWHM')
+        
+        ax.legend()
+    ax.text(0.3655,0.85,"Rej. Frames: "+str(len(badValues)),transform=ax.transAxes,
+                fontsize=20,verticalalignment='top',horizontalalignment='left')
+    plt.savefig(imageName)
+    return()
+def saveFWHMevol(allTable,badFiles,badFwhm,imageName):
+    fig, ax = plt.subplots(1, 2, figsize=(10,10))
+    configureAxis(ax[0], 'UTC', 'FWHM (pix)',logScale=False)
+    configureAxis(ax[1], 'Airmass', 'FWHM (pix)',logScale=False)
+    fig.suptitle('FWHM evolution',fontsize=22,pad=17)
+    pattern=r"entirecamera_(\d+)"
+    for row in range(len(allTable)):
+        file=allTable.loc[row]['File']
+        match=re.search(pattern,file)
+        frame=float(match.group(1))
+        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
+        fwhm=allTable.loc[row]['FWHM']
+        ax[0].scatter(date_ok,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
+        ax[1].scatter(air,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
 
+    
+    if len(badFiles)!=0:
+        for j in range(len(badFiles)):
+            match=re.search(pattern,badFiles[j])
+            frame=float(match.group(1))
+            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+            date=obtainKeyWordFromFits(file,'DATE-OBS')
+            air=obtainKeyWordFromFits(file,'AIRMASS')
+            date_ok=datetime.fromisoformat(date)
+            ax[0].scatter(date_ok,badFwhm[j],marker='P',edgecolor='k',color='mediumorchid',s=80,zorder=6,label='Rejected FWHM')
+            ax[1].scatter(air,badFwhm[j],marker='P',edgecolor='k',color='mediumorchid',s=80,zorder=6,label='Rejected FWHM')
+            
+        ax[0].legend()
+    for label in ax[0].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
+    plt.tight_layout()
     plt.savefig(imageName)
     return()
 
+def obtainKeyWordFromFits(file, keyword):
+    if os.path.exists(file):
+        with fits.open(file) as hdul:
+            header = hdul[HDU_TO_FIND_AIRMASS].header
+            
+            if keyword in header:
+                keywordValue = header[keyword]
+                return(keywordValue)
+            else:
+                raise Exception(f"Keyword '{keyword}' not found in the header.")
+    else:
+        raise Exception(f"File {fits_file_path} does not exist.")
+
+HDU_TO_FIND_AIRMASS = 1
 
 folderWithFWHM            = sys.argv[1]
 outputFolder              = sys.argv[2]
 outputFile                = sys.argv[3]
 numberOfStdForRejecting    = float(sys.argv[4])
+folderWithFramesWithAirmasses = sys.argv[5]
 
 setMatplotlibConf()
 
@@ -117,9 +180,6 @@ for currentFile in glob.glob(folderWithFWHM + "/range_*.txt"):
     if (not math.isnan(fwhmValue)):
         fwhmValues = np.concatenate((fwhmValues, [fwhmValue]))
 
-# 2.- Obtain the median and std and do teh histogram -------------------------------------
-fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
-saveHistogram(fwhmValues, fwhmValueMean, fwhmValueStd, outputFolder + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")
 
 
 def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
@@ -142,15 +202,22 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
     mask = sigma_clip(allFWHM, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
 
     allFiles = np.array(allFiles)
+    allTogether=pd.DataFrame({'File':allFiles,'FWHM':allFWHM})
     badFiles = allFiles[mask]
-    return(badFiles)
+    badFWHM = allFWHM[mask]
+    return(badFiles,badFWHM,allTogether)
     
-# 3.- Identify what frames are outside the acceptance region -----------------------
-badFiles = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
-
+# 2.- Identify what frames are outside the acceptance region -----------------------
+badFiles,badFWHM,allData = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
+allData.to_csv(outputFolder+"/FileFWHMtable.csv")
+saveFWHMevol(allData,badFiles,badFWHM,outputFolder+"/fwhmEvol.png")
 pattern = r"entirecamera_\d+"
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
         match = re.search(pattern, fileName)
         result = match.group()
         file.write(result + '\n')
+
+# 3.- Obtain the median and std and do teh histogram -------------------------------------
+fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
+saveHistogram(fwhmValues, fwhmValueMean, fwhmValueStd, badFWHM, outputFolder + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")
