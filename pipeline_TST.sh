@@ -207,8 +207,12 @@ oneNightPreProcessing() {
             nameWithEscapedSpaces=$(escapeSpacesFromString "$i")
             DATEOBS=$(eval "astfits $nameWithEscapedSpaces -h0 --keyvalue=$dateHeaderKey --quiet")
             checkIfExist_DATEOBS $DATEOBS
-
-            unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+            ## MACOS does not support -d in date, so it is better to use coreutils:gdata
+            if [[ $OSTYPE == 'darwin'* ]]; then
+              unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
+            else
+              unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+            fi
             out=$currentINDIR/$unixTimeInSeconds.fits
 
             # HERE A CHECK IF THE DATA IS IN FLOAT32 IS NEEDED
@@ -230,7 +234,7 @@ oneNightPreProcessing() {
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
-
+  
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
 
@@ -243,18 +247,25 @@ oneNightPreProcessing() {
     if [ -f $mdadone ]; then
       echo -e "\nMasterdark is already done for night $currentNight and extension $h\n"
     else
+      
       escaped_files=""
       for file in $currentDARKDIR/*.fits; do
         escaped_files+="$(escapeSpacesFromString "$file") "
       done
-
-      eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
-                    3 0.2 sigclip-mean -g$h \
+      gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+      if awk "BEGIN {exit !($gnuastro_version > 0.22)}"; then
+        eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
+                    3 0.2 sigclip-mean -g$h --writeall \
                     -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+      else
+        eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
+                    3 0.2 sigclip-mean -g$h  \
+                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+      fi
     fi
     echo done > $mdadone
   done
-
+  
 
   ########## Save airmass ##########
   # The airmass is saved in this files on airmass-analysis_n folder but also propagated throught the steps of the pipeline until that information
@@ -267,17 +278,17 @@ oneNightPreProcessing() {
   if [ -f $skydone ]; then
     echo -e "\nAirmass for night $currentNight already saved\n"
   else
-      for i in $(ls -v $currentINDIR/*.fits ); do
-        air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
-	if [[ $air == "n/a" ]]; then
- 		air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
-   	fi
+    for i in $(ls -v $currentINDIR/*.fits ); do
+      air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
+	    if [[ $air == "n/a" ]]; then
+ 		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
+   	  fi
     	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
-        echo $air >> $skydir/airmass.txt
+      echo $air >> $skydir/airmass.txt
     done
     echo done > $skydone
   fi
-
+  
   
   ########## Subtract master bias and dark ##########
   echo -e "\n ${GREEN} Subtracting master bias/dark-bias ${NOCOLOUR}"
@@ -1138,11 +1149,11 @@ rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
 decalsImagesDir=$mosaicDir/decalsImages
 
 
-writeTimeOfStepToFile "DECaLs data processing" $fileForTimeStamps
-prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir \
-                                            $pixelScale $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees $galaxySMA $galaxyAxisRatio $galaxyPA $catName $starMagnitudeThresholdToReject_gBand \
-                                            $numberOfFWHMForPhotometry
 
+writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+prepareDecalsDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir \
+                                            $pixelScale $surveyForPhotometry $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees $galaxySMA $galaxyAxisRatio $galaxyPA $catName $starMagnitudeThresholdToReject_gBand \
+                                            $numberOfFWHMForPhotometry
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
@@ -1161,7 +1172,7 @@ if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; f
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir
   echo done > $badFilesWarningsDone
 fi
 
@@ -1173,12 +1184,12 @@ removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $diagnosis_a
 
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
-# if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-#   tmpDir=$noiseskydir
-# else
-#   tmpDir=$noiseskyctedir
-# fi
-# python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
+if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+  tmpDir=$BDIR/noise-sky_it1
+else
+  tmpDir=$noiseskyctedir
+fi
+python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
@@ -1203,7 +1214,7 @@ if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-photometry_perBrick_it1 \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir
+                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir $surveyForPhotometry
 fi
 
 

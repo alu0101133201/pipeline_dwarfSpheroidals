@@ -67,9 +67,9 @@ def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimi
     clippedMangitudes, _, _ = sigmaclip(diffMagInRange, low=5.0, high=5.0)
     return(np.sqrt(np.mean(np.array(clippedMangitudes)**2)))
 
-def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, imageName):
+def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, imageName, survey):
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-    configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=False)
+    configureAxis(ax, f"{survey} mag (mag)", f"{survey} - reduced_Data (mag)", logScale=False)
     ax.set_ylim(-1, 2)
     ax.set_xlim(12, 23)
 
@@ -89,9 +89,9 @@ def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, 
     ax.legend(fontsize=22)
     plt.savefig(imageName)
 
-def plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, totalScatter, scatterInRange, imageName):
+def plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, totalScatter, scatterInRange, imageName, survey):
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-    configureAxis(ax, "DECaLS mag (mag)", "DECaLS - reduced_Data (mag)", logScale=False)
+    configureAxis(ax, f"{survey} mag (mag)", f"{survey} - reduced_Data (mag)", logScale=False)
     ax.set_ylim(-1, 2)
     ax.set_xlim(12, 23)
 
@@ -115,6 +115,7 @@ outputName = sys.argv[2]
 outputDir  = sys.argv[3]
 calibrationBrightLimit = float(sys.argv[4])
 calibrationFaintLimit  = float(sys.argv[5])
+survey = sys.argv[6]
 
 magDiff = np.array([])
 magDiffAbs = np.array([])
@@ -136,34 +137,20 @@ scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiffAbs, 
 magDiffAbs, _, _ = sigmaclip(magDiffAbs, low=5.0, high=5.0)
 
 totalScatter = np.sqrt(np.mean(magDiffAbs**2))
-plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, outputName)
+plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, outputName, survey)
 
+#Individual calibration plot for all frames
+allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
+outputDir_individual=outputDir+"/calibrationPlot_frames"
+if not os.path.exists(outputDir_individual):
+    os.makedirs(outputDir_individual)
 
-# Individual calibration plot for a set of frames
-for file_name in glob.glob(directoryWithTheCatalogues + "/*.cat"):
+for file_name in allFrames:
     number = file_name.split('_')[0]
-    mag1, mag2 = read_columns_from_file(file_name)
+    mag1, mag2 = read_columns_from_file(directoryWithTheCatalogues + "/" + file_name)
     magDiff = np.array((mag1 - mag2))
     magDiffAbs = np.array(np.abs(mag1 - mag2))
 
     totalScatter = np.sqrt(np.mean(magDiffAbs**2))
     scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
-    plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir + "/calibrationPlot_" + number + ".png")
-
-# numberOfFilesToShowCalibrationPlotIndividually = 4
-# allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
-
-# if len(allFrames) < numberOfFilesToShowCalibrationPlotIndividually:
-#     print(f"Not enough files to perform the calibration plot of 4 frames. Only found {len(allFrames)} frames.")
-# else:
-#     selected_files = random.sample(allFrames, numberOfFilesToShowCalibrationPlotIndividually)
-
-#     for file_name in selected_files:
-#         number = file_name.split('_')[0]
-#         mag1, mag2 = read_columns_from_file(directoryWithTheCatalogues + "/" + file_name)
-#         magDiff = np.array((mag1 - mag2))
-#         magDiffAbs = np.array(np.abs(mag1 - mag2))
-
-#         totalScatter = np.sqrt(np.mean(magDiffAbs**2))
-#         scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
-#         plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir + "/calibrationPlot_" + number + ".png")
+    plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir_individual + "/calibrationPlot_" + number + ".png",survey)
