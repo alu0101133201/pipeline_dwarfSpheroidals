@@ -68,21 +68,11 @@ plotYHigherLimit = float(sys.argv[10])
 
 
 
-print("Table file with all sources: ", wholeTableFile)
-print("Table file with matched sources with gaia (stars): ", matchedtableFile)
-print("imageoutputName: ", imageOutputName)
-
-
 setMatplotlibConf()
 halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 5, 4)
-halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 5, 4)
+halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 4, 5)
 
 x, y =  readHalfMaxRadAndMag(matchedtableFile, 0, 1)
-
-# for i in range(len(halfMaxRadMatched)):
-#     if (halfMaxRadMatched[i] < 0.7):
-#         print(halfMaxRadMatched[i], x[i], y[i])
-
 
 fig, ax = plt.subplots(1, 1, figsize=(12, 12))
 plt.tight_layout(pad=7.0)

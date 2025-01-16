@@ -652,10 +652,13 @@ removeBadFramesFromReduction() {
 
     filePath=$badFilesWarningDir/$badFilesWarningFile
 
+
     while IFS= read -r file_name; do
         file_name=$(basename "$file_name")
-        fileName="${file_name%.*}".fits
-        mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
+        fileName="entirecamera_${file_name%.*}".fits
+        if [ -f $sourceToRemoveFiles/$fileName ]; then
+            mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
+        fi
     done < "$filePath"
 }
 export -f removeBadFramesFromReduction
@@ -911,6 +914,7 @@ downloadData() {
     gaiaCatalogue=${11}
     starThresholdForRejectingBricks=${12}
     survey=${13}
+    
     echo -e "\n·Downloading ${survey} bricks"
     donwloadMosaicDone=$surveyImagesDir/done_downloads.txt
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
@@ -1973,6 +1977,7 @@ produceAstrometryCheckPlot() {
     astrometryTmpDir="./astrometryDiagnosisTmp"
     if ! [ -d $astrometryTmpDir ]; then mkdir $astrometryTmpDir; fi
     python3 $pythonScriptsPath/diagnosis_deltaRAdeltaDEC.py $matchCataloguesDir $output $pixelScale
+    rm -rf $astrometryTmpDir
 }
 export -f produceAstrometryCheckPlot
 
@@ -2023,7 +2028,7 @@ produceCalibrationCheckPlot() {
                                         $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
 
             astmatch $referenceCatalogue --hdu=1 $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$tmpDir/"$frameNumber"_matched.cat
-            # rm $tmpDir/$frameNumber.cat
+            rm $tmpDir/$frameNumber.cat
         fi
     done
 

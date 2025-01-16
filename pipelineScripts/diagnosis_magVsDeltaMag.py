@@ -67,7 +67,7 @@ def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimi
     clippedMangitudes, _, _ = sigmaclip(diffMagInRange, low=5.0, high=5.0)
     return(np.sqrt(np.mean(np.array(clippedMangitudes)**2)))
 
-def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, imageName, survey):
+def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalRMS, rmsInRange, imageName, survey):
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
     configureAxis(ax, f"{survey} mag (mag)", f"{survey} - reduced_Data (mag)", logScale=False)
     ax.set_ylim(-1, 2)
@@ -81,15 +81,15 @@ def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, 
     cbar = plt.colorbar(scatter)
     cbar.set_label('Frame Number', rotation=270, labelpad=20, fontsize=22)
 
-    ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
+    ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalRMS) + " mag", transform=ax.transAxes, 
         fontsize=24, verticalalignment='top', horizontalalignment='left')
-    ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
+    ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((rmsInRange)) + " mag", transform=ax.transAxes, 
         fontsize=24, verticalalignment='top', horizontalalignment='left')
 
     ax.legend(fontsize=22)
     plt.savefig(imageName)
 
-def plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, totalScatter, scatterInRange, imageName, survey):
+def plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, totalRMS, rmsInRange, imageName, survey):
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
     configureAxis(ax, f"{survey} mag (mag)", f"{survey} - reduced_Data (mag)", logScale=False)
     ax.set_ylim(-1, 2)
@@ -100,9 +100,9 @@ def plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1Total
 
     ax.hlines(y=0, xmin=12, xmax=23, color="black", lw=1.5, ls="--")
     ax.scatter(mag1Total, magDiff, s=25, color="teal", edgecolor="black")
-    ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalScatter) + " mag", transform=ax.transAxes, 
+    ax.text(0.08, 0.925, r"Total RMS: " + "{:.2f}".format(totalRMS) + " mag", transform=ax.transAxes, 
         fontsize=24, verticalalignment='top', horizontalalignment='left')
-    ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((scatterInRange)) + " mag", transform=ax.transAxes, 
+    ax.text(0.08, 0.875, r"Calibration region RMS: " + "{:.2f}".format((rmsInRange)) + " mag", transform=ax.transAxes, 
         fontsize=24, verticalalignment='top', horizontalalignment='left')
 
     ax.legend(fontsize=22)
@@ -133,11 +133,11 @@ for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
     frameNumber = np.append(frameNumber, np.repeat(index, len(mag1)))
 
 
-scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
-magDiffAbs, _, _ = sigmaclip(magDiffAbs, low=5.0, high=5.0)
+rmsInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+magDiffAbs, _, _ = sigmaclip(magDiffAbs[~np.isnan(magDiffAbs)], low=5.0, high=5.0)
 
-totalScatter = np.sqrt(np.mean(magDiffAbs**2))
-plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalScatter, scatterInRange, outputName, survey)
+totalRMS = np.sqrt(np.mean(magDiffAbs**2))
+plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalRMS, rmsInRange, outputName, survey)
 
 #Individual calibration plot for all frames
 allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]
@@ -151,6 +151,6 @@ for file_name in allFrames:
     magDiff = np.array((mag1 - mag2))
     magDiffAbs = np.array(np.abs(mag1 - mag2))
 
-    totalScatter = np.sqrt(np.mean(magDiffAbs**2))
-    scatterInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
-    plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalScatter, scatterInRange, outputDir_individual + "/calibrationPlot_" + number + ".png",survey)
+    totalRMS = np.sqrt(np.mean(magDiffAbs**2))
+    rmsInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
+    plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalRMS, rmsInRange, outputDir_individual + "/calibrationPlot_" + number + ".png",survey)

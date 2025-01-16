@@ -79,7 +79,7 @@ def saveHistogram(values, median, std, badValues, imageName, numOfStd, title, la
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     plt.tight_layout(pad=7)
     configureAxis(ax, labelX, 'Number of frames', logScale=False)
-    ax.set_title(title, fontsize=22, pad=17)
+    ax.set_title(title, fontsize=18, pad=17)
 
     counts, bins, patches = ax.hist(valuesToPlot, color="teal", bins=myBins)
     max_bin_height = counts.max() + 5
@@ -154,7 +154,7 @@ def identifyBadFrames(folderWithFrames, numberOfStdForRejecting):
     allStd = np.array(allStd)
     std_mask = sigma_clip(allStd, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
 
-    allFiles = np.array(std_mask)
+    allFiles = np.array(allFiles)
     badFiles = allFiles[std_mask]
     badStd   = allStd[std_mask]
     return(allFiles, allStd, badFiles, badStd)
@@ -176,4 +176,4 @@ with open(outputFolder + "/" + outputFile, 'w') as file:
 
 backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
 saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, badStd,\
-                outputFolder + "/backgroundStdHist_beforeFlat.png", numberOfStdForRejecting, "Background std values before last flat iteration", "Background STD (ADU)")
+                outputFolder + "/backgroundStdHist_beforeFlat.png", numberOfStdForRejecting, "Excluding frames in flat construction", "Background STD (ADU)")

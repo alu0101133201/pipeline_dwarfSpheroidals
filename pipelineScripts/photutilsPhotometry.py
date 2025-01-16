@@ -86,7 +86,10 @@ for i in range(len(x)):
     currentFlux = float(phot_table_local['aperture_sum'][0]) - float(total_bkg)
        
     ids.append(i)
-    mag.append(-2.5 * np.log10(currentFlux) + zp)
+
+    with np.errstate(invalid='ignore'): # Some values (of bad detections or whatever) are negative and give an error
+                                        # since I don't want to exclude them directly because i need that entry in the catalogue I just suppress the warning
+        mag.append(-2.5 * np.log10(currentFlux) + zp)
     sums.append(currentFlux)
 
 writeDataToCatalogue(output, ids, x, y, ra, dec, mag, sums)
