@@ -184,7 +184,7 @@ elif survey=='PANSTARRS':
 else:
     raise Exception (f"Survey {survey} not supported for Photometric calibration")
     
-#All this comments concern the fact that we can mask bricks where galaxy or bright stars are allocated
+# All this comments concern the fact that we can mask bricks where galaxy or bright stars are allocated
 """
 mask_bricksInsideGalaxy = brickContainTheGalaxy(np.array(bricksRA), np.array(bricksDec), galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA)
 
@@ -196,7 +196,9 @@ maskCombined = mask_bricksInsideGalaxy | mask_bricksWithBrightStar
 bricksToDownload = bricksNames[~maskCombined]
 plotEllipseAndBricks(galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA, bricksRA, bricksDec, mask_bricksInsideGalaxy, mask_bricksWithBrightStar, maskCombined, mosaicDir)
 """
+
 writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames, bricksRA, bricksDec, survey)
+
 """
 For Panstarrs, sometimes the ping does not download the full frame, but the .fits file is created.
 Ie, we have a file brick.fits with no data (a size of ~200Kby). Because of that, we will make the following:

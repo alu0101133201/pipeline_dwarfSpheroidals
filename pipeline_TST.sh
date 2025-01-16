@@ -581,14 +581,8 @@ oneNightPreProcessing() {
     python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
     echo "done" > $badFilesWarningsDone
   fi
+
   
-  rejectedFramesDir=$BDIR/rejectedFrames_std_preFlat
-  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-  removeBadFramesFromReduction $flatit2WholeNightimaDir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-  removeBadFramesFromReduction $flatit2imadir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-  removeBadFramesFromReduction $mbiascorrdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-
-
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
@@ -680,7 +674,15 @@ oneNightPreProcessing() {
     echo done > $normit3WholeNightdone
   fi
   
-  
+  # Remove the identified bad frames ONLY for the flat, they will still be present in following steps, but not used in the flat calculation
+  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+  badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd.txt
+  rejectedFramesDir=$BDIR/rejectedFrames_std_preFlat
+  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+  removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+  removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+
+
   # Combining masked normalized images to make it3 flat
   if $RUNNING_FLAT; then
     flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
@@ -780,7 +782,6 @@ oneNightPreProcessing() {
     done
     echo done > $maskedcornerdone
   fi
-
   
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
@@ -832,12 +833,9 @@ done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
 
-
-
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
-
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
@@ -930,7 +928,7 @@ echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
 echo -e "·Creating SExtractor catalogues and running scamp"
 
-numOfSextractorPlusScampIterations=2
+numOfSextractorPlusScampIterations=3
 
 sexcfg=$CDIR/sextractor_astrometry.sex
 sexparam=$CDIR/sextractor_astrometry.param
@@ -1009,16 +1007,8 @@ else
   echo done > $badFilesWarningsDone
 fi
 
-exit 0
-
-rejectedFramesDir=$BDIR/rejectedFrames_astrometry
-if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bas astrometrised"
-removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
-
 
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter".txt
@@ -1046,8 +1036,10 @@ fi
 
 # Checking and removing bad frames based on the background value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-badFilesWarningsFile=identifiedBadFrames_backgroundValue.txt
-badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_backgroundAndStd.txt
+badFilesWarningsBackgroundValueFile=identifiedBadFrames_backgroundValue.txt
+badFilesWarningsBackgroundStdFile=identifiedBadFrames_backgroundStd.txt
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_backgroundProperties.txt
+
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tbadFiles warning already done\n"
@@ -1058,24 +1050,16 @@ else
   else
     tmpDir=$noiseskyctedirk
   fi
-  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames false
+  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir $badFilesWarningsBackgroundValueFile $badFilesWarningsBackgroundStdFile $numberOfStdForBadFrames false
   echo done > $badFilesWarningsDone
 fi
-
-
-rejectedFramesDir=$BDIR/rejectedFrames_background
-if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with backgroundValue"
-removeBadFramesFromReduction $entiredir_fullGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-removeBadFramesFromReduction $entiredir_smallGrid $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-
 
 echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
 
-#### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
+### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
 echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
 writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
 iteration=1
@@ -1117,6 +1101,26 @@ else
 	if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 	removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
+
+  echo -e "\n·Removing bad frames"
+
+  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+  rejectedFramesDir=$BDIR/rejectedFrames
+  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+  echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+
+  rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+
+  rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
+  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+
+  rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
+  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+
 	##Make the coadd
 	coaddDir=$BDIR/coadds-prephot
 	coaddDone=$coaddDir/done.txt
@@ -1128,14 +1132,13 @@ else
   computeExposureMap $framesDir $exposuremapDir $exposuremapdone
 fi
 
-exit 0
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
 ### PARAMETERS ###
-toleranceForMatching=2 #arcsec
+toleranceForMatching=3 #arcsec
 sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
 export sigmaForPLRegion
@@ -1168,12 +1171,25 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $matchdir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
 
-# Checking and removing bad frames based on the FWHM value ------
+
+
+# Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
+
+numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir/numOfStarsUsedForCalibrationHist.png
+numberOfStarsUsedInEachFrameDone=$diagnosis_and_badFilesDir/done_numOfStarsUsedForCalibrate.txt
+if [ -f $numberOfStarsUsedInEachFrameDone ]; then
+  echo -e "\nHistogram with the number of stars used for calibrating each plot already done"
+else
+  python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot
+  echo done > $numberOfStarsUsedInEachFrameDone
+fi
+
+# Checking and removing bad frames based on the FWHM value ------
 fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
 badFilesWarningsFile=identifiedBadFrames_fwhm.txt
 badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
-if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
@@ -1181,11 +1197,6 @@ else
   echo done > $badFilesWarningsDone
 fi
 
-rejectedFramesDir=$BDIR/rejectedFrames_FWHM
-if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames with FWHM"
-removeBadFramesFromReduction $subskySmallGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-removeBadFramesFromReduction $subskyFullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
@@ -1194,7 +1205,8 @@ if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 else
   tmpDir=$noiseskyctedir
 fi
-python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $BDIR/rejectedFrames_background $BDIR/rejectedFrames_FWHM
+python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir
+
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
@@ -1211,7 +1223,6 @@ if [ -f $astrometryPlotName ]; then
 else
   produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
 fi
-
 
 # Calibration
 calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
@@ -1285,8 +1296,34 @@ if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 
 removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
+
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
+
+
+echo -e "\n·Removing bad frames"
+
+diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+rejectedFramesDir=$BDIR/rejectedFrames
+if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+
+rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+
+rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+
+rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+
+rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+
 
 echo -e "\n·Building coadd"
 coaddDir=$BDIR/coadds
@@ -1384,6 +1421,7 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
+
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   coaddPlaneDone=$coaddDir/done_plane.txt
@@ -1429,6 +1467,31 @@ fi
 #     if ! [ -d $mowdir ]; then mkdir $mowdir; fi
 #     if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 #     removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
+
+
+    # echo -e "\n·Removing bad frames"
+
+    # diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    # rejectedFramesDir=$BDIR/rejectedFrames
+    # if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+    # echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+
+    # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+    # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+
+    # rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
+    # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+    # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+
+    # rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
+    # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+    # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+
+    # rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+    # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+    # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+
 
 #     coaddDir=$BDIR/coadds
 #     coaddDone=$coaddDir/done_plane.txt
@@ -1574,6 +1637,29 @@ removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
 echo -e "\nBuilding coadd"
 
+echo -e "\n·Removing bad frames"
+
+diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+rejectedFramesDir=$BDIR/rejectedFrames
+if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+
+rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+
+rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+
+rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+
+rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+
 
 coaddDir=$BDIR/coadds_it$iteration 
 coaddDone=$coaddDir/done.txt
@@ -1684,6 +1770,29 @@ fi
 #     if ! [ -d $mowdir ]; then mkdir $mowdir; fi
 #     if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 #     removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
+
+  # echo -e "\n·Removing bad frames"
+
+  # diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+  # rejectedFramesDir=$BDIR/rejectedFrames
+  # if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+  # echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+
+  # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+
+  # rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+
+  # rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+
+  # rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
 
 #     coaddDir=$BDIR/coadds_it$iteration
 #     coaddDone=$coaddDir/done_plane.txt

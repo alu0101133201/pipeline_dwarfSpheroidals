@@ -88,7 +88,7 @@ def identifyBadFrames(df, col1_name, threshold1):
 def writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, badAstrometryFrames):
     with open(diagnosisFolder + "/" + warningFile, 'w') as file:
         for fileName in badAstrometryFrames:
-            file.write("entirecamera_" + str(fileName) + '\n')
+            file.write(str(fileName) + "\n")
 
 setMatplotlibConf()
 
