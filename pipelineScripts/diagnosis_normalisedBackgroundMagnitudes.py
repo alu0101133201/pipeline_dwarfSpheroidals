@@ -21,6 +21,8 @@ from astropy.visualization import astropy_mpl_style
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
 
+from datetime import datetime
+import time
 
 
 def setMatplotlibConf():
@@ -142,19 +144,19 @@ def countsToSurfaceBrightnessUnits(values, arcsecPerPx):
 
 def calculateFreedmanBins(data, initialValue = None):
     if (initialValue == None):
-        bins = [min(data)]
+        bins = [np.nanmin(data)]
     else:
         bins = [initialValue]
 
     binWidht = astropy.stats.freedman_bin_width(data)
-    while(bins[-1] <= max(data)):
+    while(bins[-1] <= np.nanmax(data)):
         bins.append(bins[-1] + binWidht)
 
     return(bins)
 
 def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName):
-    myBins = calculateFreedmanBins(values)
-    
+    myBins = calculateFreedmanBins(values[~np.isnan(values)])
+
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.set_title(title, fontsize=22, pad=17)
     plt.tight_layout(pad=7.0)
@@ -172,28 +174,50 @@ def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueInd
     plt.savefig(imageName)
     return()
 
-def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName):
-    frames=[]
-    cfactors=[]
+def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName, folderWithFramesWithAirmasses):
+    airMass  = []
+    time     = []
+    cfactors = []
 
     for i in factors:
         match=re.search(r"_(\d+).",i[0])
-        frames.append(match.group(1))
+        frame = match.group(1)
+        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
         cfactors.append(i[1])
+        airMass.append(air)
+        time.append(date_ok)
 
-    frames=np.array(frames,dtype='float')
     cfactors=np.array(cfactors,dtype='float')
-    fig, ax = plt.subplots(1,1,figsize=(12,12))
-    ax.set_title(title,fontsize=22,pad=17)
-    
-    configureAxis(ax,'Number of Frame','Calibration Factor',logScale=False)
-    ax.scatter(frames, cfactors, marker='o',edgecolor='k',color='teal',s=120,zorder=0)
-    ax.scatter(frames[rejectedAstrometryIndices], cfactors[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=0)
-    ax.scatter(frames[rejectedBackgroundValueIndices], cfactors[rejectedBackgroundValueIndices], marker='X',edgecolor='k',color='darkred',s=120,zorder=0, label="Rejected by background")
-    ax.scatter(frames[rejectedBackgroundStdIndices], cfactors[rejectedBackgroundStdIndices], marker='D',edgecolor='k',color='gold',s=120,zorder=0, label="Rejected by std")
-    ax.scatter(frames[rejectedFWHMIndices], cfactors[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=0, label="Rejected by FWHM")
+    airMass=np.array(airMass,dtype='float')
+    time = np.array(time)
 
-    ax.legend(loc="upper right", fontsize=20)
+    fig, ax = plt.subplots(2, 1, figsize=(20,10))
+    configureAxis(ax[0], 'UTC', 'Calibration Factor',logScale=False)
+    configureAxis(ax[1], 'Airmass', 'Calibration Factor',logScale=False)
+    fig.suptitle('Calibration factor evolution',fontsize=22)
+    pattern=r"(\d+).fits"
+
+    ax[0].scatter(time,cfactors,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
+    ax[1].scatter(airMass,cfactors,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
+
+    ax[0].scatter(time[rejectedAstrometryIndices], cfactors[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    ax[0].scatter(time[rejectedBackgroundValueIndices], cfactors[rejectedBackgroundValueIndices], marker='X',edgecolor='k',color='darkred',s=120,zorder=1, label="Rejected by background")
+    ax[0].scatter(time[rejectedBackgroundStdIndices], cfactors[rejectedBackgroundStdIndices], marker='D',edgecolor='k',color='gold',s=120,zorder=1, label="Rejected by std")
+    ax[0].scatter(time[rejectedFWHMIndices], cfactors[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
+
+    ax[1].scatter(airMass[rejectedAstrometryIndices], cfactors[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    ax[1].scatter(airMass[rejectedBackgroundValueIndices], cfactors[rejectedBackgroundValueIndices], marker='X',edgecolor='k',color='darkred',s=120,zorder=1, label="Rejected by background")
+    ax[1].scatter(airMass[rejectedBackgroundStdIndices], cfactors[rejectedBackgroundStdIndices], marker='D',edgecolor='k',color='gold',s=120,zorder=1, label="Rejected by std")
+    ax[1].scatter(airMass[rejectedFWHMIndices], cfactors[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
+
+    ax[0].legend(loc="upper right", fontsize=20)
+    
+    for label in ax[0].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
     plt.tight_layout()
     plt.savefig(imageName)
     return()
@@ -254,7 +278,7 @@ def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, rejec
     ax.set_title("If calibration is correct, this should be a straight line", fontsize=20, pad=17)
     configureAxis(ax, 'Background (mag/arcsec^2)', 'Log(Background) (ADU)', logScale=False)
 
-    plt.tight_layout(pad=8.0)
+    plt.tight_layout(pad=6.0)
     ax.scatter(magnitudesPerArcSecSq, np.log10(backgroundCounts), s=40, color="teal")
 
     ax.scatter(magnitudesPerArcSecSq[rejectedAstrometryIndices], np.log10(backgroundCounts)[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue',s=120, label="Rejected astrometry")
@@ -333,8 +357,7 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
 totalCalibrationFactors = []
 for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt"):
     calibrationFactor = retrieveCalibrationFactors(currentFile)
-    if (not math.isnan(calibrationFactor)):
-        totalCalibrationFactors.append([currentFile.split('/')[-1], calibrationFactor])
+    totalCalibrationFactors.append([currentFile.split('/')[-1], calibrationFactor])
 
 
 rejectedAstrometryIndices      = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_astrometry)
@@ -344,14 +367,14 @@ rejectedFWHMIndices            = getIndicesOfRejectedFrames(normalisedBackground
 
 
 valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
+
 magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
 
 saveHistogram(np.array(magnitudesPerArcSecSq), rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
                 "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
 
-
 saveScatterFactors(totalCalibrationFactors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
-                "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png")
+                "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses)
 
 x = [float(i) for i in valuesCalibrated]
 scatterPlotCountsVsMagnitudes(x, magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
