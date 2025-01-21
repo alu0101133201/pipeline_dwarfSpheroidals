@@ -171,8 +171,8 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
         air=obtainKeyWordFromFits(file,'AIRMASS')
         date_ok=datetime.fromisoformat(date)
 
-        ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by FWHM' if (j==0) else "")
-        ax[1].scatter(air, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by FWHM'  if (j==0) else "")
+        ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry' if (j==0) else "")
+        ax[1].scatter(air, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry'  if (j==0) else "")
         
     for j in range(len(backgroundValueRejectedFiles)):
         match=re.search(pattern, backgroundValueRejectedFiles[j])

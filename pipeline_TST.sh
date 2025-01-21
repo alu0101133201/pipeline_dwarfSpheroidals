@@ -1197,7 +1197,6 @@ else
   echo done > $badFilesWarningsDone
 fi
 
-
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1246,6 +1245,7 @@ else
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
+exit 0
 
 # ---------------------------------------------------
 

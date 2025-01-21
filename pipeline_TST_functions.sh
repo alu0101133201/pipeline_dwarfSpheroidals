@@ -1296,6 +1296,11 @@ performAperturePhotometryToSingleBrick() {
     # photometryOnImage_noisechisel $brick $outputCat $automaticCatalogue $brickImage $r_decals_pix $outputCat/$brick.cat \
     #                             22.5 $dataHdu $raColumnName $decColumnName
 
+    # This code is only for checking the same aperture as the sloan SDSS spectrograph fiber
+    # r_decals_pix=4
+    # echo "Realizando fotometría en brick $brick con apertura: $r_decals_pix"
+
+
     columnWithXCoordForDecalsPx=0 # These numbers come from how the catalogue of the matches stars is built. This is not very clear right now, should be improved
     columnWithYCoordForDecalsPx=1
     columnWithXCoordForDecalsWCS=2
