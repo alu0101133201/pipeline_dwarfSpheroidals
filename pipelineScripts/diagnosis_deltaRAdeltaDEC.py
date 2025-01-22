@@ -84,7 +84,6 @@ for i in range(len(raArrays)):
     decArrays[i] = decArrays[i]*3600
 
 
-
 setMatplotlibConf()
 
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -92,12 +91,17 @@ ax.set_title("Checking astrometry. The data pixel scale is " + str(pixelScale) +
 plt.tight_layout(pad=8)
 configureAxis(ax, r'$\delta$ ra (arcsec)', r'$\delta$ dec (arcsec)', logScale=False)
 for i in range(len(raArrays)):
-    ax.scatter(raArrays[i], decArrays[i], s=50, linewidths=1.5, edgecolor="black", label=str(i))
-ax.set_xlim(-2, 2)
-ax.set_ylim(-2, 2)
-ax.hlines(y=0, xmin=-2, xmax=2, color="black", linestyle="--")
-ax.vlines(x=0, ymin=-2, ymax=2, color="black", linestyle="--")
-# plt.legend(fontsize=15)
+    ax.scatter(raArrays[i], decArrays[i], s=50, linewidths=1.5, edgecolor="black")
+ax.set_xlim(-float(pixelScale)*3, float(pixelScale)*3)
+ax.set_ylim(-float(pixelScale)*3, float(pixelScale)*3)
+
+ax.hlines(y=-float(pixelScale), xmin=-float(pixelScale)*3, xmax=float(pixelScale)*3, color="black", linestyle="--", label="Pixelscale")
+ax.hlines(y=+float(pixelScale), xmin=-float(pixelScale)*3, xmax=float(pixelScale)*3, color="black", linestyle="--")
+
+ax.vlines(x=-float(pixelScale), ymin=-float(pixelScale)*3, ymax=float(pixelScale)*3, color="black", linestyle="--")
+ax.vlines(x=float(pixelScale), ymin=-float(pixelScale)*3, ymax=float(pixelScale)*3, color="black", linestyle="--")
+
+plt.legend(fontsize=20)
 plt.savefig(imageName)
 
 

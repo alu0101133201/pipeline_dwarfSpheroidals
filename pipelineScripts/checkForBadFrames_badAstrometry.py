@@ -1,4 +1,5 @@
 import sys 
+import astropy
 
 import numpy as np
 import pandas as pd
@@ -6,6 +7,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 
+from astropy.stats import sigma_clipped_stats
+from astropy.stats import sigma_clip
 from matplotlib.ticker import MultipleLocator
 
 
@@ -46,13 +49,30 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
     ax.set_ylabel(ylabel, fontsize=30, labelpad=10)
     if(logScale): ax.set_yscale('log')
 
-def savePlot(col1Name, table, diagnosisFolder, threshold):
-    myBins = np.linspace(0, 55, 25)
+def calculateFreedmanBins(data, initialValue = None):
+    if (initialValue == None):
+        bins = [min(data)]
+    else:
+        bins = [initialValue]
 
-    fig, ax1 = plt.subplots(1, 1, figsize=(10, 10))
-    configureAxis(ax1, col1_name, '', logScale=False)
-    n, _, _ = ax1.hist(df[col1_name], bins=myBins, color="teal")
-    ax1.vlines(x=threshold, ymin=0, ymax=n.max(), color="black", ls="--", lw=2.5)
+    binWidht = astropy.stats.freedman_bin_width(data)
+    while(bins[-1] <= max(data)):
+        bins.append(bins[-1] + binWidht)
+
+    return(bins)
+
+def savePlot(col1Name, table, diagnosisFolder, threshold):
+    myBins = calculateFreedmanBins(df[col1_name])
+
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    ax.set_title("Relevant parameter to check astrometrisation; Rejecting frames with < " + str(threshold), pad=17)
+    configureAxis(ax, col1_name, '', logScale=False)
+    ax.set_xlim(0, 65)
+    n, _, _ = ax.hist(df[col1_name], bins=myBins, color="teal")
+    ax.hist([x for x in df[col1_name] if x < threshold], bins=myBins, color="darkred")
+
+    ax.vlines(x=threshold, ymin=0, ymax=(2*n.max()), color="black", ls="--", lw=2.5)
+    ax.set_ylim(0, n.max() + 0.5)
     plt.savefig(diagnosisFolder + "/scamp_contrastParameters_hist.png")
     return()
 
@@ -68,7 +88,7 @@ def identifyBadFrames(df, col1_name, threshold1):
 def writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, badAstrometryFrames):
     with open(diagnosisFolder + "/" + warningFile, 'w') as file:
         for fileName in badAstrometryFrames:
-            file.write("entirecamera_" + str(fileName) + '\n')
+            file.write(str(fileName) + "\n")
 
 setMatplotlibConf()
 
@@ -103,11 +123,11 @@ if col1_name in header_indices :
         values = [td.text for td in row.findall('./vo:TD', namespaces=ns)]
 
         # There are some rows with different data (not frame information) so I skip them
+        # I just store the values with 43 columns which are the proper data rows
         if (len(values) == 43):
             data.append((float(values[col1_idx])))
-
+    
     df = pd.DataFrame(data, columns=[col1_name])
-
     potentiallyBadAstrometrised = identifyBadFrames(df, col1_name, threshold)
     writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, potentiallyBadAstrometrised)
     savePlot(col1_name, df, diagnosisFolder, threshold)
