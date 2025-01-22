@@ -1003,10 +1003,28 @@ if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tBad astrometrised frames warning already done\n"
 else
   scampXMLFilePath=$scampdir/scamp.xml
-  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile
+  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_fullGrid
   echo done > $badFilesWarningsDone
 fi
-
+#Building a .fits with the scamp contrast parameter
+contrastdir_fullGrid=$BDIR/contrast_xy_maps
+contrastdone_fullGrid=$contrastdir_fullGrid/done.txt
+if ! [ -d $contrastdir_fullGrid ]; then mkdir $contrastdir_fullGrid; fi
+if [ -f $contrastdone_fullGrid ]; then
+    echo -e "\n\tMap of XY contrast parameters already done.\n"
+else
+  for frame in $(ls $entiredir_fullGrid/enti*.fits); do
+    frame_out=$contrastdir_fullGrid/${frame#$entiredir_fullGrid/}
+    xy_param=$(astfits $frame -h1 --keyvalue=XY-contrast -q)
+    astarithmetic $frame -h1 0 x $xy_param +  -o $frame_out
+  done
+  if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+    astarithmetic $(ls $contrastdir_fullGrid/ent*.fits) $(ls $contrastdir_fullGrid/ent*.fits | wc -l) sum -g1 --writeall -o $contrastdir_fullGrid/sum_xycontrasts.fits
+  else
+    astarithmetic $(ls $contrastdir_fullGrid/ent*.fits) $(ls $contrastdir_fullGrid/ent*.fits | wc -l) sum -g1  -o $contrastdir_fullGrid/sum_xycontrasts.fits
+  fi
+  echo done > $contrastdone_fullGrid
+fi
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 
