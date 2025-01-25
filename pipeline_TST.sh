@@ -202,31 +202,49 @@ oneNightPreProcessing() {
   if [ -f $renamedone ]; then
     echo -e "\nScience images for night $currentNight are already renamed\n"
   else
-      for h in 0; do
-          for i in $currentINDIRo/*.fits; do
-            nameWithEscapedSpaces=$(escapeSpacesFromString "$i")
-            DATEOBS=$(eval "astfits $nameWithEscapedSpaces -h0 --keyvalue=$dateHeaderKey --quiet")
-            checkIfExist_DATEOBS $DATEOBS
-            ## MACOS does not support -d in date, so it is better to use coreutils:gdata
-            if [[ $OSTYPE == 'darwin'* ]]; then
-              unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
-            else
-              unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
-            fi
-            out=$currentINDIR/$unixTimeInSeconds.fits
+      for i in $currentINDIRo/*.fits; do
+          
+        nameWithEscapedSpaces=$(escapeSpacesFromString "$i")
+        DATEOBS=$(eval "astfits $nameWithEscapedSpaces -h0 --keyvalue=$dateHeaderKey --quiet")
+        checkIfExist_DATEOBS $DATEOBS
+	if [[ $dateHeaderKey == "MJD-OBS" ]]; then
+     		unixTimeInSeconds=$(echo "($DATEOBS - 40587) * 86400" | bc -l )
+       		unixTimeInSeconds=$(printf "%.0f" "$unixTimeInSeconds")
+	else
+	        ## MACOS does not support -d in date, so it is better to use coreutils:gdata
+	        if [[ $OSTYPE == 'darwin'* ]]; then
+	        	unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
+	        else
+	        	unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+	        fi
+	fi
+        out=$currentINDIR/$unixTimeInSeconds.fits
+	for h in $(seq 0 $num_ccd); do
+            	# HERE A CHECK IF THE DATA IS IN FLOAT32 IS NEEDED
+	    	if [ $h -eq 0 ]; then
+            		eval "astfits $nameWithEscapedSpaces --copy=$h --primaryimghdu -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
+            		nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
+            		eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
+		else
+  			if [[ "$overscan" == "YES" ]]; then
+  				trsec=$(eval "astfits $nameWithEscapedSpace -h $h --keyvalue=$trimsecKey")
+      				trsec=$(echo "$trsec" | sed 's/[\[\]]//g')
+	  			eval "astcrop $nameWithEscapedSpace -h $h --mode=img --section=$trsec --append --metaname=$h -o$out"
+      				gain_h=$(eval "astfits $nameWithEscapedSpace -h $h--keyvalue=$gain -q")
+	  
+      			else
+	 			eval "astfits $nameWithEscapedSpace --copy=$h -o$out"
+     			fi
+		fi
+        done
+     done
 
-            # HERE A CHECK IF THE DATA IS IN FLOAT32 IS NEEDED
-            eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
-            nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
-            eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
-          done
-
-          index=1
-          for i in $(ls -v $currentINDIR/*.fits); do
-            mv $i $currentINDIR/"$objectName"-Decals-"$filter"_n"$currentNight"_f"$index"_ccd"$h".fits
-            index=$((index+1));
-          done
-      done
+	index=1
+        for i in $(ls -v $currentINDIR/*.fits); do
+        	mv $i $currentINDIR/"$objectName"-Decals-"$filter"_n"$currentNight"_f"$index".fits
+            	index=$((index+1));
+        done
+      
       echo done > $renamedone
   fi
 
