@@ -93,7 +93,7 @@ outputConfigurationVariablesInformation() {
         "Bricks rejected if present stars brighter (g-band) than:$starMagnitudeThresholdToReject_gBand:[mag]"
         ""
         "·Saturation threshold:$saturationThreshold:[ADU]"
-        "·Gain:$gain:[e-/ADU]"
+        "·Gain keyword:$gain"
         "·Approximately size of the field:$sizeOfOurFieldDegrees:[deg]"
         "·Size of the coadd:$coaddSizePx:[px]"
         " "
@@ -129,6 +129,9 @@ outputConfigurationVariablesInformation() {
         "·Pixel scale:$pixelScale:[arcsec/px]"
         "·Detector width:$detectorWidth:[px]"
         "·Detector height:$detectorHeight:[px]"
+        "·Number of CCDs of the camers:$num_ccd"
+        "·Presence of overscan:$overscan"
+        "·Keyword of the illuminated section:$trimsecKey"
         " "
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
@@ -214,6 +217,9 @@ checkIfAllVariablesAreSet() {
                 pixelScale \
                 detectorWidth \
                 detectorHeight \ 
+                num_ccd \
+                overscan \
+                trimsecKey \
                 lowestScaleForIndex \
                 highestScaleForIndex \ 
                 solve_field_L_Param \
