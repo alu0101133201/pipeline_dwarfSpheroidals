@@ -304,9 +304,9 @@ propagateKeyword() {
     image=$1
     keyWordToPropagate=$2
     out=$3
-
+    h=$4
     variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate)
-    eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h1" 
+    eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h$h" 
 }
 export -f propagateKeyword
 
@@ -351,10 +351,11 @@ getMedianValueInsideRing() {
     keyWordThreshold=$7
     keyWordValueForFirstRing=$8
     keyWordValueForSecondRing=$9
+    h=${10}
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
-            me=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where medianvalue --quiet)
+            me=$(astarithmetic $i -h$h $commonRing -h$h 0 eq nan where medianvalue --quiet)
     else
         # Case when we do NOT have one common normalisation ring
         # All the following logic is to decide which normalisation ring apply
@@ -365,9 +366,9 @@ getMedianValueInsideRing() {
         secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where medianvalue --quiet)
+            me=$(astarithmetic $i -h$h $doubleRing_first -h$h 0 eq nan where medianvalue --quiet)
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where medianvalue --quiet)
+            me=$(astarithmetic $i -h$h $doubleRing_second -h$h 0 eq nan where medianvalue --quiet)
         else
             errorNumber=4
             echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
@@ -478,13 +479,21 @@ normaliseImagesWithRing() {
     keyWordValueForSecondRing=${10}
 
     for a in $(seq 1 $n_exp); do
-        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
         i=$imageDir/$base
         out=$outputDir/$base
+        astfits $i --copy=0 --primaryimghdu -o $out
+        if [ "$USE_COMMON_RING" = false ]; then
+            propagateKeyword $i $keyWordToDecideRing $out 0
+        fi
+        for h in $(seq 1 $num_ccd); do
 
-        me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-        astarithmetic $i -h1 $me / -o $out
-        propagateKeyword $i $airMassKeyWord $out 
+            me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
+            astarithmetic $i -h$h $me / -o $outputDir/temp.fits
+            astfits $outputDir/temp.fits --copy=1 -o $out
+            rm $outputDir/temp.fits
+            propagateKeyword $i $gain $out $h
+        done
     done
 }
 export -f normaliseImagesWithRing
@@ -502,11 +511,17 @@ calculateFlat() {
     sigmaValue=2
     iterations=10
     gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
-    if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 --writeall -o $flatName
-    else
-        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 -o $flatName
-    fi
+    first_file=$(echo "$filesToUse" | awk '{print $1}')
+    astfits $first_file --copy=0 --primaryimghdu -o $flatName
+    for h in $(seq 1 $num_ccd); do
+        if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+            astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g$h --writeall -o temp.fits
+        else
+            astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g$h -o temp.fits
+        fi
+        astfits temp.fits --copy=1 -o $flatName
+        rm temp.fits
+    done
 }
 export -f calculateFlat
 
@@ -517,21 +532,21 @@ calculateRunningFlat() {
     iteration=$4
 
     fileArray=()
-    fileArray=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*_ccd"$h".fits) )
-    fileArrayLength=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*_ccd"$h".fits | wc -l) )
+    fileArray=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*.fits) )
+    fileArrayLength=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*.fits | wc -l) )
 
     lefFlatFiles=("${fileArray[@]:0:$windowSize}")
     echo "Computing left flat - iteration $iteration"
-    calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits" "${lefFlatFiles[@]}"
+    calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left.fits" "${lefFlatFiles[@]}"
     rightFlatFiles=("${fileArray[@]:(fileArrayLength-$windowSize):fileArrayLength}")
     echo "Computing right flat - iteration $iteration"
-    calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits" "${rightFlatFiles[@]}"
+    calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right.fits" "${rightFlatFiles[@]}"
 
     echo "Computing non-common flats - iteration $iteration"
     for a in $(seq 1 $n_exp); do
         if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($n_exp - $halfWindowSize))" ]; then
             leftLimit=$(( a - $halfWindowSize - 1))
-            calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits" "${fileArray[@]:$leftLimit:$windowSize}"
+            calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a".fits" "${fileArray[@]:$leftLimit:$windowSize}"
         fi
     done
     echo done > $doneFile
@@ -545,22 +560,23 @@ divideImagesByRunningFlats(){
     flatDone=$4
 
     for a in $(seq 1 $n_exp); do
-        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
         i=$imageDir/$base
         out=$outputDir/$base
-
+        astfits $i --copy=0 --primaryimghdu -o $out
         if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left_ccd"$h".fits
+            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left.fits
         elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right_ccd"$h".fits
+            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right.fits
         else
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight".fits
         fi
-            astarithmetic $i -h1 $flatToUse -h1 / -o $out
-            # This step can probably be removed
-            astfits $i --copy=1 -o$out
-
-        propagateKeyword $i $airMassKeyWord $out 
+        for h in $(seq 1 $num_ccd); do
+            astarithmetic $i -h$h $flatToUse -h$h / -o temp.fits
+            astfits temp.fits --copy=1 -o$out
+            rm temp.fits
+            propagateKeyword $i $gain $out $h
+        done
     done
     echo done > $flatDone
 }
@@ -573,12 +589,16 @@ divideImagesByWholeNightFlat(){
     flatDone=$4
 
     for a in $(seq 1 $n_exp); do
-        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
         i=$imageDir/$base
         out=$outputDir/$base
-
-        astarithmetic $i -h1 $flatToUse -h1 / -o $out
-        propagateKeyword $i $airMassKeyWord $out 
+        astfits $i --copy=0 --primaryimghdu -o $out
+        for h in $(seq 1 $num_ccd); do
+            astarithmetic $i -h$h $flatToUse -h$h / -o temp.fits
+            astfits temp.fits --copy=1 -o$out
+            rm temp.fits
+            propagateKeyword $i $gain $out $h
+        done
     done
     echo done > $flatDone
 }
@@ -2348,3 +2368,22 @@ limitingSurfaceBrightness() {
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }
 export -f limitingSurfaceBrightness
+
+prepareRingTemplate(){
+    template=$1
+    imageDir=$2
+    ringDir=$3
+    x_camera=$(awk '{print $2}' $template)
+    y_camera=$(awk '{print $3}' $template)
+    radius=$(awk '{print $5}' $template)
+    oneImage=$(ls $imageDir/*.fit* | head -1)
+    
+    for h in $(seq 1 $num_ccd); do
+        eval $(python3 $pythonScriptsPath/singleCameratoCCD_cordtransform.py $oneImage $h $x_camera $y_camera)
+        base="${template%.txt}"
+        out_ring=$ringDir/"$base"_ccd"$h".txt
+        echo "1 $x_det $y_det 6 $radius 1 1 1 1 1" > $out_ring
+    done
+
+}
+export -f prepareRingTemplate
