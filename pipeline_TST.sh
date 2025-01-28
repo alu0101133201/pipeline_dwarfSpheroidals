@@ -172,15 +172,45 @@ export dateHeaderKey
 framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
 
+###Pre-processing: we generate the ring for each one of the detectors
+
+ringtempDone=$DIR/done_templates.txt
+if [ -f $ringtempDone ]; then
+  echo -e "\n\tRing templates for each detector already generated"
+else
+  if [ "$USE_COMMON_RING" = true ]; then
+    base="${commonRingDefinitionFile%.txt}"
+    if [ $num_ccd -eq 1 ]; then
+      cp $DIR/$commonRingDefinitionFile $DIR/"$base"_ccd"$h".txt
+    else
+      #We use data from night1, we in the end have data of the same camera always, and that is what matters
+      prepareRingTemplate $commonRingDefinitionFile $INDIRo/night1 $DIR
+    fi
+  else
+    base_first="${firstRingDefinitionFile%.txt}"
+    base_second="${secondRingDefinitionFile%.txt}"
+    if [ $num_ccd -eq 1 ]; then
+      cp $DIR/$firstRingDefinitionFile $DIR/"$base_first"_ccd"$h".txt
+      cp $DIR/$secondRingDefinitionFile $DIR/"$base_second"_ccd"$h".txt
+    else
+      #We use data from night1, we in the end have data of the same camera always, and that is what matters
+      prepareRingTemplate $firstRingDefinitionFile $INDIRo/night1 $DIR
+      prepareRingTemplate $secondRingDefinitionFile $INDIRo/night1 $DIR
+    fi
+  fi
+  echo done > $ringtempDone
+fi
+
+
 # Function which processes a whole night
 oneNightPreProcessing() {
   currentNight=$1
-  framesForCommonReductionDone=$framesForCommonReductionDir/done_"$filter"_ccd"$h"_n"$currentNight".txt
+  framesForCommonReductionDone=$framesForCommonReductionDir/done_"$filter"_n"$currentNight".txt
 
   echo -e "\n\n"
   echo -e "${ORANGE} --- STARTING TO PROCESS NIGHT NUMBER $currentNight --- ${NOCOLOUR}"
 
-  h=0
+  
 
   if ! [ -d $framesForCommonReductionDir ]; then mkdir $framesForCommonReductionDir; fi
   if [ -f $framesForCommonReductionDone ]; then
@@ -202,62 +232,76 @@ oneNightPreProcessing() {
   if [ -f $renamedone ]; then
     echo -e "\nScience images for night $currentNight are already renamed\n"
   else
-      for i in $currentINDIRo/*.fits; do
+      for i in $currentINDIRo/*.fit*; do
           
         nameWithEscapedSpaces=$(escapeSpacesFromString "$i")
         DATEOBS=$(eval "astfits $nameWithEscapedSpaces -h0 --keyvalue=$dateHeaderKey --quiet")
         checkIfExist_DATEOBS $DATEOBS
-	if [[ $dateHeaderKey == "MJD-OBS" ]]; then
-     		unixTimeInSeconds=$(echo "($DATEOBS - 40587) * 86400" | bc -l )
-       		unixTimeInSeconds=$(printf "%.0f" "$unixTimeInSeconds")
-	else
+        
+	      if [[ $dateHeaderKey == "MJD-OBS" ]]; then
+          unixTimeInSeconds=$(astarithmetic $DATEOBS 40587 - 86400 x -q)
+          unixTimeInSeconds=$(printf "%.0f" "$unixTimeInSeconds")
+          
+	      else
 	        ## MACOS does not support -d in date, so it is better to use coreutils:gdata
 	        if [[ $OSTYPE == 'darwin'* ]]; then
 	        	unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
 	        else
 	        	unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
 	        fi
-	fi
+	      fi
         out=$currentINDIR/$unixTimeInSeconds.fits
-	for h in $(seq 0 $num_ccd); do
+	      for h in $(seq 0 $num_ccd); do
             	# HERE A CHECK IF THE DATA IS IN FLOAT32 IS NEEDED
-	    	if [ $h -eq 0 ]; then
-            		eval "astfits $nameWithEscapedSpaces --copy=$h --primaryimghdu -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
-            		nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
-            		eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
-		else
-  			if [[ "$overscan" == "YES" ]]; then
-  				trsec=$(eval "astfits $nameWithEscapedSpace -h $h --keyvalue=$trimsecKey")
-      				trsec=$(echo "$trsec" | sed 's/[\[\]]//g')
-	  			eval "astcrop $nameWithEscapedSpace -h $h --mode=img --section=$trsec --append --metaname=$h -o$out"
-      				gain_h=$(eval "astfits $nameWithEscapedSpace -h $h--keyvalue=$gain -q")
-	  
-      			else
-	 			eval "astfits $nameWithEscapedSpace --copy=$h -o$out"
-     			fi
-		fi
+	    	  if [ $h -eq 0 ]; then
+                if [ $num_ccd -ne 0 ]; then
+            		  eval "astfits $nameWithEscapedSpaces --copy=$h --primaryimghdu -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
+            		  nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
+            		  eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
+                else
+                  eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"
+                  nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
+                  eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
+                fi
+		      else
+            
+  			    if [[ "$overscan" == "YES" ]]; then
+  				    trsec=$(eval "astfits $nameWithEscapedSpaces -h $h --keyvalue=$trimsecKey -q")
+      				trsec=${trsec//[\[\]]/}
+              
+	  			    eval "astcrop $nameWithEscapedSpaces -h $h --mode=img --section=$trsec  -o temp.fits"
+              astarithmetic temp.fits -h1 float32 -otemp2.fits 
+              rm temp.fits
+              astfits temp2.fits --copy=1  -o$out
+              rm temp2.fits
+      				gain_h=$(eval "astfits $nameWithEscapedSpaces -h $h --keyvalue=$gain -q")
+              astfits $out -h$h --write=$gain,$gain_h,"e- ADU"
+      	    else
+	 			      eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"
+     		    fi
+		      fi
         done
-     done
+      done
 
-	index=1
-        for i in $(ls -v $currentINDIR/*.fits); do
-        	mv $i $currentINDIR/"$objectName"-Decals-"$filter"_n"$currentNight"_f"$index".fits
-            	index=$((index+1));
-        done
+	  index=1
+    for i in $(ls -v $currentINDIR/*.fits); do
+      	mv $i $currentINDIR/"$objectName"-Decals-"$filter"_n"$currentNight"_f"$index".fits
+      	index=$((index+1));
+    done
       
-      echo done > $renamedone
+    echo done > $renamedone
   fi
 
   # -------------------------------------------------------
   # Number of exposures of the current night
-  n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
+  n_exp=$(ls -v $currentINDIRo/*.fit* | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
   
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
 
   # Loop for all the ccds
-  for h in 0; do
+  for h in $(seq 1 $num_ccd); do
     ########## Creating master bias ##########
     echo -e "\n ${GREEN} Creating master bias/dark-bias ${NOCOLOUR}"
     mdadone=$mdadir/mdark_"$filter"_ccd"$h".txt
@@ -274,12 +318,27 @@ oneNightPreProcessing() {
       if awk "BEGIN {exit !($gnuastro_version > 0.22)}"; then
         eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
                     3 0.2 sigclip-mean -g$h --writeall \
-                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+                    -o $mdadir/temp.fits"
+        
+        
       else
         eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
                     3 0.2 sigclip-mean -g$h  \
-                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+                    -o $mdadir/temp.fits"
+        
       fi
+      #There is OVERSCAN probably
+      if [[ "$overscan" == "YES" ]]; then
+          first_file=$(echo "$escaped_files" | awk '{print $1}')
+          trsec=$(eval "astfits $first_file -h$h --keyvalue=$trimsecKey -q")
+          trsec=${trsec//[\[\]]/}
+          astcrop $mdadir/temp.fits -h1 --mode=img --section=$trsec  -o $mdadir/temp2.fits
+          astfits $mdadir/temp2.fits --copy=1 -o $mdadir/mdark_"$filter"_n"$currentNight".fits
+          rm $mdadir/temp2.fits
+      else
+          astfits $mdadir/temp.fits --copy=1 -o $mdadir/mdark_"$filter"_n"$currentNight".fits
+      fi
+      rm $mdadir/temp.fits
     fi
     echo done > $mdadone
   done
@@ -296,12 +355,19 @@ oneNightPreProcessing() {
   if [ -f $skydone ]; then
     echo -e "\nAirmass for night $currentNight already saved\n"
   else
+    if [ $num_ccd -eq 1 ]; then 
+      h_air=1
+    else
+      h_air=0
+    fi
     for i in $(ls -v $currentINDIR/*.fits ); do
-      air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
+      
+      air=$(astfits $i -h $h_air --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
 	    if [[ $air == "n/a" ]]; then
  		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
-   	  fi
-    	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+   	  
+    	  astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+      fi
       echo $air >> $skydir/airmass.txt
     done
     echo done > $skydone
@@ -317,30 +383,39 @@ oneNightPreProcessing() {
   # Also a counter variable is
   # created to rename the images. Bad and saturated pixels are masked.
   mbiascorrdir=$BDIR/bias-corrected_n$currentNight
-  mbiascorrdone=$mbiascorrdir/done_"$filter"_ccd"$h".txt
+
   if ! [ -d $mbiascorrdir ]; then mkdir $mbiascorrdir; fi
-  if [ -f $mbiascorrdone ]; then
-    echo -e "\nScience images are already bias/dark corrected for night $currentNight and extension $h\n"
-  else
-    for a in $(seq 1 $n_exp); do
-      base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-      i=$currentINDIR/$base
-      out=$mbiascorrdir/$base
-      astarithmetic $i -h1 set-i $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits  -h1  set-m \
+  for h in $(seq 0 $num_ccd); do
+    mbiascorrdone=$mbiascorrdir/done_"$filter"_ccd"$h".txt
+  
+    if [ -f $mbiascorrdone ]; then
+      echo -e "\nScience images are already bias/dark corrected for night $currentNight and extension $h\n"
+    else
+      for a in $(seq 1 $n_exp); do
+        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
+        i=$currentINDIR/$base
+        out=$mbiascorrdir/$base
+        if [ $h -eq 0 ]; then
+          astfits $i --copy=$h --primaryimghdu -o$out
+          # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
+          # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
+          # This is also done in the function maskImages()
+          if [ "$USE_COMMON_RING" = false ]; then
+            propagateKeyword $i $keyWordToDecideRing $out $h
+          fi
+        else
+          astarithmetic $i -h$h set-i $mdadir/mdark_"$filter"_n"$currentNight".fits  -h$h  set-m \
                 i i $saturationThreshold gt i isblank or 2 dilate nan where m -  float32  \
-                -o $out
-
-
-      propagateKeyword $i $airMassKeyWord $out
-      # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
-      # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
-      # This is also done in the function maskImages()
-      if [ "$USE_COMMON_RING" = false ]; then
-        propagateKeyword $i $keyWordToDecideRing $out
-      fi
-    done
-    echo done > $mbiascorrdone
-  fi
+                -o $mbiascorrdir/temp.fits
+          astfits $mbiascorrdir/temp.fits --copy=1 -o $out 
+          rm $mbiascorrdir/temp.fits
+          propagateKeyword $i $gain $out $h
+        fi
+      done
+      echo done > $mbiascorrdone
+    fi
+  done    
+  
 
 
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
@@ -351,16 +426,28 @@ oneNightPreProcessing() {
   ringdir=$BDIR/ring
   rm -rf $ringdir
   mkdir $ringdir
-
+  
   # We always need the common ring  definition always stored for photometric calibration (selection of decals bricks to download)
-  cp $commonRingDefinitionFile $ringdir/ring.txt 
+  
   # We create the .fits ring image based on how the normalisation is going to be done
-  if [ "$USE_COMMON_RING" = true ]; then
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
-  else
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
-  fi
+  for h in $(seq 1 $num_ccd); do
+    if [ "$USE_COMMON_RING" = true ]; then
+      base="${commonRingDefinitionFile%.txt}"
+      cp $DIR/"$base"_ccd"$h".txt $ringdir/ring_ccd"$h".txt
+      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1.fits -h$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_temp.fits $ringdir/ring_ccd"$h".txt
+      astfits $ringdir/ring_temp.fits --copy=1 -o $ringdir/ring.fits
+    else
+      base_first="${firstRingDefinitionFile%.txt}"
+      base_second="${secondRingDefinitionFile%.txt}"
+      cp $DIR/"$base_first"_ccd"$h".txt $ringdir/ring_1_ccd"$h".txt
+      cp $DIR/"$base_second"_ccd"$h".txt $ringdir/ring_2_ccd"$h".txt
+      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1.fits -h$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_2_temp.fits $ringdir/ring_2_ccd"$h".txt
+      astfits $ringdir/ring_2_temp.fits --copy=1 -o $ringdir/ring_2.fits
+      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1.fits -h$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_1_temp.fits $ringdir/ring_1_ccd"$h".txt
+      astfits $ringdir/ring_1_temp.fits --copy=1 -o $ringdir/ring_1.fits
+    fi
+    rm $ringdir/*temp*
+  done
 
   ########## Creating the it1 master flat image ##########
 
@@ -380,24 +467,24 @@ oneNightPreProcessing() {
 
   # Creating iteration 1 flat_it1. First we need to normalise the science images.
   normit1dir=$BDIR/norm-it1-images_n$currentNight
-  normit1done=$normit1dir/done_"$filter"_ccd"$h".txt
+  normit1done=$normit1dir/done_"$filter".txt
   if ! [ -d $normit1dir ]; then mkdir $normit1dir; fi
   if [ -f $normit1done ]; then
-    echo -e "\nScience images are already normalized for night $currentNight and extension $h\n"
+    echo -e "\nScience images are already normalized for night $currentNight\n"
   else
     normaliseImagesWithRing $mbiascorrdir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit1done
   fi
- 
+
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
   if $RUNNING_FLAT; then
     flatit1dir=$BDIR/flat-it1-Running_n$currentNight
-    flatit1done=$flatit1dir/done_"$filter"_ccd"$h".txt
+    flatit1done=$flatit1dir/done_"$filter".txt
     iteration=1
     if ! [ -d $flatit1dir ]; then mkdir $flatit1dir; fi
     if [ -f $flatit1done ]; then
-      echo -e "\nRunning flats it-1 already built for night $currentNight and extension $h\n"
+      echo -e "\nRunning flats it-1 already built for night $currentNight\n"
     else
       calculateRunningFlat $normit1dir $flatit1dir $flatit1done $iteration
     fi
@@ -405,7 +492,7 @@ oneNightPreProcessing() {
 
   # We compute the flat using all the frames of the night
   flatit1WholeNightdir=$BDIR/flat-it1-WholeNight_n$currentNight
-  flatit1WholeNightdone=$flatit1WholeNightdir/done_"$filter"_ccd"$h".txt
+  flatit1WholeNightdone=$flatit1WholeNightdir/done_"$filter".txt
   iteration=1
   if ! [ -d $flatit1WholeNightdir ]; then mkdir $flatit1WholeNightdir; fi
   if [ -f $flatit1WholeNightdone ]; then
@@ -419,10 +506,10 @@ oneNightPreProcessing() {
   # Dividing the science images for the running it1 flat
   if $RUNNING_FLAT; then
     flatit1imadir=$BDIR/flat-it1-Running-ima_n$currentNight
-    flatit1imadone=$flatit1imadir/done_"$filter"_ccd"$h".txt
+    flatit1imadone=$flatit1imadir/done_"$filter".txt
     if ! [ -d $flatit1imadir ]; then mkdir $flatit1imadir; fi
     if [ -f $flatit1imadone ]; then
-      echo -e "\nScience images are divided by flat it1 for night $currentNight and extension $h\n"
+      echo -e "\nScience images are divided by flat it1 for night $currentNight\n"
     else
       divideImagesByRunningFlats $mbiascorrdir $flatit1imadir $flatit1dir $flatit1imadone
     fi
@@ -430,15 +517,15 @@ oneNightPreProcessing() {
 
   # Dividing the science images for the whole night it1 flat
   flatit1WholeNightimaDir=$BDIR/flat-it1-WholeNight-ima_n$currentNight
-  flatit1WholeNightimaDone=$flatit1WholeNightimaDir/done_"$filter"_ccd"$h".txt
+  flatit1WholeNightimaDone=$flatit1WholeNightimaDir/done_"$filter".txt
   if ! [ -d $flatit1WholeNightimaDir ]; then mkdir $flatit1WholeNightimaDir; fi
   if [ -f $flatit1WholeNightimaDone ]; then
-    echo -e "\nScience images are divided by whole night flat it1 for night $currentNight and extension $h\n"
+    echo -e "\nScience images are divided by whole night flat it1 for night $currentNight \n"
   else
     wholeNightFlatToUse=$flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone
   fi
-
+exit
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
   # Obtain a mask using noisechisel on the running flat images
@@ -850,7 +937,7 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
-
+exit
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
