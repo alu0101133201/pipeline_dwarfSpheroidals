@@ -101,10 +101,14 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=35
+tileSize=50
 noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
+                     --minskyfrac=0.9 \
+                     --meanmedqdiff=0.01 \
+                     --snthresh=5.2 \
+                     --detgrowquant=0.7 \
+                     --detgrowmaxholesize=1000 \
+                     --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 
@@ -525,20 +529,20 @@ oneNightPreProcessing() {
     wholeNightFlatToUse=$flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone
   fi
-exit
+
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
-    noiseit2done=$noiseit2dir/done_"$filter"_ccd"$h".txt
+    noiseit2done=$noiseit2dir/done_"$filter".txt
     if ! [ -d $noiseit2dir ]; then mkdir $noiseit2dir; fi
     if [ -f $noiseit2done ]; then
-      echo -e "\nScience images are 'noisechiseled' for it2 running flat for night $currentNight and extension $h\n"
+      echo -e "\nScience images are 'noisechiseled' for it2 running flat for night $currentNight \n"
     else
       frameNames=()
       for a in $(seq 1 $n_exp); do
-          base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+          base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
           frameNames+=("$base")
       done
       printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1imadir $noiseit2dir "'$noisechisel_param'"
@@ -548,27 +552,27 @@ exit
 
   # Obtain a mask using noisechisel on the whole night flat images
   noiseit2WholeNightDir=$BDIR/noise-it2-WholeNight_n$currentNight
-  noiseit2WholeNightdone=$noiseit2WholeNightDir/done_"$filter"_ccd"$h".txt
+  noiseit2WholeNightdone=$noiseit2WholeNightDir/done_"$filter".txt
   if ! [ -d $noiseit2WholeNightDir ]; then mkdir $noiseit2WholeNightDir; fi
   if [ -f $noiseit2WholeNightdone ]; then
-    echo -e "\nScience images are 'noisechiseled' for it2 whole night flat for night $currentNight and extension $h\n"
+    echo -e "\nScience images are 'noisechiseled' for it2 whole night flat for night $currentNight\n"
   else
     frameNames=()
     for a in $(seq 1 $n_exp); do
-      base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+      base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
       frameNames+=("$base")
     done
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir "'$noisechisel_param'"
     echo done > $noiseit2WholeNightdone
   fi
-
+exit
   # Mask the images (running flat)
   if $RUNNING_FLAT; then
     maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
-    maskedit2done=$maskedit2dir/done_"$filter"_ccd"$h".txt
+    maskedit2done=$maskedit2dir/done_"$filter".txt
     if ! [ -d $maskedit2dir ]; then mkdir $maskedit2dir; fi
     if [ -f $maskedit2done ]; then
-      echo -e "\nScience images are masked for running flat, night $currentNight and extension $h\n"
+      echo -e "\nScience images are masked for running flat, night $currentNight\n"
     else
       maskImages $mbiascorrdir $noiseit2dir $maskedit2dir $USE_COMMON_RING $keyWordToDecideRing
       echo done > $maskedit2done
@@ -577,10 +581,10 @@ exit
 
   # Mask the images (whole night flat)
   maskedit2WholeNightdir=$BDIR/masked-it2-WholeNight_n$currentNight
-  maskedit2WholeNightdone=$maskedit2WholeNightdir/done_"$filter"_ccd"$h".txt
+  maskedit2WholeNightdone=$maskedit2WholeNightdir/done_"$filter".txt
   if ! [ -d $maskedit2WholeNightdir ]; then mkdir $maskedit2WholeNightdir; fi
   if [ -f $maskedit2WholeNightdone ]; then
-    echo -e "\nScience images are masked for whole night flat, night $currentNight and extension $h\n"
+    echo -e "\nScience images are masked for whole night flat, night $currentNight \n"
   else
     maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir $USE_COMMON_RING $keyWordToDecideRing
     echo done > $maskedit2WholeNightdone
@@ -602,10 +606,10 @@ exit
 
   # Normalising masked images (whole night flat)
   normit2WholeNightdir=$BDIR/norm-it2-WholeNight-images_n$currentNight
-  normit2WholeNightdone=$normit2WholeNightdir/done_"$filter"_ccd"$h".txt
+  normit2WholeNightdone=$normit2WholeNightdir/done_"$filter".txt
   if ! [ -d $normit2WholeNightdir ]; then mkdir $normit2WholeNightdir; fi
   if [ -f $normit2WholeNightdone ]; then
-    echo -e "\nMasked science images are normalized for whole night flat, night $currentNight and extension $h\n"
+    echo -e "\nMasked science images are normalized for whole night flat, night $currentNight\n"
   else
     normaliseImagesWithRing $maskedit2WholeNightdir $normit2WholeNightdir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit2WholeNightdone
@@ -614,11 +618,11 @@ exit
   # Combining masked normalized images to make it2 running flat
   if $RUNNING_FLAT; then
     flatit2dir=$BDIR/flat-it2-Running_n$currentNight
-    flatit2done=$flatit2dir/done_"$filter"_ccd"$h".txt
+    flatit2done=$flatit2dir/done_"$filter".txt
     iteration=2
     if ! [ -d $flatit2dir ]; then mkdir $flatit2dir; fi
     if [ -f $flatit2done ]; then
-      echo -e "\nScience images are stacked for it2 running flat for night $currentNight and extension $h\n"
+      echo -e "\nScience images are stacked for it2 running flat for night $currentNight\n"
     else
       calculateRunningFlat $normit2dir $flatit2dir $flatit2done $iteration
     fi
