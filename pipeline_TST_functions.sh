@@ -249,16 +249,20 @@ maskImages() {
     keyWordToDecideRing=$5
 
     for a in $(seq 1 $n_exp); do
-        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
         i=$inputDirectory/$base
         out=$outputDirectory/$base
-        astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $out -q
-
-        propagateKeyword $i $airMassKeyWord $out 
+        astfits $i --copy=0 --primaryimghdu -o $out
+        for h in $(seq 1 $num_ccd); do
+            astarithmetic $i -h$h $masksDirectory/$base -h$h 1 eq nan where float32 -o $outputDirectory/temp_"$base" -q
+            astfits $outputDirectory/temp_"$base" --copy=1 -o $out
+            rm $outputDirectory/temp_"$base"
+        done
+        #propagateKeyword $i $airMassKeyWord $out 
         # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
         # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
         if [ "$useCommonRing" = false ]; then
-            propagateKeyword $i $keyWordToDecideRing $out
+            propagateKeyword $i $keyWordToDecideRing $out 0
         fi
     done
 }
@@ -569,7 +573,7 @@ divideImagesByRunningFlats(){
         elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
             flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right.fits
         else
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight".fits
+            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a".fits
         fi
         for h in $(seq 1 $num_ccd); do
             astarithmetic $i -h$h $flatToUse -h$h / -o temp.fits
@@ -612,7 +616,11 @@ runNoiseChiselOnFrame() {
 
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
-    astnoisechisel $imageToUse $noiseChiselParams -o $output
+    for h in $(seq 1 $num_ccd); do
+        astnoisechisel $imageToUse -h$h $noiseChiselParams -o $outputDir/temp_"$baseName"
+        astfits $outputDir/temp_"$baseName" --copy=1 -o $output
+        rm $outputDir/temp_"$baseName"
+    done
 }
 export -f runNoiseChiselOnFrame
 
