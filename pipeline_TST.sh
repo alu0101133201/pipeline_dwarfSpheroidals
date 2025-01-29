@@ -280,10 +280,11 @@ oneNightPreProcessing() {
   else
     for i in $(ls -v $currentINDIR/*.fits ); do
       air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
-	    if [[ $air == "n/a" ]]; then
+      if [[ $air == "n/a" ]]; then
  		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
-   	  fi
-    	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+       		    astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+      fi
+    	
       echo $air >> $skydir/airmass.txt
     done
     echo done > $skydone
