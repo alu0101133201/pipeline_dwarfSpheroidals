@@ -777,7 +777,7 @@ oneNightPreProcessing() {
 
       i=$flatit3imadir/$base
       out=$maskedcornerdir/$base
-      astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f 0.9 lt  nan where set-n n f 2. gt nan where -o $out
+      astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f $vignettingThreshold lt  nan where set-n n f 2. gt nan where -o $out
       propagateKeyword $i $airMassKeyWord $out 
     done
     echo done > $maskedcornerdone
@@ -919,6 +919,7 @@ fi
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
+
 # Making sex catalogs and running scamp
 
 # ****** Decision note *******
@@ -994,7 +995,7 @@ else
 fi
 
 
-# Checking and removing bad astrometrised frames ------
+# Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
 badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_astrometry.txt
@@ -1009,6 +1010,7 @@ fi
 
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
+
 
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter".txt
@@ -1245,7 +1247,6 @@ else
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
-exit 0
 
 # ---------------------------------------------------
 
