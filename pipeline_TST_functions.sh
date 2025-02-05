@@ -96,6 +96,7 @@ outputConfigurationVariablesInformation() {
         "·Gain:$gain:[e-/ADU]"
         "·Approximately size of the field:$sizeOfOurFieldDegrees:[deg]"
         "·Size of the coadd:$coaddSizePx:[px]"
+        "·Vignetting threshold (mask every px with flat value below this one):$vignettingThreshold "
         " "
         "·Width of the normalisation ring:$ringWidth:[px]"
         "·Common normalisation ring:$USE_COMMON_RING"
@@ -190,6 +191,7 @@ checkIfAllVariablesAreSet() {
                 gain \
                 sizeOfOurFieldDegrees \
                 coaddSizePx \
+                vignettingThreshold \
                 calibrationBrightLimit \
                 calibrationFaintLimit \
                 numberOfFWHMForPhotometry \
@@ -1455,8 +1457,6 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         echo "Exiting with error number: $erroNumber"
         exit $erroNumber
     fi
-    
-    
     
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
     
