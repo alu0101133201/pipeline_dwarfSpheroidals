@@ -113,16 +113,16 @@ def obtainKeyWordFromFits(file, keyword):
         raise Exception(f"File {file} does not exist.")
 
 
-def obtainBackgroundStd(currentFile):
+def obtainBackgroundStd(currentFile,h):
     backgroundValue = -1
 
     # First we read the background Value
     with open(currentFile, 'r') as f:
         lines = f.readlines()
-        if( len(lines) != 1):
-            raise Exception("File with the background estimation contains more that 1 line. Expected 1 line got " + str(len(lines)))
+        if( len(lines) < h ):
+            raise Exception("File with the background estimation contains less lines than current number of CCD: " + str(h))
         
-        splittedLine = lines[0].strip().split()
+        splittedLine = lines[(h-1)].strip().split()
         numberOfFields = len(splittedLine)
 
         if (numberOfFields == 5):
@@ -135,7 +135,7 @@ def obtainBackgroundStd(currentFile):
     return(backgroundStd)
 
 
-def identifyBadFrames(folderWithFrames, numberOfStdForRejecting):
+def identifyBadFrames(folderWithFrames, numberOfStdForRejecting,h):
     badFiles   = []
     allFiles   = []
     allStd     = []
@@ -144,7 +144,7 @@ def identifyBadFrames(folderWithFrames, numberOfStdForRejecting):
     for currentFile in glob.glob(folderWithFrames + "/*.txt"):
         if fnmatch.fnmatch(currentFile, '*done*.txt'):
             continue
-        currentStd = obtainBackgroundStd(currentFile)
+        currentStd = obtainBackgroundStd(currentFile,h)
 
         if (math.isnan(currentStd)):
             continue
@@ -160,15 +160,16 @@ def identifyBadFrames(folderWithFrames, numberOfStdForRejecting):
     return(allFiles, allStd, badFiles, badStd)
 
 
-HDU_TO_FIND_AIRMASS = 1
+HDU_TO_FIND_AIRMASS = 0
 
 folderWithSkyEstimations      = sys.argv[1]
 outputFolder                  = sys.argv[2]
 outputFile                    = sys.argv[3]
 numberOfStdForRejecting       = int(sys.argv[4])
+h                             = int(sys.argv[5])
 setMatplotlibConf()
 
-allFiles, backgroundStds, badFiles, badStd = identifyBadFrames(folderWithSkyEstimations, numberOfStdForRejecting)
+allFiles, backgroundStds, badFiles, badStd = identifyBadFrames(folderWithSkyEstimations, numberOfStdForRejecting,h)
 
 with open(outputFolder + "/" + outputFile, 'w') as file:
     for fileName in badFiles:
