@@ -1026,6 +1026,7 @@ else
     astarithmetic $(ls $contrastdir_fullGrid/ent*.fits) $(ls $contrastdir_fullGrid/ent*.fits | wc -l) sum -g1  -o $contrastdir_fullGrid/sum_xycontrasts.fits
   fi
   echo done > $contrastdone_fullGrid
+  rm $contrastdir/fullGrid/ent*.fits
 fi
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
