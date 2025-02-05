@@ -1096,13 +1096,20 @@ solveField() {
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
-    solve-field $i --no-plots \
-    -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
-    --ra=$ra_gal --dec=$dec_gal --radius=3. \
-    --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify -E 1 -c 0.01 \
-    --odds-to-solve 1e9 \
-    --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
-    -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
+    ### Multi-layer problem: solve-field does not work with multiple layers. Because of that, we run solve-field into each of the layers and then store them into a single .fits with multiple layers
+    layer_temp=$astroimadir/layer_$base
+    astfits $i --copy=0 --primaryimghdu -o $astroimadir/$base
+    for h in $(seq 1 $num_ccd); do
+        solve-field $i --no-plots \
+        -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
+        --ra=$ra_gal --dec=$dec_gal --radius=3. \
+        --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify -E 1 -c 0.01 \
+        --odds-to-solve 1e9 \
+        --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
+        -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$layer_temp ;
+        astfits $layer_temp --copy=1 -o $astroimadir/$base
+        rm $layer_temp
+    done
 }
 export -f solveField
 
