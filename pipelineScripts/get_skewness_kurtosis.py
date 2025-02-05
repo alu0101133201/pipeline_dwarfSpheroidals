@@ -11,7 +11,7 @@ mask=fits.open(ring)[1].data
 nonan_ring=(np.logical_not(np.isnan(data))) & (mask!=0)
 
 if value_to_measure=="SKEWNESS":
-    print(skew(data[nonan_ring]))
+    print(skew(data[nonan_ring],axis=None,nan_policy='omit'))
 elif value_to_measure=="KURTOSIS":
-    print(kurtosis(data[nonan_ring]))
+    print(kurtosis(data[nonan_ring],axis=None,nan_policy='omit'))
     
