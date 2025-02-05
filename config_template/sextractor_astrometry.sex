@@ -40,6 +40,7 @@ SATUR_LEVEL      58000.0        # level (in ADUs) at which arises saturation
 MAG_ZEROPOINT    22.5            # magnitude zero-point
 MAG_GAMMA        4.0            # gamma of emulsion (for photographic scans)
 GAIN             0.41            # detector gain in e-/ADU
+GAIN_KEY         GAIN           # Keyword of the header where gain is located
 PIXEL_SCALE      1.8            # size of pixel in arcsec (0=use FITS WCS info)
  
 #------------------------- Star/Galaxy Separation ----------------------------

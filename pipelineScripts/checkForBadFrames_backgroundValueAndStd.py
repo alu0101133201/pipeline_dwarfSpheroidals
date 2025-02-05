@@ -17,6 +17,7 @@ from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
 
 from datetime import datetime
+from astropy.time import Time
 import time
 
 def setMatplotlibConf():
@@ -83,13 +84,13 @@ def extractNumberFromName(filename):
     else:
         raise Exception("Something went wrong with the fileNames")
 
-def retrieveBackgroundValues(currentFile):
+def retrieveBackgroundValues(currentFile,h):
     with open(currentFile, 'r') as f:
         lines = f.readlines()
-        if( len(lines) != 1):
-            raise Exception("File with the background estimation contains more that 1 line. Expected 1 line got " + str(len(lines)))
+        if( len(lines) < h):
+            raise Exception("File with the background estimation contains less lines than number of extension. Expected at least" + str(h))
         
-        splittedLine = lines[0].strip().split()
+        splittedLine = lines[(h-1)].strip().split()
         numberOfFields = len(splittedLine)
 
         if (numberOfFields == 5):
@@ -204,16 +205,16 @@ def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     airMass = obtainKeyWordFromFits(fitsFilePath, airMassKeyWord)
     return(airMass)
 
-def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord):
+def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord,h):
     backgroundValue = -1
 
     # First we read the background Value
     with open(currentFile, 'r') as f:
         lines = f.readlines()
-        if( len(lines) != 1):
-            raise Exception("File with the background estimation contains more that 1 line. Expected 1 line got " + str(len(lines)))
+        if( len(lines) < h):
+            raise Exception("File with the background estimation contains less lines than number of extension. Expected at least" + str(h))
         
-        splittedLine = lines[0].strip().split()
+        splittedLine = lines[(h-1)].strip().split()
         numberOfFields = len(splittedLine)
 
         if (numberOfFields == 5):
@@ -247,9 +248,12 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         match=re.search(pattern,file)
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime()    
         bck=allTable.loc[row]['Background']
 
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
@@ -267,9 +271,12 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         match=re.search(pattern, astrometryRejectedFiles[j])
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
         if j==0:
@@ -279,9 +286,12 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         match=re.search(pattern, backgroundRejectedFiles[j])
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.' if (j==0) else "")
         ax[1].scatter(air, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.'if (j==0) else "")
         if j==0:
@@ -291,9 +301,12 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         match=re.search(pattern,stdRejectedFiles[j])
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
         ax[1].scatter(air, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
         if j==0:
@@ -320,9 +333,12 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         match=re.search(pattern,file)
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         bck=allTable.loc[row]['STD']
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
@@ -339,9 +355,12 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         match=re.search(pattern, astrometryRejectedFiles[j])
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
         if j==0:
@@ -351,9 +370,12 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         match=re.search(pattern, backgroundRejectedFiles[j])
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
         ax[1].scatter(air, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
         if j==0:
@@ -363,9 +385,12 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         match=re.search(pattern,stdRejectedFiles[j])
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
         ax[1].scatter(air, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
         if j==0:
@@ -441,7 +466,7 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     for currentFile in glob.glob(folderWithFrames + "/*.txt"):
         if fnmatch.fnmatch(currentFile, '*done*.txt'):
             continue
-        currentValue, currentStd, currentSkew, currentKurto  = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+        currentValue, currentStd, currentSkew, currentKurto  = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord,h)
 
         if (math.isnan(currentValue)):
             continue
@@ -466,7 +491,7 @@ def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKe
     return(badFiles, badValues, badStd, allTogether, badFilesBCK, badFilesSTD)
 
 
-HDU_TO_FIND_AIRMASS = 1
+HDU_TO_FIND_AIRMASS = 0
 
 folderWithSkyEstimations      = sys.argv[1]
 folderWithFramesWithAirmasses = sys.argv[2] # The airmasses are in the header of the fits files that are in this folder
@@ -475,12 +500,13 @@ outputFolder                  = sys.argv[4]
 outputFileBackgroundValue     = sys.argv[5]
 outputFileBackgroundStd       = sys.argv[6]
 numberOfStdForRejecting       = float(sys.argv[7])
-
+h                             = int(sys.argv[8])
+dateHeaderKey                 = sys.argv[9]
 
 setMatplotlibConf()
 
 # 0.- Get frames identified as candidates for rejection in previous step (at this point, only astrometrisation)
-basAstrometrisedFile = outputFolder + "/identifiedBadFrames_astrometry.txt"
+basAstrometrisedFile = outputFolder[:-5] + "/identifiedBadFrames_astrometry.txt"
 badAstrometrisedFrames = getBadAstrometrisedFrames(basAstrometrisedFile)
 badAstrometrisedFrames = [folderWithSkyEstimations + "/entirecamera_" + x[:-1] + ".txt" for x in badAstrometrisedFrames]
 
@@ -493,7 +519,7 @@ backgroundKurtos           = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
-    currentValue, currentStd, currentSkew, currentKurto = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+    currentValue, currentStd, currentSkew, currentKurto = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord,h)
     normalisedBackgroundValues.append(currentValue)
     backgroundStds.append(currentStd)
     backgroundSkews.append(currentSkew)

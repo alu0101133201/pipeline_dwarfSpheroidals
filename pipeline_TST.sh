@@ -1068,7 +1068,7 @@ else
   printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir
   echo done > $astroimadone
 fi
-exit
+
 
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
@@ -1109,7 +1109,7 @@ else
   for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
     echo -e "\tSExtractor + scamp iteration $i"
 
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold 
     scamp -c $scampcfg $(ls -v $sexdir/*.cat)
     cp $sexdir/*.head $astroimadir
     mv *.pdf $scampres/
@@ -1118,34 +1118,39 @@ else
   echo done > $scampdone
 fi
 
-echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
+#echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
 #     1.- Place it in a proper grid
 #     2.- Improve the astrometry thanks to scamp
 
-entiredir_smallGrid=$BDIR/pointings_smallGrid
-entiredir_fullGrid=$BDIR/pointings_fullGrid
-entiredone=$entiredir_smallGrid/done_.txt
-swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
-export swarpcfg
+#entiredir_smallGrid=$BDIR/pointings_smallGrid
+#entiredir_fullGrid=$BDIR/pointings_fullGrid
+#entiredone=$entiredir_smallGrid/done_.txt
+#swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
+#export swarpcfg
 
-if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
-if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
+#if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
+#if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
 
-if [ -f $entiredone ]; then
-    echo -e "\n\tsubs_sky_it1 images already with astromety corrected using scamp-swarp and regrid to final grid (stored in pointings)\n"
-else
-  imagesToWarp=()
+##Multiple layers treatement: we want to preserve the multi-layer structure of the .fits file in the output, something swarp apparently doesn't like. 
+#The idea here will be to create a new folder called astro-ima-single with the .fits and the .head broken into each ccd, in order to run swarp
+#astroimadir_single=$BDIR/astro-ima-single
+#astroimadone_single=$astroimadir_single/done.txt
+#if ! [ -d ]
+#if [ -f $entiredone ]; then
+#    echo -e "\n\tsubs_sky_it1 images already with astromety corrected using scamp-swarp and regrid to final grid (stored in pointings)\n"
+#else
+#  imagesToWarp=()
 
-  for a in $(seq 1 $totalNumberOfFrames); do
-      base="$a".fits
-      imagesToWarp+=($astroimadir/$base)
-  done
+#  for a in $(seq 1 $totalNumberOfFrames); do
+#      base="$a".fits
+#      imagesToWarp+=($astroimadir/$base)
+#  done
 
-  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
-  echo done > $entiredone
-fi
+#  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
+#  echo done > $entiredone
+#fi
 
 
 # Checking and removing bad astrometrised frames ------
@@ -1162,6 +1167,17 @@ else
 fi
 
 
+### Since we are moving swarp at the end, we need to generate the folder smallGrid. We won't be working with fullGrid so far
+entiredir_smallGrid=$BDIR/pointings_smallGrid
+if ! [ -d $entiredir_smallGrid ]; then 
+  mkdir $entiredir_smallGrid
+  for a in $(seq 1 $totalNumberOfFrames); do
+    base=entirecamera_"$a".fits
+    cp $astroimadir/"$a".fits $entiredir_smallGrid/$base
+  done
+fi
+
+######################
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 
 noiseskydir=$BDIR/noise-sky_it1
@@ -1170,8 +1186,8 @@ noiseskydone=$noiseskydir/done_"$filter".txt
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 
-subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
-subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
+#subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
+#subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
 
 echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
@@ -1204,10 +1220,13 @@ else
   else
     tmpDir=$noiseskyctedirk
   fi
-  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir $badFilesWarningsBackgroundValueFile $badFilesWarningsBackgroundStdFile $numberOfStdForBadFrames false
+  for h in $(seq 1 $num_ccd); do
+    diagnosis_and_badFilesDir_ccd=$diagnosis_and_badFilesDir/CCD"$h"
+    python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir_ccd $badFilesWarningsBackgroundValueFile $badFilesWarningsBackgroundStdFile $numberOfStdForBadFrames $h $dateHeaderKey
+  done
   echo done > $badFilesWarningsDone
 fi
-
+exit
 echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
