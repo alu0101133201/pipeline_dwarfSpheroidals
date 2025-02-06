@@ -1118,39 +1118,35 @@ else
   echo done > $scampdone
 fi
 
-#echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
-#writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
+echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
+writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
 #     1.- Place it in a proper grid
 #     2.- Improve the astrometry thanks to scamp
 
-#entiredir_smallGrid=$BDIR/pointings_smallGrid
-#entiredir_fullGrid=$BDIR/pointings_fullGrid
-#entiredone=$entiredir_smallGrid/done_.txt
-#swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
-#export swarpcfg
+entiredir_smallGrid=$BDIR/pointings_smallGrid
+entiredir_fullGrid=$BDIR/pointings_fullGrid
+entiredone=$entiredir_smallGrid/done_.txt
+swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
+export swarpcfg
 
-#if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
-#if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
+if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
+if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
 
-##Multiple layers treatement: we want to preserve the multi-layer structure of the .fits file in the output, something swarp apparently doesn't like. 
-#The idea here will be to create a new folder called astro-ima-single with the .fits and the .head broken into each ccd, in order to run swarp
-#astroimadir_single=$BDIR/astro-ima-single
-#astroimadone_single=$astroimadir_single/done.txt
-#if ! [ -d ]
-#if [ -f $entiredone ]; then
-#    echo -e "\n\tsubs_sky_it1 images already with astromety corrected using scamp-swarp and regrid to final grid (stored in pointings)\n"
-#else
-#  imagesToWarp=()
 
-#  for a in $(seq 1 $totalNumberOfFrames); do
-#      base="$a".fits
-#      imagesToWarp+=($astroimadir/$base)
-#  done
+if [ -f $entiredone ]; then
+    echo -e "\n\tsubs_sky_it1 images already with astromety corrected using scamp-swarp and regrid to final grid (stored in pointings)\n"
+else
+  imagesToWarp=()
 
-#  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
-#  echo done > $entiredone
-#fi
+  for a in $(seq 1 $totalNumberOfFrames); do
+      base="$a".fits
+      imagesToWarp+=($astroimadir/$base)
+  done
+
+  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
+  echo done > $entiredone
+fi
 
 
 # Checking and removing bad astrometrised frames ------
@@ -1167,15 +1163,7 @@ else
 fi
 
 
-### Since we are moving swarp at the end, we need to generate the folder smallGrid. We won't be working with fullGrid so far
-entiredir_smallGrid=$BDIR/pointings_smallGrid
-if ! [ -d $entiredir_smallGrid ]; then 
-  mkdir $entiredir_smallGrid
-  for a in $(seq 1 $totalNumberOfFrames); do
-    base=entirecamera_"$a".fits
-    cp $astroimadir/"$a".fits $entiredir_smallGrid/$base
-  done
-fi
+
 
 ######################
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
@@ -1186,8 +1174,8 @@ noiseskydone=$noiseskydir/done_"$filter".txt
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 
-#subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
-#subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
+subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
+subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
 
 echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
@@ -1226,23 +1214,28 @@ else
   done
   echo done > $badFilesWarningsDone
 fi
-exit
+
 echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+exit
 
-
-### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
-echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
-writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
-iteration=1
-h=0
-minRmsFileName=min_rms_prev.txt
+### BUILD A FIRST COADD FROM SKY SUBTRACTION #### #I'm gonna skip this for now, and then think about it a bit more
+#echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
+#writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
+#iteration=1
+#h=0
+#minRmsFileName=min_rms_prev.txt
 noisesky_prephot=$BDIR/noise-sky_prephot
 noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
 imagesAreMasked=false
-if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
-if [ -f $noisesky_prephot ]; then
+if ! [ -d $noisesky_prephot ]; then 
+    mkdir $noisesky_prephot
+    echo done > $noisesky_prephotdone
+fi
+
+
+if [ -f $noisesky_prephotdone ]; then
 	echo -e "\n Coadd pre-photometry already done\n"
 else
 	computeSky $subskyFullGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
@@ -1303,6 +1296,7 @@ else
   exposuremapDir=$coaddDir/"$objectName"_exposureMap
   exposuremapdone=$coaddDir/done_exposureMap.txt
   computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+  echo done > $noisesky_prephotdone
 fi
 
 
@@ -1343,7 +1337,7 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $matchdir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
-
+exit
 
 
 # Creating histogram with the number of stars used for the calibratino of each frame

@@ -65,7 +65,7 @@ def writeBricksToFile(frame, bricks, outputFile):
             f.write(i + " ")
         f.write("\n")
 
-DECALS_BRICK_WIDTH_DEG = 15.5 / 60 
+#DECALS_BRICK_WIDTH_DEG = 15.5 / 60 
 
 framesDir               = sys.argv[1]
 framesDataHdu           = int(sys.argv[2])
