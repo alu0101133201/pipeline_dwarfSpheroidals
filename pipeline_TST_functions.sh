@@ -309,7 +309,7 @@ propagateKeyword() {
     keyWordToPropagate=$2
     out=$3
     h=$4
-    variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate)
+    variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate -x $h)
     eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h$h" 
 }
 export -f propagateKeyword
@@ -691,24 +691,52 @@ warpImage() {
     # Parameters for identifing our frame in the full grid
     currentIndex=$(basename $imageToSwarp .fits)
 
-    tmpFile1=$entiredir"/$currentIndex"_temp1.fits
+    
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
+    ##Multiple layers treatement: we want to preserve the multi-layer structure of the .fits file in the output, something swarp apparently doesn't like. 
+    #The idea here will be to create a new folder called astro-ima-single with the .fits and the .head broken into each ccd, in order to run swarp
+    tmpDir=$entiredir/tmp_$currentIndex
+    if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
+    for h in $(seq 1 $num_ccd); do
+        astfits $imageToSwarp --copy=$h -o $tmpDir/"$currentIndex"_ccd"$h".fits
+    done
+   
+    h=1
+    header=$astroimadir/"$currentIndex".head
+    awk -v h="$h" -v a="$currentIndex" -v dir="$tmpDir" '
+    /^HISTORY/ {
+        if (h > 1) close(output);
+        output = dir "/" a "_ccd" h ".head";
+        h++;
+    }
+    { print > output }
+    ' "$header.head"
     
 
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
-    exit
-    # Mask bad pixels
-    astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
-    astarithmetic $entiredir/"$currentIndex"_swarp1.fits -h0 $tmpFile1 -h1 0 eq nan where -o$frameFullGrid
+    for h in $(seq 1 $num_ccd); do
+        swarp -c $swarpcfg $tmpDir/"$currentIndex"_ccd"$h".fits -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $tmpDir/"$currentIndex"_swarp1_ccd"$h".fits -WEIGHTOUT_NAME $tmpDir/"$currentIndex"_swarp_w1_ccd"$h".fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    
+        # Mask bad pixels
+        tmpFile1=$tmpDir"/$currentIndex"_temp1_ccd"$h".fits
+        astarithmetic $tmpDir/"$currentIndex"_swarp_w1_ccd"$h".fits -h0 set-i i i 0 lt nan where -o$tmpFile1
+        astarithmetic $tmpDir/"$currentIndex"_swarp1_ccd"$h".fits -h0 $tmpFile1 -h1 0 eq nan where -o$tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits
 
-    regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameFullGrid 1)
-    read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
-    astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
-
-    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 
+        regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits 1)
+        read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
+        astcrop $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpDir/entirecamera_sg_"$currentIndex"_ccd"$h".fits --quiet
+        astfits $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits --copy=1 -o$frameFullGrid
+        astfits $tmpDir/entirecamera_sg_"$currentIndex"_ccd"$h".fits --copy=1 -o$entiredir/entirecamera_"$currentIndex".fits
+        propagateKeyword $imageToSwarp $gain $frameFullGrid $h 
+        propagateKeyword $imageToSwarp $gain $entiredir/entirecamera_"$currentIndex".fits $h
+    done
+    propagateKeyword $imageToSwarp $airMassKeyWord $frameFullGrid 0 
+    propagateKeyword $imageToSwarp $airMassKeyWord $entiredir/entirecamera_"$currentIndex".fits 0
+    propagateKeyword $imageToSwarp $dateHeaderKey $frameFullGrid 0 
+    propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 0
+    rm -rf $tmpDir 
 }
 export -f warpImage
 
@@ -902,20 +930,33 @@ subtractSkyForFrame() {
 
     if [ "$constantSky" = true ]; then
         i=$directoryWithSkyValues/"entirecamera_"$a.txt
-        me=$(awk 'NR=='1'{print $2}' $i)
-        astarithmetic $input -h1 $me - -o$output;
+        astfits $input --copy=0 --primaryimghdu -o $output
+        for h in $(seq 1 $num_ccd); do
+            temp_file=$directoryToStoreSkySubtracted/temp_$base
+            me=$(awk 'NR=='$h'{print $2}' $i)
+            astarithmetic $input -h$h $me - -o$temp_file
+            astfits $temp_file --copy=1 -o $output
+            rm $temp_file
+        done
     else
         i=$directoryWithSkyValues/"entirecamera_"$a"_poly.fits"
-        NAXIS1_image=$(gethead $input NAXIS1); NAXIS2_image=$(gethead $input NAXIS2)
-        NAXIS1_plane=$(gethead $i NAXIS1); NAXIS2_plane=$(gethead $i NAXIS2)
+        for h in $(seq 1 $num_ccd); do
+            temp_file=$directoryToStoreSkySubtracted/temp_$base
+            NAXIS1_image=$(gethead $input -x $h NAXIS1); NAXIS2_image=$(gethead $input -x $h NAXIS2)
+            NAXIS1_plane=$(gethead $i -x $h NAXIS1); NAXIS2_plane=$(gethead $i -x $h NAXIS2)
 
-        if [[ "$NAXIS1_image" == "$NAXIS1_plane" ]] && [[ "$NAXIS2_image" == "$NAXIS2_plane" ]]; then
-            astarithmetic $input -h1 $i -h1 - -o$output
-        else
-            python3 $pythonScriptsPath/moveSurfaceFitToFullGrid.py $input $i 1 $NAXIS1_image $NAXIS2_image $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
-            astarithmetic $input -h1 $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits" -h1 - -o$output
-            rm $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
-        fi
+            if [[ "$NAXIS1_image" == "$NAXIS1_plane" ]] && [[ "$NAXIS2_image" == "$NAXIS2_plane" ]]; then
+                astarithmetic $input -h$h $i -h$h - -o$temp_file
+                astfits $temp_file --copy=1 -o $output
+                rm $temp_file
+            else
+                python3 $pythonScriptsPath/moveSurfaceFitToFullGrid.py $input $i $h $NAXIS1_image $NAXIS2_image $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
+                astarithmetic $input -h$h $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits" -h1 - -o$temp_file
+                astfits $temp_file --copy=1 -o $output
+                rm $temp_file
+                rm $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
+            fi
+        done
     fi
 }
 export -f subtractSkyForFrame
@@ -1518,12 +1559,15 @@ prepareSurveyDataForPhotometricCalibration() {
     aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues
     performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $numberOfFWHMForPhotometry $survey
     
-    imagesHdu=1
-    brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
-    if [[ -f $brickDecalsAssociationFile ]]; then
-        rm $brickDecalsAssociationFile
-    fi
-    python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
+    ##Decision note: I'm gonna create multiple frame_bricks_association_ccd$h.txt for each ccd, i think it will be easier
+    for imagesHdu in $(seq 1 $num_ccd); do
+    
+        brickDecalsAssociationFile=$mosaicDir/frames_bricks_association_ccd"$imagesHdu".txt
+        if [[ -f $brickDecalsAssociationFile ]]; then
+            rm $brickDecalsAssociationFile
+        fi
+        python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
+    done
 }
 export -f prepareSurveyDataForPhotometricCalibration
 
@@ -1553,7 +1597,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     fi
     
     
-    
+    exit
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
     
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
@@ -1817,7 +1861,7 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize
-
+    exit
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfFWHMForPhotometry
@@ -2312,7 +2356,7 @@ generateCatalogueFromImage_sextractor(){
     #For panstarrs we need to use zp=25
    
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII  1>/dev/null 2>&1
-
+    exit
     awk '{ $6 = $6 / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
 
     # Headers to mimic the noisechisel format. Change between MacOS and Linux
