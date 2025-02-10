@@ -5,7 +5,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
-
+from astropy.io import fits
+import os
 import numpy as np
 
 def setMatplotlibConf():
@@ -46,7 +47,8 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
     ax.set_ylabel(ylabel, fontsize=30, labelpad=10)
     if(logScale): ax.set_yscale('log')
 
-def read_columns_from_file(file_path):
+def read_columns_from_file(file_path,h):
+    """
     try:
         data = np.loadtxt(file_path, comments='#')
         if (data.size == 0):
@@ -61,19 +63,36 @@ def read_columns_from_file(file_path):
     except Exception as e:
         print(f"Tried to load an empty file: {e}")
         return np.array([]), np.array([]), np.array([]), np.array([]), 
+    """
+    try:
+        #Data is in .cat and we want only the .fits
+        
+        data = fits.open(file_path)[h].data
+        
+        if (data.size == 0):
+            raise Exception("File: " + file_path + " is empty")
+        ra1=data['RA_CALIBRATED']
+        dec1=data['DEC_CALIBRATED']
+        ra2=data['RA_NONCALIBRATED']
+        dec2=data['DEC_NONCALIBRATED']
+        return ra1, dec1, ra2, dec2
+    except Exception as e:
+        print(f"Tried to load an empty file: {e}")
+        return np.array([]), np.array([]), np.array([]), np.array([]) 
+
 
 
 cataloguesDir = sys.argv[1]
 imageName     = sys.argv[2]
 pixelScale    = sys.argv[3]
-
+h             =int(sys.argv[4])
 raArrays = []
 decArrays = []
 
 count=0
 
 for i in glob.glob(cataloguesDir + "/*.cat"):
-    ra1, dec1, ra2, dec2 = read_columns_from_file(i)
+    ra1, dec1, ra2, dec2 = read_columns_from_file(i,h)
 
     raArrays.append(ra1-ra2)
     decArrays.append(dec1-dec2)

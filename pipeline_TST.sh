@@ -1218,7 +1218,7 @@ fi
 echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-exit
+
 
 ### BUILD A FIRST COADD FROM SKY SUBTRACTION #### #I'm gonna skip this for now, and then think about it a bit more
 #echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
@@ -1337,19 +1337,23 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $matchdir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
-exit
+
 
 
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 
-numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir/numOfStarsUsedForCalibrationHist.png
 numberOfStarsUsedInEachFrameDone=$diagnosis_and_badFilesDir/done_numOfStarsUsedForCalibrate.txt
 if [ -f $numberOfStarsUsedInEachFrameDone ]; then
   echo -e "\nHistogram with the number of stars used for calibrating each plot already done"
 else
-  python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot
+  for h in $(seq 1 $num_ccd); do
+    diagnosis_and_badFilesDir_ccd=$diagnosis_and_badFilesDir/CCD$h
+    if ! [ -d $diagnosis_and_badFilesDir_ccd ]; then mkdir $diagnosis_and_badFilesDir_ccd; fi
+    numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir_ccd/numOfStarsUsedForCalibrationHist.png
+    python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot $h
+  done
   echo done > $numberOfStarsUsedInEachFrameDone
 fi
 
@@ -1360,7 +1364,10 @@ badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir
+  for h in $(seq 1 $num_ccd); do
+    
+    python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir $h $airMassKeyWord $dateHeaderKey
+  done
   echo done > $badFilesWarningsDone
 fi
 
@@ -1371,7 +1378,9 @@ if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 else
   tmpDir=$noiseskyctedir
 fi
-python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir
+for h in $(seq 1 $num_ccd); do
+  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $h $dateHeaderKey
+done
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
@@ -1381,35 +1390,57 @@ applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
+##On the very this point we will need the match tables to have proper names because if not astropy will fail misearbly
+for a in $(seq 1 $totalNumberOfFrames); do
+  input_file=$matchdir/match-entirecamera_"$a".fits.cat
+  for h in $(seq 1 $num_ccd); do
+    tmp_file=$matchdir/match-entirecamera_"$a"_ccd"$h".fits
+    asttable $input_file -h$h --colmetadata=1,RA_CALIBRATED,deg,"Right ascension Survey" --colmetadata=2,DEC_CALIBRATED,deg,"Declination Survey" --colmetadata=3,RA_NONCALIBRATED,deg,"Right ascension data being reduced" --colmetadata=4,DEC_NONCALIBRATED,deg,"Declination data being reduced" --colmetadata=5,MAGNITUDE_CALIBRATED,mag,"Magnitude in Survey" --colmetadata=6,SUM_CALIBRATED,none,"Sum in Survey" --colmetadata=7,MAGNITUDE_NONCALIBRATED,mag,"Magnitude in data being reduced" --colmetadata=8,SUM_NONCALIBRATED,none,"Sum in data being reduced" -o$tmp_file
+    astfits $tmp_file --copy=1 -o$matchdir/match-entirecamera_"$a".fits
+    rm $tmp_file
+  done
+  rm $input_file
+  mv $matchdir/match-entirecamera_"$a".fits $input_file
+done
 
 # Astrometry
 astrometryPlotName=$diagnosis_and_badFilesDir/astrometry.png
 if [ -f $astrometryPlotName ]; then
     echo -e "\nAstrometry diagnosis plot already done\n"
 else
-  produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
+  for h in $(seq 1 $num_ccd); do
+    astrometryPlotName=$diagnosis_and_badFilesDir/CCD"$h"/astrometry.png
+    produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale $h
+  done
 fi
 
 # Calibration
-calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
-if [ -f $calibrationPlotName ]; then
+calibrationPlotName=calibrationPlot.png
+calibrationPlot_done=$diagnosis_and_badFilesDir/done_calibrationPlot.txt
+if [ -f $calibrationPlot_done ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-photometry_perBrick_it1 \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir $surveyForPhotometry
+    echo done > $calibrationPlot_done
 fi
-
+exit
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
-halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
-halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
-if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
+
+halfMaxRadiusVsMagnitudeOurDataDone=$diagnosis_and_badFilesDir/done_halfMaxRadVsMagPlots.txt
 if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
     echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
 else
-  
-  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30
+  for h in $(seq 1 $num_ccd); do
+    diagnosis_and_badFilesDir_ccd=$diagnosis_and_badFilesDir/CCD"$h"
+    halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir_ccd/halfMaxRadVsMagPlots_ourData
+    if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
+
+    produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30
+  done
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
+
 fi
 
 exit 0

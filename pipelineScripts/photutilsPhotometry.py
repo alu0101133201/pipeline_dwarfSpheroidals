@@ -19,19 +19,27 @@ def getImageData(image, hduNumber):
     hdulist.close()
     return(imageData_original, np.shape(imageData_original), wcs)
 
-def getCoordinatesFromCatalogue(catalogue, raColNumber, decColNumber):
+def getCoordinatesFromCatalogue(catalogue, raColNumber, decColNumber,hduNumber,mode):
     ra = []
     dec = []
+    if catalogue.endswith(".txt"):
+        with open(catalogue, 'r') as file:
+            for line in file:
+                splittedLine = line.split()
+                if (splittedLine[0] == "#"):
+                    continue
+                ra.append(float(splittedLine[raColNumber]))
+                dec.append(float(splittedLine[decColNumber]))
 
-    with open(catalogue, 'r') as file:
-        for line in file:
-            splittedLine = line.split()
-            if (splittedLine[0] == "#"):
-                continue
-            ra.append(float(splittedLine[raColNumber]))
-            dec.append(float(splittedLine[decColNumber]))
-
-    return (np.array(ra), np.array(dec))
+        return (np.array(ra), np.array(dec))
+    elif (catalogue.endswith(".fits"))or(catalogue.endswith(".cat")):
+        table=fits.open(catalogue)[hduNumber].data
+        if mode=='Image':
+            x=table['X']; y=table['Y']
+            return(x,y)
+        elif mode=='WCS':
+            ra=table['RA']; dec=table['DEC']
+            return(ra,dec)
 
 def writeDataToCatalogue(outputFile, ids, x, y, ra, dec, mag, sums):
     with open(outputFile, 'w') as file:
@@ -62,8 +70,8 @@ columnWithYCoordWCS = int(sys.argv[10])
 
 imageData, shape, wcs = getImageData(image, dataHdu)
 
-x, y = getCoordinatesFromCatalogue(catalogue, columnWithXCoordPx, columnWithYCoordPx)
-ra, dec = getCoordinatesFromCatalogue(catalogue, columnWithXCoordWCS, columnWithYCoordWCS)
+x, y = getCoordinatesFromCatalogue(catalogue, columnWithXCoordPx, columnWithYCoordPx,dataHdu,'Image')
+ra, dec = getCoordinatesFromCatalogue(catalogue, columnWithXCoordWCS, columnWithYCoordWCS,dataHdu,'WCS')
 
 sigmaClip = SigmaClip(sigma=3.0, maxiters=3)
 innerAnnulus = 3*aperture_radius_px

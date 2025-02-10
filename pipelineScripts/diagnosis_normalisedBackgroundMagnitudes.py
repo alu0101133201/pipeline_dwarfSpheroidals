@@ -23,6 +23,7 @@ from astropy.stats import sigma_clipped_stats
 
 from datetime import datetime
 import time
+from astropy.time import Time
 
 
 def setMatplotlibConf():
@@ -94,16 +95,16 @@ def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     airMass = obtainKeyWordFromFits(fitsFilePath, airMassKeyWord)
     return(airMass)
 
-def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord):
+def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord,h):
     backgroundValue = -1
 
     # First we read the background Value
     with open(currentFile, 'r') as f:
         lines = f.readlines()
-        if( len(lines) != 1):
-            raise Exception("File with the background estimation contains more that 1 line. Expected 1 line got " + str(len(lines)))
+        if( len(lines) < h):
+            raise Exception("File with the background estimation contains less lines than number of extension. Expected at least" + str(h))
         
-        splittedLine = lines[0].strip().split()
+        splittedLine = lines[(h-1)].strip().split()
         numberOfFields = len(splittedLine)
 
         if (numberOfFields == 5):
@@ -121,13 +122,13 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         return(float('nan'), float('nan')) 
     return(backgroundValue / airmass)
     
-def retrieveCalibrationFactors(currentFile):
+def retrieveCalibrationFactors(currentFile,h):
     with open(currentFile, 'r') as f:
         lines = f.readlines()
-        if( len(lines) != 1):
-            raise Exception("File with calibration factor contains more that 1 line. Expected 1 line got " + str(len(lines)))
-        
-        splittedLine = lines[0].strip().split()
+        if( len(lines) < h):
+            raise Exception("File with the background estimation contains less lines than number of extension. Expected at least" + str(h))
+          
+        splittedLine = lines[(h-1)].strip().split()
         numberOfFields = len(splittedLine)
 
         if (numberOfFields == 2):
@@ -174,7 +175,7 @@ def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueInd
     plt.savefig(imageName)
     return()
 
-def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName, folderWithFramesWithAirmasses):
+def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName, folderWithFramesWithAirmasses,airKey,dateKey):
     airMass  = []
     time     = []
     cfactors = []
@@ -183,9 +184,12 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundVal
         match=re.search(r"_(\d+).",i[0])
         frame = match.group(1)
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateKey)
+        air=obtainKeyWordFromFits(file,airKey)
+        if dateKey=="DATE-OBS":
+            date_ok=datetime.fromisoformat(date)
+        elif dateKey=="MJD-OBS":
+            date_ok=Time(date,format='mjd').to_datetime() 
         cfactors.append(i[1])
         airMass.append(air)
         time.append(date_ok)
@@ -303,7 +307,7 @@ def getIndicesOfRejectedFrames(normalisedBackgroundValuesArray, rejectedFrames):
     return(indices)
 
 
-HDU_TO_FIND_AIRMASS = 1
+HDU_TO_FIND_AIRMASS = 0
 
 folderWithSkyEstimations      = sys.argv[1]
 folderWithFramesWithAirmasses = sys.argv[2] # The airmasses are in the header of the fits files that are in this folder
@@ -311,8 +315,10 @@ airMassKeyWord                = sys.argv[3]
 folderWithCalibrationFactors  = sys.argv[4]
 arcsecPerPx                   = float(sys.argv[5])
 destinationFolder             = sys.argv[6]
+h                             = int(sys.argv[7])
 
-
+dateKey                       = sys.argv[8]
+destinationFolder_ccd = destinationFolder+"/CCD"+str(h)
 setMatplotlibConf()
 
 
@@ -329,17 +335,17 @@ with open(destinationFolder + "/identifiedBadFrames_astrometry.txt", 'r') as f:
         rejectedFrames_astrometry.append(line.strip())
 
 rejectedFrames_backgroundValue = []
-with open(destinationFolder + "/identifiedBadFrames_backgroundValue.txt", 'r') as f:
+with open(destinationFolder_ccd + "/identifiedBadFrames_backgroundValue.txt", 'r') as f:
     for line in f:
         rejectedFrames_backgroundValue.append(line.strip())
  
 rejectedFrames_backgroundStd = []
-with open(destinationFolder + "/identifiedBadFrames_backgroundStd.txt", 'r') as f:
+with open(destinationFolder_ccd + "/identifiedBadFrames_backgroundStd.txt", 'r') as f:
     for line in f:
         rejectedFrames_backgroundStd.append(line.strip())
 
 rejectedFrames_FWHM = []
-with open(destinationFolder + "/identifiedBadFrames_fwhm.txt", 'r') as f:
+with open(destinationFolder_ccd + "/identifiedBadFrames_fwhm.txt", 'r') as f:
     for line in f:
         rejectedFrames_FWHM.append(line.strip())
 
@@ -349,14 +355,14 @@ normalisedBackgroundValues = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
-    currentValue = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+    currentValue = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord,h)
     normalisedBackgroundValues.append([currentFile.split('/')[-1], currentValue])
 
 
 # 2.- Obtain the calibration factors
 totalCalibrationFactors = []
 for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt"):
-    calibrationFactor = retrieveCalibrationFactors(currentFile)
+    calibrationFactor = retrieveCalibrationFactors(currentFile,h)
     totalCalibrationFactors.append([currentFile.split('/')[-1], calibrationFactor])
 
 
@@ -371,11 +377,11 @@ valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroun
 magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
 
 saveHistogram(np.array(magnitudesPerArcSecSq), rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
-                "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
+                "Distribution of NORMALISED background magnitudes", destinationFolder_ccd + "/magnitudeHist.png")
 
 saveScatterFactors(totalCalibrationFactors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
-                "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses)
+                "Evolution of calibration factors",destinationFolder_ccd + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses,airMassKeyWord,dateKey)
 
 x = [float(i) for i in valuesCalibrated]
 scatterPlotCountsVsMagnitudes(x, magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
-                            destinationFolder + "/countsVsMagnitudes.png")
+                            destinationFolder_ccd + "/countsVsMagnitudes.png")

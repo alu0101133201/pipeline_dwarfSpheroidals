@@ -60,20 +60,23 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def extractFactorsFromFile(file):
+def extractFactorsFromFile(file,h):
     starsUsed = []
     with open(file, 'r') as f:
         for line in f:
             splittedLine = line.split()
-            starsUsed.append(float(splittedLine[-1]))
+            if int(splittedLine[-3])==h:
+                starsUsed.append(float(splittedLine[-1]))
     return(np.array(starsUsed))
 
 fileWithFactors = sys.argv[1]
 outputFileName  = sys.argv[2]
+h               = int(sys.argv[3])
+
 
 setMatplotlibConf()
 
-starsUsed = extractFactorsFromFile(fileWithFactors)
+starsUsed = extractFactorsFromFile(fileWithFactors,h)
 myBins = calculateFreedmanBins(starsUsed)
 
 
