@@ -7,7 +7,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
-
+from astropy.io import fits
 import numpy as np
 
 def setMatplotlibConf():
@@ -47,13 +47,18 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
     ax.set_ylabel(ylabel, fontsize=30, labelpad=10)
     if(logScale): ax.set_yscale('log')
 
-def readHalfMaxRadAndMag(file, halfMaxRadCol, magnitudeColumn):
-    data = np.loadtxt(file, comments='#', usecols=(halfMaxRadCol, magnitudeColumn))
+def readHalfMaxRadAndMag(file, halfMaxRadCol, magnitudeColumn,h):
+    if file.endswith(".txt"):
+        data = np.loadtxt(file, comments='#', usecols=(halfMaxRadCol, magnitudeColumn))
     
-    half_max_radius = data[:, 0]
-    magnitude = data[:, 1]
+        half_max_radius = data[:, 0]
+        magnitude = data[:, 1]
     
-    return half_max_radius, magnitude
+        return half_max_radius, magnitude
+    elif file.endswith(".cat"):
+        data = fits.open(file)[h].data
+        return data['HALF_MAX_RADIUS'],data['MAGNITUDE']
+
 
 wholeTableFile   = sys.argv[1]
 matchedtableFile = sys.argv[2]
@@ -65,14 +70,14 @@ plotXLowerLimit  = float(sys.argv[7])
 plotXHigherLimit = float(sys.argv[8])
 plotYLowerLimit  = float(sys.argv[9])
 plotYHigherLimit = float(sys.argv[10])
-
+h                = int(sys.argv[11])
 
 
 setMatplotlibConf()
-halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 5, 4)
-halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 4, 5)
+halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 5, 4,h)
+halfMaxRadMatched, magnitudeMatched = readHalfMaxRadAndMag(matchedtableFile, 4, 5,h)
 
-x, y =  readHalfMaxRadAndMag(matchedtableFile, 0, 1)
+x, y =  readHalfMaxRadAndMag(matchedtableFile, 0, 1,h)
 
 fig, ax = plt.subplots(1, 1, figsize=(12, 12))
 plt.tight_layout(pad=7.0)
