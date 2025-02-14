@@ -700,7 +700,7 @@ oneNightPreProcessing() {
   if [ -f $badFilesWarningsDone ]; then
       echo -e "\n\tFrames with strange background value and std values already cleaned for night $currentNight\n"
   else
-    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth NO
     for h in $(seq 1 $num_ccd); do
       diagnosis_and_badFilesDir_ccd=$diagnosis_and_badFilesDir/CCD$h
       python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir_ccd $badFilesWarningsFile $numberOfStdForBadFrames $h
@@ -1069,7 +1069,6 @@ else
   echo done > $astroimadone
 fi
 
-
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -1099,7 +1098,7 @@ if ! [ -d $scampdir ]; then mkdir $scampdir; fi
 if ! [ -d $scampres ]; then mkdir $scampres; fi
 
 if [ -f $scampdone ]; then
-    echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
+    echo -e "\n\tSex catalogs and scamp are already done\n"
 else
   frameNames=()
   for a in $(seq 1 $totalNumberOfFrames); do
@@ -1110,10 +1109,15 @@ else
     echo -e "\tSExtractor + scamp iteration $i"
 
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold 
-    scamp -c $scampcfg $(ls -v $sexdir/*.cat)
-    cp $sexdir/*.head $astroimadir
-    mv *.pdf $scampres/
-    mv scamp.xml $scampdir
+    ##Let's make independent scamp 
+    for frame in $(ls -v $sexdir/*.cat); do
+      number=$(basename ${frame%.cat})
+      scamp -c $scampcfg $frame
+      mv $sexdir/"$number".head $astroimadir
+      if ! [ -d $scampres/frame"$number" ]; then mkdir $scampres/frame"$number"; fi
+      mv *.pdf $scampres/frame"$number"/
+      mv scamp.xml $scampdir/scamp_"$number".xml
+    done
   done
   echo done > $scampdone
 fi
@@ -1149,6 +1153,7 @@ else
 fi
 
 
+
 # Checking and removing bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
@@ -1157,7 +1162,7 @@ if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; f
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tBad astrometrised frames warning already done\n"
 else
-  scampXMLFilePath=$scampdir/scamp.xml
+  scampXMLFilePath=$scampdir
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile
   echo done > $badFilesWarningsDone
 fi
@@ -1182,14 +1187,14 @@ imagesAreMasked=false
 ringDir=$BDIR/ring
 
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
 noiseskyctedone=$noiseskyctedir/done_"$filter".txt
 if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"
-  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
 fi
 
 # Checking and removing bad frames based on the background value ------
@@ -1231,17 +1236,23 @@ noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
 imagesAreMasked=false
 if ! [ -d $noisesky_prephot ]; then 
     mkdir $noisesky_prephot
-    echo done > $noisesky_prephotdone
+    #echo done > $noisesky_prephotdone
 fi
 
 
 if [ -f $noisesky_prephotdone ]; then
-	echo -e "\n Coadd pre-photometry already done\n"
+	echo -e "\n Sky for Coadd pre-photometry already done\n"
 else
-	computeSky $subskyFullGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
-
-	python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration min_rms_prev.txt
-
+	computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
+  echo done > $noisesky_prephotdone
+fi
+iteration=1
+coaddprephot_done=$BDIR/coadd_prephot_done.txt
+if [ -f $coaddprephot_done ]; then
+	echo -e "\n Sky for Coadd pre-photometry already done\n"
+else
+  python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noisesky_prephot $DIR $iteration min_rms_prev.txt
+  
 	#Compute weights
 	wdir=$BDIR/weight-dir-prephot
 	wdone=$wdir/done.txt
@@ -1250,9 +1261,9 @@ else
 	wonlydir=$BDIR/only-w-dir-prephot
 	wonlydone=$wonlydir/done.txt
 	if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-
+  minRmsFileName=min_rms_prev.txt
 	computeWeights $wdir $wdone $wonlydir $wonlydone $subskyFullGrid_dir $noisesky_prephot $iteration $minRmsFileName
-
+  
 	##Mask the outliers
 	sigmaForStdSigclip=2
 	clippingdir=$BDIR/clipping-outliers-prephot
@@ -1276,16 +1287,16 @@ else
   echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+  #removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+  #removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
 
   rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
-  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
-  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+  #removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+  #removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
 
   rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
-  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+  #removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+  #removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
 
 	##Make the coadd
 	coaddDir=$BDIR/coadds-prephot
@@ -1295,8 +1306,10 @@ else
 
   exposuremapDir=$coaddDir/"$objectName"_exposureMap
   exposuremapdone=$coaddDir/done_exposureMap.txt
-  computeExposureMap $framesDir $exposuremapDir $exposuremapdone
-  echo done > $noisesky_prephotdone
+  #computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+  echo done > $coaddprephot_done
+  #Remove files not needed
+  rm $BDIR/*w*prephot/*.fits
 fi
 
 
@@ -1305,7 +1318,7 @@ echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
 ### PARAMETERS ###
-toleranceForMatching=3 #arcsec
+toleranceForMatching=2 #arcsec
 sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
 export sigmaForPLRegion
@@ -1424,7 +1437,7 @@ else
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir $surveyForPhotometry
     echo done > $calibrationPlot_done
 fi
-exit
+
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
 
@@ -1443,7 +1456,7 @@ else
 
 fi
 
-exit 0
+
 
 # ---------------------------------------------------
 
@@ -1452,13 +1465,13 @@ echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
 
 
 # Store the minimum standard deviation of the frames in order to compute the weights
-h=0
+
 minRmsFileName=min_rms_it1.txt
-python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration min_rms_it1.txt
+python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noiseskydir $DIR $iteration min_rms_it1.txt
 
 
 ### Calculate the weights for the images based on the minimum rms ###
@@ -1507,20 +1520,20 @@ if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
 
 rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
 
 rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
 
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
 
 
 echo -e "\n·Building coadd"
@@ -1543,9 +1556,12 @@ else
   #We assume that if this works for this iteration, then the next one will need at least same parameters
   tileSize=$((tileSize - 5))
   noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
+                    --minskyfrac=0.9 \
+                     --meanmedqdiff=0.01 \
+                     --snthresh=5.2 \
+                     --detgrowquant=0.7 \
+                     --detgrowmaxholesize=1000 \
+                     --rawoutput"
   astnoisechisel $coaddName $noisechisel_param  -o $maskName
 fi
 if [ -f $maskName ]; then
@@ -1554,9 +1570,12 @@ else
   #We assume that if this works for this iteration, then the next one will need at least same parameters
   tileSize=$((tileSize - 5))
   noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
+                    --minskyfrac=0.9 \
+                     --meanmedqdiff=0.01 \
+                     --snthresh=5.2 \
+                     --detgrowquant=0.7 \
+                     --detgrowmaxholesize=1000 \
+                     --rawoutput"
   astnoisechisel $coaddName $noisechisel_param  -o $maskName
 fi
 
@@ -1573,7 +1592,7 @@ else
     surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
-times=($(getInitialMidAndFinalFrameTimes $INDIR))
+times=($(getInitialMidAndFinalFrameTimes $INDIR $dateHeaderKey))
 initialTime=$( date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
 meanTime=$( date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
 finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
@@ -1605,7 +1624,7 @@ if [ -f $halfMaxRadForCoaddName ]; then
 else
   produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1" 100
 fi
-
+exit
 writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
@@ -1779,7 +1798,7 @@ subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 # compute sky with frames masked with global mask
 imagesAreMasked=true
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
@@ -1804,7 +1823,7 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName

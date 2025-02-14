@@ -113,6 +113,7 @@ def plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1Total
 
     ax.legend(fontsize=22)
     plt.savefig(imageName)
+    plt.close('fig')
 
 setMatplotlibConf()
 

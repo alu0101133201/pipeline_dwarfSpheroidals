@@ -132,6 +132,7 @@ outputConfigurationVariablesInformation() {
         "·Number of CCDs of the camers:$num_ccd"
         "·Presence of overscan:$overscan"
         "·Keyword of the illuminated section:$trimsecKey"
+        "·Rotation of the raw camera mosaic to the WCS system in DS9:$rotation_ccd"
         " "
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
@@ -220,6 +221,7 @@ checkIfAllVariablesAreSet() {
                 num_ccd \
                 overscan \
                 trimsecKey \
+                rotation_ccd \
                 lowestScaleForIndex \
                 highestScaleForIndex \ 
                 solve_field_L_Param \
@@ -270,14 +272,25 @@ export -f maskImages
 
 getInitialMidAndFinalFrameTimes() {
   directoryWithNights=$1
-
+  dateKey=$2
   declare -a date_obs_array
   
   while IFS= read -r -d '' file; do
-    currentDateObs=$( gethead $file DATE-OBS)
+    currentDateObs=$( gethead $file $dateKey)
 
     if [[ -n "$currentDateObs" ]]; then
-        unixTime=$( date -d "$currentDateObs" +"%s" )
+        if [[ $dateKey == "MJD-OBS" ]]; then
+          unixTime=$(astarithmetic $currentDateObs 40587 - 86400 x -q)
+          unixTime=$(printf "%.0f" "$unixTimeInSeconds")
+          
+	    else
+	        ## MACOS does not support -d in date, so it is better to use coreutils:gdata
+	        if [[ $OSTYPE == 'darwin'* ]]; then
+	        	unixTime=$(gdate -d "$currentDateObs" +"%s")
+	        else
+	        	unixTime=$(date -d "$currentDateObs" +"%s")
+	        fi
+        fi
         date_obs_array+=("$unixTime")
     fi
   done < <(find "$directoryWithNights" -type f -name "*.fits" -print0)
@@ -692,51 +705,76 @@ warpImage() {
     currentIndex=$(basename $imageToSwarp .fits)
 
     
-    frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
+    
 
     ##Multiple layers treatement: we want to preserve the multi-layer structure of the .fits file in the output, something swarp apparently doesn't like. 
     #The idea here will be to create a new folder called astro-ima-single with the .fits and the .head broken into each ccd, in order to run swarp
-    tmpDir=$entiredir/tmp_$currentIndex
-    if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
-    for h in $(seq 1 $num_ccd); do
-        astfits $imageToSwarp --copy=$h -o $tmpDir/"$currentIndex"_ccd"$h".fits
-    done
+    
+    #if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
+    #for h in $(seq 1 $num_ccd); do
+    #    astfits $imageToSwarp --copy=$h -o $tmpDir/"$currentIndex"_ccd"$h".fits
+    #done
    
-    h=1
-    header=$astroimadir/"$currentIndex".head
-    awk -v h="$h" -v a="$currentIndex" -v dir="$tmpDir" '
-    /^HISTORY/ {
-        if (h > 1) close(output);
-        output = dir "/" a "_ccd" h ".head";
-        h++;
-    }
-    { print > output }
-    ' "$header.head"
+    #h=1
+    #header=$astroimadir/"$currentIndex".head
+    #awk -v h="$h" -v a="$currentIndex" -v dir="$tmpDir" '
+    #/^HISTORY/ {
+    #    if (h > 1) close(output);
+    #    output = dir "/" a "_ccd" h ".head";
+    #    h++;
+    #}
+    #{ print > output }
+    #' "$header.head"
     
 
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    for h in $(seq 1 $num_ccd); do
-        swarp -c $swarpcfg $tmpDir/"$currentIndex"_ccd"$h".fits -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $tmpDir/"$currentIndex"_swarp1_ccd"$h".fits -WEIGHTOUT_NAME $tmpDir/"$currentIndex"_swarp_w1_ccd"$h".fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
-    
-        # Mask bad pixels
-        tmpFile1=$tmpDir"/$currentIndex"_temp1_ccd"$h".fits
-        astarithmetic $tmpDir/"$currentIndex"_swarp_w1_ccd"$h".fits -h0 set-i i i 0 lt nan where -o$tmpFile1
-        astarithmetic $tmpDir/"$currentIndex"_swarp1_ccd"$h".fits -h0 $tmpFile1 -h1 0 eq nan where -o$tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits
+    #for h in $(seq 1 $num_ccd); do
 
-        regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits 1)
-        read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
-        astcrop $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpDir/entirecamera_sg_"$currentIndex"_ccd"$h".fits --quiet
-        astfits $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits --copy=1 -o$frameFullGrid
-        astfits $tmpDir/entirecamera_sg_"$currentIndex"_ccd"$h".fits --copy=1 -o$entiredir/entirecamera_"$currentIndex".fits
+    frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
+    frameSmallGrid=$entiredir/entirecamera_$currentIndex.fits
+    # Resample into the final grid
+    # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
+    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
+    
+    # Mask bad pixels
+
+    ##Temporary files are of the tipe $currentIndex.000$h.resamp(.weight).fits
+    for h in $(seq 1 $num_ccd); do
+        tmpFile1=$entiredir/"$currentIndex"_ccd"$h"_temp.fits
+        tmpFile2=$entiredir/"$currentIndex"_ccd"$h"_temp2.fits
+        tmpFile3=$entireDir_fullGrid/"$currentIndex"_ccd"$h"_temp.fits
+        
+        astarithmetic "$currentIndex".000"$h".resamp.weight.fits -h0 set-i i i 0 lt nan where -o $tmpFile1
+        astarithmetic "$currentIndex".000"$h".resamp.fits -h0 $tmpFile1 -h1 0 eq nan where -o $tmpFile2
+        astfits $tmpFile2 --copy=1 -o $frameSmallGrid
+        astcrop $tmpFile2 --mode=wcs --center=$ra,$dec --widthinpix --width=$coaddSizePx,$coaddSizePx --zeroisnotblank -o $tmpFile3
+        astfits $tmpFile3 --copy=1 -o $frameFullGrid
+        
+        rm $tmpFile1 $tmpFile2 $tmpFile3  "$currentIndex".000"$h"*.fits
         propagateKeyword $imageToSwarp $gain $frameFullGrid $h 
-        propagateKeyword $imageToSwarp $gain $entiredir/entirecamera_"$currentIndex".fits $h
+        propagateKeyword $imageToSwarp $gain $frameSmallGrid $h
     done
     propagateKeyword $imageToSwarp $airMassKeyWord $frameFullGrid 0 
-    propagateKeyword $imageToSwarp $airMassKeyWord $entiredir/entirecamera_"$currentIndex".fits 0
+    propagateKeyword $imageToSwarp $airMassKeyWord $frameSmallGrid 0
     propagateKeyword $imageToSwarp $dateHeaderKey $frameFullGrid 0 
-    propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 0
-    rm -rf $tmpDir 
+    propagateKeyword $imageToSwarp $dateHeaderKey $frameSmallGrid 0
+    #Swarp temporary files are named as
+        # Mask bad pixels
+        #tmpFile1=$tmpDir"/$currentIndex"_temp1_ccd"$h".fits
+        #astarithmetic $tmpDir/"$currentIndex"_swarp_w1_ccd"$h".fits -h0 set-i i i 0 lt nan where -o$tmpFile1
+        #astarithmetic $tmpDir/"$currentIndex"_swarp1_ccd"$h".fits -h0 $tmpFile1 -h1 0 eq nan where -o$tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits
+
+        #regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits 1)
+        #read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
+        #astcrop $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpDir/entirecamera_sg_"$currentIndex"_ccd"$h".fits --quiet
+        #astfits $tmpDir/entirecamera_fg_"$currentIndex"_ccd"$h".fits --copy=1 -o$frameFullGrid
+        #astfits $tmpDir/entirecamera_sg_"$currentIndex"_ccd"$h".fits --copy=1 -o$entiredir/entirecamera_"$currentIndex".fits
+        #propagateKeyword $imageToSwarp $gain $frameFullGrid $h 
+        #propagateKeyword $imageToSwarp $gain $entiredir/entirecamera_"$currentIndex".fits $h
+    #done
+    
+    rm -rf $entiredir/"$currentIndex"_swarp*.fits
 }
 export -f warpImage
 
@@ -775,7 +813,7 @@ computeSkyForFrame(){
     keyWordValueForFirstRing=${12}
     keyWordValueForSecondRing=${13}
     ringWidth=${14}
-
+    swarped=${15}
     i=$entiredir/$1
 
     # ****** Decision note *******
@@ -821,19 +859,49 @@ computeSkyForFrame(){
             #tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
             tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
             tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
-            #naxis1=$(fitsheader $imageToUse | grep "NAXIS1" | awk '{print $3}')
-            #naxis2=$(fitsheader $imageToUse | grep "NAXIS2" | awk '{print $3}')
+            ##We get the reference from the first non rotated ccd
+            
             #half_naxis1=$(echo "$naxis1 / 2" | bc)
             #half_naxis2=$(echo "$naxis2 / 2" | bc)
 
             #ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
             #echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
             for h in $(seq 1 $num_ccd); do
-                astmkprof --background=$imageToUse  -h$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $DIR/ring_ccd"$h".txt
+                if [ "$swarped" = "YES" ]; then
+                
+                    x_ring=$( awk ' {print $2}' $ringDir/ring_ccd"$h".txt )
+                    y_ring=$( awk ' {print $3}' $ringDir/ring_ccd"$h".txt )
+                    tmpRingDefinition=$(echo $base | sed 's/.fits/_ring_ccd.txt/')
+                    ringRadius=$( awk '{print $5}' $ringDir/ring_ccd"$h".txt )
+                    ##We first check if a rotation is needed by comparing naxis of the ring (which is already created) and naxis of the frame
+                    naxis1=$(fitsheader $imageToUse -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2=$(fitsheader $imageToUse -e $h | grep "NAXIS2" | awk '{print $3'})
+                    naxis1_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS2" | awk '{print $3'})
+
+                    #If the axis on ring and on image keeps the comparison, we don't need to do anything
+                    if [[ $naxis1 -gt $naxis2 && $naxis1_r -gt $naxis2_r ]] || [[ $naxis1 -lt $naxis2 && $naxis1_r -lt $naxis2_r ]]; then
+                        echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                    else
+                        
+                        eval $(python3 $pythonScriptsPath/applyRotation.py $rotation_ccd $x_ring $y_ring $naxis2)
+                        
+                        echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                   
+                        
+                    fi
+             
+                    astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
+                    
+                else
+                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $DIR/ring_ccd"$h".txt
+                fi
                 astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
                 rm -f $ringDir/$tmpRingFits_single
+                rm -f $ringDir/$tmpRingDefinition
             
             done
+            if [ "$swarped" = "YES" ]; then rm $ringDir/$tmpRingDefinition; fi
             #Since getMedianValueInsideRing is modified to treat with a multiple layer ring we are forced to split the loops :(
             for h in $(seq 1 $num_ccd); do
                 me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
@@ -901,6 +969,7 @@ computeSky() {
     keyWordValueForFirstRing=${12}
     keyWordValueForSecondRing=${13}
     ringWidth=${14}
+    swarped=${15}
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -911,7 +980,7 @@ computeSky() {
             base=$( basename $a )
             framesToComputeSky+=("$base")
         done
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $swarped
         echo done > $noiseskydone
     fi
 }
@@ -1148,9 +1217,7 @@ solveField() {
         layer_temp=$astroimadir/layer"$h"_$base
         solve-field $image_temp --no-plots \
         -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
-         --radius=3. \
-        --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify -E 1 -c 0.01 \
-        --odds-to-solve 1e9 \
+        --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
         --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
         -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$layer_temp ;
         astfits $layer_temp --copy=1 -o $astroimadir/$base
@@ -1622,9 +1689,9 @@ selectStarsAndRangeForCalibrateSingleFrame(){
             maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
             echo "$s $std $minr $maxr" >> $mycatdir/range_"$a".txt
             asttable $outputCatalogue -h$h --range=HALF_MAX_RADIUS,$minr,$maxr -o $mycatdir/selected_"$a"_ccd"$h"_automatic.fits
-            astfits $mycatdir/selected_"$a"_ccd"$h"_automatic.fits --copy=1 -o$mycatdir/selected_"$a"_automatic.fits
+            astfits $mycatdir/selected_"$a"_ccd"$h"_automatic.fits --copy=1 -o$mycatdir/selected_"$a"_automatic.fits.cat
             rm $mycatdir/selected_"$a"_ccd"$h"_automatic.fits
-            mv $mycatdir/selected_"$a"_automatic.fits $mycatdir/selected_"$a"_automatic.fits.cat
+            #mv $mycatdir/selected_"$a"_automatic.fits #$mycatdir/selected_"$a"_automatic.fits.cat
         done 
     fi
 }
@@ -1917,7 +1984,7 @@ computeCalibrationFactors() {
      
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $decalsDataCatalogueDir $matchdir 
-
+    
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
     
@@ -1974,33 +2041,38 @@ computeWeightForFrame() {
     iteration=$6
     minRmsFileName=$7
 
-    h=0
+    
     base=entirecamera_"$a".fits
     basetmp=entirecamera_"$a"_tmp.fits
 
     f=$photCorrDir/$base
     rms_min=$(awk 'NR=='1'{print $1}' $BDIR/$minRmsFileName)
-    rms_f=$(awk 'NR=='1'{print $3}' $noiseskydir/entirecamera_$a.txt)
+    for h in $(seq 1 $num_ccd); do
+        rms_f=$(awk 'NR=='$h'{print $3}' $noiseskydir/entirecamera_$a.txt)
 
     # ****** Decision note *******
     # The weights are obtained as the quadratic ratio between the best sigma and the current sigma
     # This weights produce the optimal combinantion for a gaussian distribution 
     # Ref: https://ned.ipac.caltech.edu/level5/Leo/Stats4_5.html
-    weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) 
-    echo "$weight" > $wdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h".txt      
-
+        weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / --quiet) 
+        echo "$weight" >> $wdir/"$objectName"_Decals-"$filter"_"$a".txt      
+        
     # multiply each image for its weight
-    wixi_im_tmp=$wdir/$basetmp              # frame x weight
-    w_im_tmp=$wonlydir/$basetmp             # only weight
-    wixi_im=$wdir/$base                     # frame x weight
-    w_im=$wonlydir/$base                    # only weight
+        wixi_im_tmp=$wdir/$basetmp              # frame x weight
+        w_im_tmp=$wonlydir/$basetmp             # only weight
+        wixi_im=$wdir/ccd"$h"_$base                     # frame x weight
+        w_im=$wonlydir/ccd"$h"_$base                    # only weight
 
-    astarithmetic $f -h1 $weight x --type=float32 -o$wixi_im_tmp 
-    astarithmetic $wixi_im_tmp -h1 $f -h1 / --type=float32 -o$w_im_tmp
-    astarithmetic $wixi_im_tmp float32 -g1 -o$wixi_im
-    astarithmetic $w_im_tmp float32 -g1 -o$w_im
-    rm -f $wixi_im_tmp
-    rm -f $w_im_tmp
+        astarithmetic $f -h$h $weight x --type=float32 -o$wixi_im_tmp 
+        astarithmetic $wixi_im_tmp -h1 $f -h$h / --type=float32 -o$w_im_tmp
+        astarithmetic $wixi_im_tmp float32 -g1 -o$wixi_im
+        astarithmetic $w_im_tmp float32 -g1 -o$w_im
+        astfits $wixi_im --copy=1 -o$wdir/$base
+        astfits $w_im --copy=1 -o$wonlydir/$base
+        rm -f $wixi_im_tmp $wixi_im
+        rm -f $w_im_tmp $w_im
+    done
+    
 }
 export -f computeWeightForFrame
 
@@ -2043,12 +2115,22 @@ buildUpperAndLowerLimitsForOutliers() {
             med_im=$clippingdir/median_image.fits
             std_im=$clippingdir/std_image.fits
             gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            file_count=0
+            output_list=""
+            for file in $(ls -v $wdir/*.fits); do
+                for h in $(seq 1 $num_ccd); do
+                    output_list+="$file -h$h "
+                    ((file_count++))
+                done
+            done
+
             if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 --writeall -o$med_im
-                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 --writeall -o$std_im
+                
+                astarithmetic $output_list $file_count $sigmaForStdSigclip 0.2 sigclip-median  --writeall -o$med_im
+                astarithmetic $output_list $file_count $sigmaForStdSigclip 0.2 sigclip-std  --writeall -o$std_im
             else
-                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1  -o$med_im
-                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1  -o$std_im
+                astarithmetic $output_list $file_count $sigmaForStdSigclip 0.2 sigclip-median   -o$med_im
+                astarithmetic $output_list $file_count $sigmaForStdSigclip 0.2 sigclip-std   -o$std_im
             fi
             
             # Compute "borders" images
@@ -2076,19 +2158,26 @@ removeOutliersFromFrame(){
     base=entirecamera_"$a".fits
     tmp_ab=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_maskabove.fits
     wom=$mowdir/$base
-
-    astarithmetic $wdir/$base -h1 set-i i i $clippingdir/upperlim.fits -h1 gt nan where float32 -q -o $tmp_ab
-    astarithmetic $tmp_ab -h1 set-i i i $clippingdir/lowerlim.fits -h1 lt nan where float32 -q -o$wom
+    
+    for h in $(seq 1 $num_ccd); do
+        wom_ccd=$mowdir/entirecamera_"$a"_ccd"$h".fits
+        astarithmetic $wdir/$base -h$h set-i i i $clippingdir/upperlim.fits -h1 gt nan where float32 -q -o $tmp_ab
+        astarithmetic $tmp_ab -h1 set-i i i $clippingdir/lowerlim.fits -h1 lt nan where float32 -q -o$wom_ccd
+        astfits $wom_ccd --copy=1 -o$wom
     # save the new mask
-    mask=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_mask.fits
-    astarithmetic $wom -h1 isblank float32 -o $mask
+        mask=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_mask.fits
+        astarithmetic $wom_ccd -h1 isblank float32 -o $mask
     # mask the onlyweight image
-    owom=$moonwdir/$base
-    astarithmetic $wonlydir/$base $mask -g1 1 eq nan where -q float32    -o $owom
+        owom=$moonwdir/$base
+        owom_ccd=$moonwdir/ccd_$base
+        astarithmetic $wonlydir/$base -h$h $mask -h1 1 eq nan where -q float32    -o $owom_ccd
+        astfits $owom_ccd --copy=1 -o$owom
 
     # Remove temporary files
-    rm -f $tmp_ab
-    rm -f $mask
+        rm -f $tmp_ab
+        rm -f $mask
+        rm -f $owom_ccd $wom_ccd
+    done
 }
 export -f removeOutliersFromFrame
 
@@ -2260,10 +2349,11 @@ produceHalfMaxRadVsMagForSingleImage() {
         plotXHigherLimit=10
         plotYLowerLimit=12
         plotYHigherLimit=22
-        python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a_ccd"$h".txt -1 -1 -1 $outputDir/$a.png  \
-            $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
+        python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_"$a"_ccd"$h".txt -1 -1 -1 $outputDir/$a.png  \
+            $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit $h
 
         rm $catalogueName $outputDir/match_decals_gaia_"$a"_ccd"$h".txt 
+    done
 }
 export -f produceHalfMaxRadVsMagForSingleImage
 
@@ -2299,12 +2389,28 @@ buildCoadd() {
             echo -e "\n\tThe first weighted (based upon std) mean of the images already done\n"
     else
             gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            output_mow=""
+            file_count_mow=0
+            for file in $(ls -v $mowdir/*.fits); do
+                for h in $(seq 1 $num_ccd); do
+                    output_mow+="$file -h$h "
+                    ((file_count_mow++))
+                done
+            done
+            output_moonw=""
+            file_count_moonw=0
+            for file in $(ls -v $moonwdir/*.fits); do
+                for h in $(seq 1 $num_ccd); do
+                    output_moonw+="$file -h$h "
+                    ((file_count_moonw++))
+                done
+            done
             if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_wx.fits
-                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_w.fits
+                astarithmetic $output_mow $file_count_mow sum  --writeall -o$coaddir/"$k"_wx.fits
+                astarithmetic $output_moonw $file_count_moonw sum  --writeall -o$coaddir/"$k"_w.fits
             else
-                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_wx.fits
-                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_w.fits
+                astarithmetic $output_mow $file_count_mow sum   -o$coaddir/"$k"_wx.fits
+                astarithmetic $output_moonw $file_count_moonw sum   -o$coaddir/"$k"_w.fits
             fi
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
             echo done > $coaddone
@@ -2330,8 +2436,11 @@ changeNonNansOfFrameToOnes() {
 
   frame=$framesDir/entirecamera_$a.fits
   output=$outputDir/exposure_tmp_$a.fits
-
-  astarithmetic $frame $frame 0 gt 1 where --output=$output -g1
+  for h in $(seq 1 $num_ccd); do
+    astarithmetic $frame $frame 0 gt 1 where --output=$outputDir/exposure_tmp_ccd_$a.fits -g$h
+    astfits $outputDir/exposure_tmp_ccd_$a.fits --copy=1 -o$output
+    rm $outputDir/exposure_tmp_ccd_$a.fits
+done
 }
 export -f changeNonNansOfFrameToOnes
 
@@ -2352,10 +2461,18 @@ computeExposureMap() {
       
       printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
       gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+      exposure_frames=""
+      file_count=0
+      for file in $(ls -v $exposuremapDir/*.fits); do
+        for h in $(seq 1 $num_ccd); do
+            exposure_frames+="$file -h$h "
+            ((file_count_mow++))
+        done
+      done
       if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-        astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1  --writeall -o$coaddDir/exposureMap.fits
+        astarithmetic $exposure_frames $file_count sum   --writeall -o$coaddDir/exposureMap.fits
       else
-        astarithmetic $(ls -v $exposuremapDir/*.fits) $(ls $exposuremapDir/*.fits | wc -l) sum -g1  --writeall -o$coaddDir/exposureMap.fits
+        astarithmetic $exposure_frames $file_count sum   --writeall -o$coaddDir/exposureMap.fits
       fi
       rm -rf $exposuremapDir
       echo done > $exposuremapdone
