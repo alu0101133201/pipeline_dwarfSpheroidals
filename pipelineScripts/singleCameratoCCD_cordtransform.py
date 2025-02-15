@@ -8,6 +8,7 @@ ccd=int(sys.argv[2])
 x_camera=float(sys.argv[3])
 y_camera=float(sys.argv[4])
 
+
 image_data=fits.open(image)
 image_wcs=WCS(image_data[ccd].header)
 

@@ -672,16 +672,18 @@ export -f runNoiseChiselOnFrame
 # Functions for Warping the frames
 getCentralCoordinate(){
     image=$1
+    hdu=$2
 
-    NAXIS1=$(gethead $image NAXIS1)
-    NAXIS2=$(gethead $image NAXIS2)
+    NAXIS1=$(fitsheader $image -e $hdu | grep "NAXIS1" | awk '{print $3'})
+    NAXIS2=$(fitsheader $image -e $hdu | grep "NAXIS2" | awk '{print $3'})
+                   
 
     # Calculate the center pixel coordinates
     center_x=$((NAXIS1 / 2))
     center_y=$((NAXIS2 / 2))
 
     # Use xy2sky to get the celestial coordinates of the center pixel
-    imageCentre=$( xy2sky $image $center_x $center_y )
+    imageCentre=$( xy2sky $image,$hdu $center_x $center_y )
     echo $imageCentre
 }
 export -f getCentralCoordinate
@@ -892,16 +894,16 @@ computeSkyForFrame(){
                     fi
              
                     astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
-                    
+                    rm -f $ringDir/$tmpRingDefinition
                 else
                     astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $DIR/ring_ccd"$h".txt
                 fi
                 astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
                 rm -f $ringDir/$tmpRingFits_single
-                rm -f $ringDir/$tmpRingDefinition
+               
             
             done
-            if [ "$swarped" = "YES" ]; then rm $ringDir/$tmpRingDefinition; fi
+            #if [ "$swarped" = "YES" ]; then rm $ringDir/$tmpRingDefinition; fi
             #Since getMedianValueInsideRing is modified to treat with a multiple layer ring we are forced to split the loops :(
             for h in $(seq 1 $num_ccd); do
                 me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
@@ -911,6 +913,10 @@ computeSkyForFrame(){
                 echo "$base $me $std $skew $kurto" >> $noiseskydir/$out
             done
             #rm $ringDir/$tmpRingDefinition
+            if [ "$swarped" = "YES" ] && [ "$objectName" = "NGC3486" ]; then
+                mkdir $BDIR/test_rings
+                cp $ringDir/$tmpRingFits $BDIR/test_rings/$tmpRingFits
+            fi
             rm $ringDir/$tmpRingFits
 
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
@@ -924,6 +930,12 @@ computeSkyForFrame(){
                 std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
                 echo "$base $mean $std" >> $noiseskydir/$out
                 rm -f $noiseskydir/$sky
+            done
+        elif [ "$constantSkyMethod" = "fullImage" ]; then
+            for h in $(seq 1 $num_ccd); do
+                mean=$(aststatistics $i -h$h --sigclip-mean -q)
+                std=$(aststatistics $i -h$h --sigclip-std -q)
+                echo "$base $mean $std" >> $noiseskydir/$out
             done
         else
             errorNumber=6
@@ -1973,7 +1985,7 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize
-    
+
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfFWHMForPhotometry
@@ -2215,17 +2227,18 @@ cropAndApplyMaskPerFrame() {
     frameToMask=$dirOfFramesToMask/entirecamera_$a.fits
     frameToObtainCropRegion=$dirOfFramesFullGrid/entirecamera_$a.fits
     tmpMaskFile=$dirOfFramesMasked/"maskFor"$a.fits
-
+    for h in $(seq 1 $num_ccd); do
     # Parameters for identifing our frame in the full grid
-    frameCentre=$( getCentralCoordinate $frameToMask )
-    centralRa=$(echo "$frameCentre" | awk '{print $1}')
-    centralDec=$(echo "$frameCentre" | awk '{print $2}')
-
-    regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameToObtainCropRegion 1)
-    read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
-    astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile --quiet
-    astarithmetic $frameToMask -h1 $tmpMaskFile -h1 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_$a.fits -q
-    rm $tmpMaskFile
+        frameCentre=$( getCentralCoordinate $frameToMask $h )
+        centralRa=$(echo "$frameCentre" | awk '{print $1}')
+        centralDec=$(echo "$frameCentre" | awk '{print $2}')
+        regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameToObtainCropRegion $h)
+        read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
+        astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile --quiet
+        astarithmetic $frameToMask -h$h $tmpMaskFile -h1 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_"$a"_ccd"$h".fits -q
+        astfits $dirOfFramesMasked/entirecamera_"$a"_ccd"$h".fits --copy=1 -o $dirOfFramesMasked/entirecamera_"$a".fits
+        rm $tmpMaskFile $dirOfFramesMasked/entirecamera_"$a"_ccd"$h".fits
+    done
 }
 export -f cropAndApplyMaskPerFrame
 
@@ -2329,8 +2342,8 @@ produceHalfMaxRadVsMagForSingleImage() {
     image=$1 
     outputDir=$2
     gaiaCat=$3
-    toleranceForMatching=$4
-    pythonScriptsPath=$5
+    tolerance=$4
+    pythonPath=$5
     alternativeIdentifier=$6 # Applied when there is no number in the name
     tileSize=$7
     survey=$8
@@ -2343,13 +2356,13 @@ produceHalfMaxRadVsMagForSingleImage() {
     # catalogueName=$(generateCatalogueFromImage_noisechisel $image $outputDir $a $headerToUse $tileSize)
     catalogueName=$(generateCatalogueFromImage_sextractor $image $outputDir $a $survey)
     for h in $(seq 1 $num_ccd); do
-        astmatch $catalogueName --hdu=$h $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_"$a"_ccd"$h".txt 
+        astmatch $catalogueName --hdu=$h $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$tolerance/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_"$a"_ccd"$h".txt 
     
         plotXLowerLimit=0.5
         plotXHigherLimit=10
         plotYLowerLimit=12
         plotYHigherLimit=22
-        python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_"$a"_ccd"$h".txt -1 -1 -1 $outputDir/$a.png  \
+        python3 $pythonPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_"$a"_ccd"$h".txt -1 -1 -1 $outputDir/$a.png  \
             $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit $h
 
         rm $catalogueName $outputDir/match_decals_gaia_"$a"_ccd"$h".txt 
@@ -2424,7 +2437,13 @@ subtractCoaddToFrames() {
     destinationDir=$3
 
     for i in $dirWithFrames/*.fits; do
-        astarithmetic $i $coadd - -o$destinationDir/$( basename $i ) -g1
+        name=$( basename $i )
+        for h in $(seq 1 $num_ccd); do
+            temp_file=$destinationDir/temp_$name
+            astarithmetic $i -h$h $coadd -h1 - -o$temp_file
+            astfits $temp_file --copy=1 -o $destinationDir/$name
+            rm $temp_file
+        done
     done
 }
 export -f subtractCoaddToFrames
@@ -2466,7 +2485,7 @@ computeExposureMap() {
       for file in $(ls -v $exposuremapDir/*.fits); do
         for h in $(seq 1 $num_ccd); do
             exposure_frames+="$file -h$h "
-            ((file_count_mow++))
+            ((file_count++))
         done
       done
       if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
