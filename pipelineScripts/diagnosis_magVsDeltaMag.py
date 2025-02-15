@@ -11,6 +11,7 @@ from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
 from scipy.stats import sigmaclip
 
+
 def setMatplotlibConf():
     rc_fonts = {
         "font.family": "serif",
@@ -152,7 +153,7 @@ outputDir_individual=outputDir_ccd+"/calibrationPlot_frames"
 if not os.path.exists(outputDir_individual):
     os.makedirs(outputDir_individual)
 
-for file_name in allFrames:
+for file_name in random.sample(allFrames,5):
     number = file_name.split('_')[0]
     mag1, mag2 = read_columns_from_file(directoryWithTheCatalogues + "/" + file_name,h)
     magDiff = np.array((mag1 - mag2))
@@ -161,3 +162,5 @@ for file_name in allFrames:
     totalRMS = np.sqrt(np.mean(magDiffAbs**2))
     rmsInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
     plotWithSingleFrame(calibrationFaintLimit, calibrationBrightLimit, mag1, magDiff, totalRMS, rmsInRange, outputDir_individual + "/calibrationPlot_" + number + ".png",survey)
+
+plt.close('all')
