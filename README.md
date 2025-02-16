@@ -1,4 +1,4 @@
-# Small Telescopes Pipeline
+# Small Telescopes Pipeline: Big-multi detector adaption
 ##### Sergio Guerra Arencibia
 ###### Date: 16-09-24
 
@@ -86,3 +86,23 @@ Then we have the pipeline itself (*pipeline_LuM_parallel.sh*) and the functions 
 Take into account that the configuration file (the one corresponding to *template.conf*) is provided to the pipeline as an argument and the normalisation ring(s) are indicated in the configuration file.
 
 Also, The common normalisation ring (most of the cases will be centered in the image) has to be provided (mandatory) Because it will be used also for selecting what decals bricks are going to be donwloaded for the photometric calibration The 2 rings needed for normalising with them are only requested if the normalisation is going to be done in that way (non mandatory)
+
+## Notes about multi-detector adaptation
+
+This version of the pipeline is an adaptation of the TST and Small telescopes pipeline for multi-ccd arrays such as the WFC of INT or the cameras of LBT. It has only been tested yet in the WFC, but for LBT should be similar. On multi-ccd arrays like Hipercam or Osiris of GTC must be run with caution. The main changes respect to the monolitic pipeline can be summarized as follows:
+
+* **Normalization ring treatement.** It has only been adapted and tested for single, flat ring. It will be adapted for other ring options in the future. The difference with respect to the monolitic lies in the partition of the normalization ring. For that, we have built an script that, given the center of the ring in the mosaic of CCDs, returns different .txt files with the corresponding centers for each one of the CCDs. For WFC of INT, you need to pass the center in the mosaic in X,Y (see documentation of WFC/INT on their webpage). For LBT, since they give an inital astrometry, you can pass the center of the ring in the **FIRST** image in WCS. Then, after astrometrization, a ring must be done again, since sizes change. But here there is a tricky problem. Now, the matrix of CCDs are aligned with the WCS axis. So, if there is a rotated CCD, the file of `pointings_smallGrid` will change NAXIS1 and NAXIS2. Because of that, we have included a new variable called `$rotated_ccd` which accounts for the angle of rotation, counterclockwise, of the CCD(s) that rotate to align with the WCS. For WFC/INT, CCDs 1, 3 and 4 rotate 90º clockwwise. For LBT, CCD 4 rotates 90º counterclockwise.
+
+* **Multi-layer treatement.** All the pipeline runs so the .fits files created are stored in multi-layer files, one layer for each CCD. In order to keep the important keywords, `AIRMASS` and `DATE_OBS` or `MJD_OBS` are stored in `--hdu=0`.
+
+* **GAIN.** Now the gain might change from one CCD to another. Because of that, we ask for the corresponding keyword in the header instead of for the value.
+
+* **Overscan.** We also add a variable called `$trimsec_key` wich represents the keyword were the illuminated section of the CCD is stored (i.e., the not-overscan region).
+
+* **ASTROMETRY.** Main changes are on the sex-scamp-swarp step. Since they are able to work with multi-layer fits (and scamp works even better), the output catalogs of sextractor are now multi-layer. Swarp configuration changes in order to use a `LANZCOS3` resampling, and keep the temporary files in order to build the pointings folders.
+
+* **Rejection of files.** The current situation is that no rejection is made. This is due to a necessary check in the rejection parameters.
+
+* **Diagnosis and bad files.** The diagnosis and bad files folder is now divided into each of the CCDs, except for the scamp contrast parameters plot.
+
+As with the single detector, multi-detector data should be passed with the `DATA-or` folder structure, but on a multi-layer way where **HDU=0 IS NOT AN IMAGE**.

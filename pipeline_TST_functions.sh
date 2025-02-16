@@ -749,11 +749,16 @@ warpImage() {
         
         astarithmetic "$currentIndex".000"$h".resamp.weight.fits -h0 set-i i i 0 lt nan where -o $tmpFile1
         astarithmetic "$currentIndex".000"$h".resamp.fits -h0 $tmpFile1 -h1 0 eq nan where -o $tmpFile2
-        astfits $tmpFile2 --copy=1 -o $frameSmallGrid
+        #astfits $tmpFile2 --copy=1 -o $frameSmallGrid #Would be easier but will make the maskPointings of 2nd iteration coadd not work
         astcrop $tmpFile2 --mode=wcs --center=$ra,$dec --widthinpix --width=$coaddSizePx,$coaddSizePx --zeroisnotblank -o $tmpFile3
         astfits $tmpFile3 --copy=1 -o $frameFullGrid
-        
-        rm $tmpFile1 $tmpFile2 $tmpFile3  "$currentIndex".000"$h"*.fits
+        #Now we use tmpFIle3 to generate the frameSmallGrid
+        regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $tmpFile3 1)
+        read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
+        tmpFile4=$entiredir/entirecamera_sg_"$currentIndex"_ccd"$h".fits 
+        astcrop $tmpFile3 --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpFile4 --quiet
+        astfits $tmpFile4 --copy=1 -o $frameSmallGrid
+        rm $tmpFile1 $tmpFile2 $tmpFile3  "$currentIndex".000"$h"*.fits $tmpFile4
         propagateKeyword $imageToSwarp $gain $frameFullGrid $h 
         propagateKeyword $imageToSwarp $gain $frameSmallGrid $h
     done
@@ -2226,12 +2231,13 @@ cropAndApplyMaskPerFrame() {
 
     frameToMask=$dirOfFramesToMask/entirecamera_$a.fits
     frameToObtainCropRegion=$dirOfFramesFullGrid/entirecamera_$a.fits
-    tmpMaskFile=$dirOfFramesMasked/"maskFor"$a.fits
+    
     for h in $(seq 1 $num_ccd); do
     # Parameters for identifing our frame in the full grid
         frameCentre=$( getCentralCoordinate $frameToMask $h )
         centralRa=$(echo "$frameCentre" | awk '{print $1}')
         centralDec=$(echo "$frameCentre" | awk '{print $2}')
+        tmpMaskFile=$dirOfFramesMasked/maskFor"$a"_ccd"$h".fits
         regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameToObtainCropRegion $h)
         read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
         astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile --quiet

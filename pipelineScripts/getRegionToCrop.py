@@ -24,8 +24,11 @@ def find_non_nan_region(matrix):
     else:
         return None  # All values are NaN
 
+
+
 imageFile = sys.argv[1]
 hduNum = int(sys.argv[2])
+
 
 with fits.open(imageFile) as hdul:
     data = np.array(hdul[hduNum].data)
