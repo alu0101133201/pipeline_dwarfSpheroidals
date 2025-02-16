@@ -132,7 +132,6 @@ outputConfigurationVariablesInformation() {
         "·Number of CCDs of the camers:$num_ccd"
         "·Presence of overscan:$overscan"
         "·Keyword of the illuminated section:$trimsecKey"
-        "·Rotation of the raw camera mosaic to the WCS system in DS9:$rotation_ccd"
         " "
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
@@ -221,7 +220,6 @@ checkIfAllVariablesAreSet() {
                 num_ccd \
                 overscan \
                 trimsecKey \
-                rotation_ccd \
                 lowestScaleForIndex \
                 highestScaleForIndex \ 
                 solve_field_L_Param \
@@ -890,9 +888,14 @@ computeSkyForFrame(){
                     if [[ $naxis1 -gt $naxis2 && $naxis1_r -gt $naxis2_r ]] || [[ $naxis1 -lt $naxis2 && $naxis1_r -lt $naxis2_r ]]; then
                         echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
                     else
-                        
-                        eval $(python3 $pythonScriptsPath/applyRotation.py $rotation_ccd $x_ring $y_ring $naxis2)
-                        
+                        #If image new is rotated, we look for the astrometrized, not rotated in order to get the correct position
+                        image_astro=${base#entirecamera_}
+                        ringCentre=$( xy2sky $BDIR/astro-ima/$image_astro,$h $x_ring $y_ring )
+                        ringRa=$(echo "$ringCentre" | awk '{print $1}')
+                        ringDec=$(echo "$ringCentre" | awk '{print $2}')
+                        newringCentre=$( sky2xy $imageToUse,$h $ringRa $ringDec )
+                        x_new=$(echo "$newringCentre" | awk '{print $5}')
+                        y_new=$(echo "$newringCentre" | awk '{print $6}')
                         echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
                    
                         
