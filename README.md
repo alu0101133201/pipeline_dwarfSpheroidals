@@ -1,4 +1,4 @@
-# Small Telescopes Pipeline: Big-multi detector adaption
+# Small Telescopes Pipeline: Small FOV, multi-detector adaption
 ##### Sergio Guerra Arencibia
 ###### Date: 16-09-24
 
