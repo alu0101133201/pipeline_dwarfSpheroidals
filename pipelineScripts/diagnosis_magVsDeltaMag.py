@@ -53,8 +53,8 @@ def read_columns_from_file(file_path):
     data = np.loadtxt(file_path, comments='#')
     if data.ndim == 1:
         data = data.reshape(1, -1)
-    mag1  = np.array(data[:, 0].astype(float).tolist())
-    mag2 = np.array(data[:, 1].astype(float).tolist())
+    mag1  = np.array(data[:, 2].astype(float).tolist())
+    mag2 = np.array(data[:, 3].astype(float).tolist())
     return mag1, mag2
 
 def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimit):
@@ -138,6 +138,7 @@ magDiffAbs, _, _ = sigmaclip(magDiffAbs[~np.isnan(magDiffAbs)], low=5.0, high=5.
 
 totalRMS = np.sqrt(np.mean(magDiffAbs**2))
 plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalRMS, rmsInRange, outputName, survey)
+
 
 #Individual calibration plot for all frames
 allFrames = [f for f in os.listdir(directoryWithTheCatalogues) if f.endswith(".cat")]

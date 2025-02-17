@@ -73,9 +73,6 @@ outputConfigurationVariablesInformation() {
         "·Object name:$objectName"
         "·Right ascension:$ra_gal:[deg]"
         "·Declination:$dec_gal:[deg]"
-        "·Approximate galaxy's SMA:$galaxySMA:[arcsec]"
-        "·Approximate galaxy's axis-ratio:$galaxyAxisRatio"
-        "·Approximate galaxy's position angle:$galaxyPA"
         ""
         "·Keyword for the airmass:$airMassKeyWord"
         "·Keyword for date:$dateHeaderKey"
@@ -86,11 +83,8 @@ outputConfigurationVariablesInformation() {
         "  Faint limit:$calibrationFaintLimit:[mag]"
         "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry:[FWHM]"
         "The calibration will be done using data from survey: $surveyForPhotometry"
-        "The definition of the galaxy region for not using these bricks in calibration:"
-        "  Galaxy's Semi-major axis:$galaxySMA:[deg] "
-        "  Galaxy's axis ratio:$galaxyAxisRatio"
-        "  Galaxy's position angle:$galaxyPA:[deg]"
-        "Bricks rejected if present stars brighter (g-band) than:$starMagnitudeThresholdToReject_gBand:[mag]"
+        "If the calibration is done with spectra, the transmittance of the filter is in the file: $transmittanceCurveFile:[$transmittanceWavelengthUnits]"
+        "File containing the aperture corrections for calibrating with spectra: $apertureCorrectionsPerFilterFile"
         ""
         "·Saturation threshold:$saturationThreshold:[ADU]"
         "·Gain:$gain:[e-/ADU]"
@@ -180,9 +174,6 @@ checkIfAllVariablesAreSet() {
     variablesToCheck=(objectName \
                 ra_gal \
                 dec_gal \
-                galaxySMA \
-                galaxyAxisRatio \
-                galaxyPA \
                 defaultNumOfCPUs \
                 ROOTDIR \
                 airMassKeyWord \ 
@@ -196,7 +187,9 @@ checkIfAllVariablesAreSet() {
                 calibrationFaintLimit \
                 numberOfFWHMForPhotometry \
                 surveyForPhotometry \
-                starMagnitudeThresholdToReject_gBand \
+                transmittanceCurveFile \
+                transmittanceWavelengthUnits \
+                apertureCorrectionsPerFilterFile \
                 ringWidth \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
@@ -235,6 +228,40 @@ checkIfAllVariablesAreSet() {
 }
 export -f checkIfAllVariablesAreSet
 
+correctionAndPerformConsistencyChecks() {
+  apertureCorrectionsPerFilterFile=$1
+  filter=$2
+  numberOfFWHMForPhotometry=$3
+
+  FWHMCorrespondingTheCorrections=$( getFWHMCorrespondingToCorrectionsGiven $apertureCorrectionsPerFilterFile)
+  if [ "$FWHMCorrespondingTheCorrections" -ne $numberOfFWHMForPhotometry ]; then
+      errorNumber=10
+    echo -e "\nThe FWHM selected for calibration and the aperture correction given are not for the same FWHM"
+    exit $errorNumber
+  fi
+
+  apertureCorrection=$( getApertureCorrectionForFilter $filter $apertureCorrectionsPerFilterFile )
+
+  if [ -z $apertureCorrection ]; then
+    errorNumber=11
+    echo -e "\nTrying to calibrate with spectra but no aperture correction given"
+    exit $errorNumber
+  fi
+}
+export -f correctionAndPerformConsistencyChecks
+
+getFWHMCorrespondingToCorrectionsGiven() {
+  local fileWithCorrections="$1"
+  grep "^FWHM" $fileWithCorrections | awk '{print $2}'
+}
+export -f getFWHMCorrespondingToCorrectionsGiven
+
+getApertureCorrectionForFilter() {
+  local filter="$1"
+  local fileWithCorrections="$2"
+  awk -v k="$filter" '$1 == k {print $2}' $fileWithCorrections
+}
+export -f getApertureCorrectionForFilter
 
 # Functions used in Flat
 maskImages() {
@@ -902,20 +929,16 @@ getParametersFromHalfMaxRadius() {
 export -f getParametersFromHalfMaxRadius
 
 
-downloadData() {
+downloadSurveyData() {
     mosaicDir=$1
     surveyImagesDir=$2
     bricksIdentificationFile=$3
     filters=$4
     ra=$5
     dec=$6
-    galaxySMA=$7
-    galaxyAxisRatio=$8
-    galaxyPA=$9
-    fieldSizeDeg=${10}
-    gaiaCatalogue=${11}
-    starThresholdForRejectingBricks=${12}
-    survey=${13}
+    fieldSizeDeg=$7
+    gaiaCatalogue=$8
+    survey=$9
     
     echo -e "\n·Downloading ${survey} bricks"
     donwloadMosaicDone=$surveyImagesDir/done_downloads.txt
@@ -926,11 +949,28 @@ downloadData() {
     else
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions        
         echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
-        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $starThresholdForRejectingBricks $survey
+        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey
         echo "done" > $donwloadMosaicDone
     fi
 }
-export -f downloadData
+export -f downloadSurveyData
+
+downloadSpectra() {
+    mosaicDir=$1
+    spectraDir=$2
+    ra=$3
+    dec=$4
+    sizeOfOurFieldDegrees=$5
+
+    spectraDone=$spectraDir/done.txt
+    if [ -f $spectraDone ]; then
+        echo -e "\nSpectra already downloaded\n"
+    else
+        python3 $pythonScriptsPath/downloadSpectraForField.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees
+        echo "done" > $spectraDone
+    fi
+}
+export -f downloadSpectra
 
 addTwoFiltersAndDivideByTwo() {
     decalsImagesDir=$1
@@ -1351,6 +1391,76 @@ performAperturePhotometryToBricks() {
 export -f performAperturePhotometryToBricks
 
 
+prepareCalibrationData() {
+    surveyForCalibration=$1
+    referenceImagesForMosaic=$2
+    aperturePhotDir=$3
+    filter=$4
+    ra=$5
+    dec=$6
+    mosaicDir=$7
+    selectedSurveyStarsDir=$8
+    rangeUsedSurveyDir=$9
+    dataPixelScale=${10}
+    sizeOfOurFieldDegrees=${11} 
+    gaiaCatalogue=${12}
+    numberOfFWHMForPhotometry=${13}
+    transmittanceCurveFile=${14}
+    transmittanceWavelengthUnits=${15}
+
+    if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
+
+    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+        spectraDir=$mosaicDir/spectra
+
+        writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
+        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $transmittanceCurveFile $transmittanceWavelengthUnits
+    else
+        surveyImagesDir=$mosaicDir/surveyImages
+        writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+
+        prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
+                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $numberOfFWHMForPhotometry $aperturePhotDir
+    fi
+}
+export -f prepareCalibrationData
+
+prepareSpectraDataForPhotometricCalibration() {
+    spectraDir=$1
+    filter=$2
+    ra=$3
+    dec=$4
+    mosaicDir=$5
+    aperturePhotDir=$6
+    sizeOfOurFieldDegrees=$7
+    transmittanceCurveFile=$8
+    transmittanceWavelengthUnits=$9
+
+    if ! [ -d $spectraDir ]; then mkdir $spectraDir; fi
+    downloadSpectra $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees
+        
+    aperturePhotDone=$aperturePhotDir/done.txt
+    if ! [ -d $aperturePhotDir ]; then mkdir $aperturePhotDir; fi
+    if [ -f $aperturePhotDone ]; then
+        echo -e "\nThe catalogue with the magnitudes of the spectra already built\n"
+    else
+        output_tmpCat=$aperturePhotDir/wholeFieldPhotometricCatalogue_tmp.cat
+        outputCat=$aperturePhotDir/wholeFieldPhotometricCatalogue.cat
+        python3 $pythonScriptsPath/getMagnitudFromSpectra.py $spectraDir $transmittanceCurveFile $transmittanceWavelengthUnits $output_tmpCat
+
+        asttable $output_tmpCat -p4 --colmetadata=2,RA,deg,"Right ascension" \
+                        --colmetadata=3,DEC,none,"Declination" \
+                        --colmetadata=4,MAGNITUDE,none,"Magnitude" \
+                        --colmetadata=5,SUM,none,"sum" \
+                        --colmetadata=6,INSTRUMENT,none,"spectrograph" \
+                        --colmetadata=7,OBJ,none,"objectType" \
+                        --output=$outputCat
+        rm $output_tmpCat
+        echo "done" > $aperturePhotDone
+    fi
+}
+export -f prepareSpectraDataForPhotometricCalibration
+
 prepareSurveyDataForPhotometricCalibration() {
     referenceImagesForMosaic=$1
     surveyImagesDir=$2
@@ -1362,40 +1472,26 @@ prepareSurveyDataForPhotometricCalibration() {
     rangeUsedSurveyDir=$8
     dataPixelScale=$9
     survey=${10}
-    diagnosis_and_badFilesDir=${11}
-    sizeOfOurFieldDegrees=${12} 
-    galaxySMA=${13}
-    galaxyAxisRatio=${14}
-    galaxyPA=${15}
-    gaiaCatalogue=${16}
-    starThresholdForRejectingBricks=${17}
-    numberOfFWHMForPhotometry=${18}
-   
+    sizeOfOurFieldDegrees=${11} 
+    gaiaCatalogue=${12}
+    numberOfFWHMForPhotometry=${13}
+    aperturePhotDir=${14}
+
     echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
     bricksIdentificationFile=$surveyImagesDir/brickIdentification.txt
     
-    # If the images are donwloaded but the done.txt file is no present, the images won't be donwloaded again but
-    # the step takes a while even if the images are already downloaded because we have to do a query to the database
-    # in order to obtain the brickname and check if it is already downloaded or no
     if [ "$filter" = "lum" ]; then
         filters="g,r" # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
-        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey  
+        downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey  
         # This step creates the images (g+r)/2. This is needed because we are using a luminance filter which is a sort of (g+r)
         # The division by 2 is because in AB system we work with Janskys, which are W Hz^-1 m^-2. So we have to give a flux per wavelenght
         # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
         # practically the same wavelenght width, so dividing by 2 is enough
         addTwoFiltersAndDivideByTwo $surveyImagesDir "g" "r"
-    elif [ "$filter" = "i" ] && [ "$survey" = "DECaLS_rz" ]; then
-        survey=DECaLS
-        surveyForPhotometry=DECaLS #To work better later on that DECaLS is needed
-        filters="r,z" # We download 'r' and 'z' because filter 'i' is not in all DECaLs
-        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey
-        addTwoFiltersAndDivideByTwo $decalsImagesDir "r" "z"
     else 
         filters=$filter
-        downloadData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $galaxySMA $galaxyAxisRatio $galaxyPA $sizeOfOurFieldDegrees $gaiaCatalogue $starThresholdForRejectingBricks $survey
+        downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
     fi
-
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration. 
     # This was implemented due to the LBT origin of the pipeline, but for doing it at original resolution takes time and memory so
@@ -1403,9 +1499,10 @@ prepareSurveyDataForPhotometricCalibration() {
     # resampledDecalsBricks=$mosaicDir/resampled
     # buildDecalsMosaic $mosaicDir $decalsImagesDir $swarpcfg $ra $dec $filter $resampledDecalsBricks $dataPixelScale $sizeOfOurFieldDegrees   
     
+    # Preprocessing needed depending on what survey we are usiing
     if [ "$survey" = "DECaLS" ]; then 
         decompressBricks $surveyImagesDir # I have to decompressed them, I don't know what DECaLS does exactly but otherwise I can't run sextractor directly on the downloaded bricks
-                                             # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
+                                          # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
     elif [ "$survey" = "PANSTARRS" ]; then
         #Panstarrs is calibrated at ZP=25. In order to be the most general possible, we transform panstarrs data so it is at zp=22.5, and we do not need to change anything else
         calibratePanstarrs $surveyImagesDir
@@ -1415,15 +1512,15 @@ prepareSurveyDataForPhotometricCalibration() {
     selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey
     
     halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
-    if [ "$survey" = "DECalS" ]; then
+    if [ $survey == "DECaLS" ]; then
         produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
-    elif [ "$survey" = "PANSTARRS" ]; then
+    elif [ "$survey" == "PANSTARRS" ]; then
         produceHalfMaxRadiusPlotsForPanstarrs $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
     fi
     
-    aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues
     performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $numberOfFWHMForPhotometry $survey
     
+
     imagesHdu=1
     brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
     if [[ -f $brickDecalsAssociationFile ]]; then
@@ -1499,28 +1596,49 @@ export -f selectStarsAndSelectionRangeOurData
 matchDecalsAndSingleFrame() {
     a=$1
     myCatalogues=$2
-    decalsCatalogues=$3
+    calibrationCatalogues=$3
     matchdir=$4
+    surveyForCalibration=$5
 
     base="entirecamera_$a.fits"
-    ourDataCatalogue=$myCatalogues/entirecamera_$a.fits.cat
-    decalsCatalogue=$decalsCatalogues/entirecamera_$a.cat
     out=$matchdir/matched_"$base".cat
+    ourDataCatalogue=$myCatalogues/entirecamera_$a.fits.cat
 
     tmpCatalogue=$matchdir/match-$base-tmp.cat
     out=$matchdir/match-"$base".cat
 
-    astmatch $ourDataCatalogue --hdu=1 $decalsCatalogue --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
-            --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
+    # Choose between the whole field catalogue (spectra calibration) or the specific catalogue (imaging calibration)
+    # I have to do this independently because if it is spectra data I want to preserve the spectrograph and the objectype
+    if [ $surveyForCalibration == "SPECTRA" ]; then
+        calibrationCat=$calibrationCatalogues/wholeFieldPhotometricCatalogue.cat
+        astmatch $ourDataCatalogue --hdu=1 $calibrationCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
+                --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM,bINSTRUMENT,bOBJ -o$tmpCatalogue
 
-    asttable $tmpCatalogue --output=$out --colmetadata=1,RA,deg,"Right ascension DECaLs" \
-                --colmetadata=2,DEC,none,"Declination DECaLs" \
-                --colmetadata=3,RA,deg,"Right ascension data being reduced" \
-                --colmetadata=4,DEC,none,"Declination data being reduced" \
-                --colmetadata=5,MAGNITUDE_CALIBRATED,none,"Magnitude in DECaLS data" \
-                --colmetadata=6,SUM,none,"Sum in DECaLS" \
-                --colmetadata=7,MAGNITUDE_NONCALIBRATED,none,"Magnitude in data being reduced" \
-                --colmetadata=8,SUM,none,"Sum in in data being reduced" 
+        asttable $tmpCatalogue --output=$out --colmetadata=1,RA,deg,"Right ascension survey" \
+            --colmetadata=2,DEC,none,"Declination survey" \
+            --colmetadata=3,RA,deg,"Right ascension data being reduced" \
+            --colmetadata=4,DEC,none,"Declination data being reduced" \
+            --colmetadata=5,MAGNITUDE_CALIBRATED,none,"Magnitude in survey data" \
+            --colmetadata=6,SUM,none,"Sum in survey" \
+            --colmetadata=7,MAGNITUDE_NONCALIBRATED,none,"Magnitude in data being reduced" \
+            --colmetadata=8,SUM,none,"Sum in in data being reduced" \
+            --colmetadata=9,INSTRUMENT,none,"spectrograph" \
+            --colmetadata=10,OBJ,none,"object type" 
+
+    else
+        calibrationCat=$calibrationCatalogues/entirecamera_$a.cat
+        astmatch $ourDataCatalogue --hdu=1 $calibrationCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
+                --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
+
+        asttable $tmpCatalogue --output=$out --colmetadata=1,RA,deg,"Right ascension survey" \
+                    --colmetadata=2,DEC,none,"Declination survey" \
+                    --colmetadata=3,RA,deg,"Right ascension data being reduced" \
+                    --colmetadata=4,DEC,none,"Declination data being reduced" \
+                    --colmetadata=5,MAGNITUDE_CALIBRATED,none,"Magnitude in survey data" \
+                    --colmetadata=6,SUM,none,"Sum in survey" \
+                    --colmetadata=7,MAGNITUDE_NONCALIBRATED,none,"Magnitude in data being reduced" \
+                    --colmetadata=8,SUM,none,"Sum in in data being reduced" 
+    fi
 
     rm $tmpCatalogue
 }
@@ -1528,8 +1646,9 @@ export -f matchDecalsAndSingleFrame
 
 matchDecalsAndOurData() {
     myCatalogues=$1
-    decalsCatalogues=$2
+    calibrationCatalogues=$2
     matchdir=$3
+    surveyForCalibration=$4
 
     matchdirdone=$matchdir/done_automatic.txt
     if ! [ -d $matchdir ]; then mkdir $matchdir; fi
@@ -1540,7 +1659,7 @@ matchDecalsAndOurData() {
         for a in $(seq 1 $totalNumberOfFrames); do
             frameNumber+=("$a")
         done
-        printf "%s\n" "${frameNumber[@]}" | parallel -j "$num_cpus" matchDecalsAndSingleFrame {} $myCatalogues $decalsCatalogues $matchdir
+        printf "%s\n" "${frameNumber[@]}" | parallel -j "$num_cpus" matchDecalsAndSingleFrame {} $myCatalogues $calibrationCatalogues $matchdir $surveyForCalibration
         echo done > $matchdirdone
     fi
 }
@@ -1634,6 +1753,7 @@ computeAndStoreFactors() {
     matchdir=$2
     brightLimit=$3
     faintLimit=$4
+    apertureCorrection=$5
 
     alphatruedone=$alphatruedir/done.txt
     numberOfStarsUsedToCalibrateFile=$alphatruedir/numberOfStarsUsedForCalibrate.txt
@@ -1648,12 +1768,21 @@ computeAndStoreFactors() {
 
             alphatruet=$alphatruedir/"$objectName"_"$filter"_"$a".txt
             asttable $f -h1 --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
-            asttable $alphatruet -h1 -c1,2,'arith $6 $8 /' -o$alphatruedir/$alphaFile
 
-            mean=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-            std=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+            if [ -z "$apertureCorrection" ]; then 
+                # apertureCorrection is empty, we are calibrating with a survey
+                asttable $alphatruet -h1 -c1,2,'arith $6 $8 /' -o$alphatruedir/$alphaFile
+            else
+                # apertureCorrection is not empty, we are calibrating with spectra
+                asttable $alphatruet -h1 -c1,2,"arith \$6 \$8 $apertureCorrection / /",9,10 -o $alphatruedir/$alphaFile
+            fi
+
+            # python3 /home/sguerra/pipeline/pipelineScripts/tmp_diagnosis_distributionOfCalibrationFactorsInFrame.py $alphatruedir/$alphaFile $a
+                        
+            mean=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+            std=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
             echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
-            count=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
+            count=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
             echo "Frame number $a: $count" >> $numberOfStarsUsedToCalibrateFile
         done
         echo done > $alphatruedone
@@ -1703,18 +1832,19 @@ combineDecalsBricksCataloguesForEachFrame() {
 export -f combineDecalsBricksCataloguesForEachFrame
 
 computeCalibrationFactors() {
-    iteration=$1
-    imagesForCalibration=$2
-    selectedDecalsStarsDir=$3
-    matchdir=$4
-    rangeUsedDecalsDir=$5
-    mosaicDir=$6
-    decalsImagesDir=$7
+    surveyForPhotometry=$1
+    iteration=$2
+    imagesForCalibration=$3
+    selectedDecalsStarsDir=$4
+    matchdir=$5
+    rangeUsedDecalsDir=$6
+    mosaicDir=$7
     alphatruedir=$8
     brightLimit=$9
     faintLimit=${10}
     tileSize=${11}
     numberOfFWHMForPhotometry=${12}
+    apertureCorrection=${13}    # Only used if calibrating with spectra
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 
@@ -1726,16 +1856,22 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfFWHMForPhotometry
     
-    decalsDataCatalogueDir=$BDIR/decals-aperture-photometry_perBrick_it$iteration
-    echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
-    combineDecalsBricksCataloguesForEachFrame $decalsDataCatalogueDir $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
-     
-    echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
-    matchDecalsAndOurData $ourDataCatalogueDir $decalsDataCatalogueDir $matchdir 
+    # If we are calibrating with spectra we just have the whole catalogue of the field
+    # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
+    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+        prepareCalibrationCataloguePerFrame=$mosaicDir/aperturePhotometryCatalogues
+    else
+        prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
+        echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
+        combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
+    fi
 
-    echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
-    computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
     
+    echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
+    matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration
+   
+    echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
+    computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit $apertureCorrection
 }
 export -f computeCalibrationFactors
 
@@ -1998,9 +2134,11 @@ produceCalibrationCheckPlot() {
     numberOfFWHMToUse=$9
     outputDir=${10}
     survey=${11}
-    
-    tmpDir="./calibrationDiagnosisTmp"
-    if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
+    BDIR=${12}
+    aperturecorrection=${13}
+
+    calibratedCataloguesDir=$BDIR/calibratedCatalogues
+    if ! [ -d $calibratedCataloguesDir ]; then mkdir $calibratedCataloguesDir; fi
 
     for i in $myCatalogue_nonCalibrated/*.cat; do
         myFrame=$i
@@ -2011,7 +2149,11 @@ produceCalibrationCheckPlot() {
         if [ "$frameNumber" -gt 5 ]; then
             :
         else
-            referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
+            if [ $survey == "SPECTRA" ]; then
+                referenceCatalogue=$referenceCatalogueDir/wholeFieldPhotometricCatalogue.cat
+            else
+                referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
+            fi
 
             myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
             myNonCalibratedCatalogue=$myCatalogue_nonCalibrated/entirecamera_$frameNumber.fits*
@@ -2022,23 +2164,35 @@ produceCalibrationCheckPlot() {
 
             # raColumnName=RA
             # decColumnName=DEC
-            # photometryOnImage_noisechisel -1 $tmpDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $tmpDir/$frameNumber.cat 22.5 \
+            # photometryOnImage_noisechisel -1 $calibratedCataloguesDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $calibratedCataloguesDir/$frameNumber.cat 22.5 \
             #                                 $raColumnName $decColumnName
             dataHdu=1
             columnWithXCoordForOutDataPx=1 # These numbers come from how the catalogue of the matches stars is built. This is not very clear right now, should be improved
             columnWithYCoordForOutDataPx=2
             columnWithXCoordForOutDataWCS=3
             columnWithYCoordForOutDataWCS=4
-            photometryOnImage_photutils -1 $tmpDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $tmpDir/$frameNumber.cat 22.5 $dataHdu \
+            photometryOnImage_photutils -1 $calibratedCataloguesDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $calibratedCataloguesDir/"$frameNumber"_tmp.cat 22.5 $dataHdu \
                                         $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
 
-            astmatch $referenceCatalogue --hdu=1 $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$tmpDir/"$frameNumber"_matched.cat
-            rm $tmpDir/$frameNumber.cat
+            # To perform a fair comparison we must introduce the aperture correction as well
+            if [ "$survey" == "SPECTRA" ]; then
+                asttable $calibratedCataloguesDir/"$frameNumber"_tmp.cat -c1,2,3,4,5,6,7,"arith SUM $aperturecorrection /" -o$calibratedCataloguesDir/"$frameNumber"_sumCorrected.cat
+                asttable $calibratedCataloguesDir/"$frameNumber"_sumCorrected.cat -c1,2,3,4,5,6,7,8,"arith ARITH_1 log10 -2.5 x 22.5 +" -o $calibratedCataloguesDir/"$frameNumber"_sumAndMagCorrected.cat
+                asttable $calibratedCataloguesDir/"$frameNumber"_sumAndMagCorrected.cat -c1,2,3,4,5,"ARITH_3","ARITH_1" -o $calibratedCataloguesDir/"$frameNumber"_lackingMetaData.cat
+
+                asttable $calibratedCataloguesDir/"$frameNumber"_lackingMetaData.cat -p4 --colmetadata=6,MAGNITUDE,mag,"MAG" \
+                        --colmetadata=7,SUM,none,"sum" \
+                        --output=$calibratedCataloguesDir/$frameNumber.cat
+            else
+                mv $calibratedCataloguesDir/"$frameNumber"_tmp.cat $calibratedCataloguesDir/$frameNumber.cat
+            fi
+
+            astmatch $referenceCatalogue --hdu=1 $calibratedCataloguesDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aRA,aDEC,aMAGNITUDE,bMAGNITUDE -o$calibratedCataloguesDir/"$frameNumber"_matched.cat
+            rm $calibratedCataloguesDir/$frameNumber.cat $calibratedCataloguesDir/"$frameNumber"_sumCorrected.cat $calibratedCataloguesDir/"$frameNumber"_sumAndMagCorrected.cat $calibratedCataloguesDir/"$frameNumber"_lackingMetaData.cat $calibratedCataloguesDir/"$frameNumber"_tmp.cat
         fi
     done
 
-    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey
-    rm -rf $tmpDir
+    python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibratedCataloguesDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey
 }
 export -f produceCalibrationCheckPlot
 
@@ -2213,11 +2367,12 @@ generateCatalogueFromImage_sextractor(){
    
     # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
-    #For panstarrs we need to use zp=25
    
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII  1>/dev/null 2>&1
 
-    awk '{ $6 = $6 / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
+
+    ################# OJO LA DIVISIÓN DEPENDE DE SI ES FWHM (/2) O R_E (/1)
+    awk '{ $6 = $6 / 1; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
 
     # Headers to mimic the noisechisel format. Change between MacOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then

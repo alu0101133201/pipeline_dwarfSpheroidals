@@ -174,7 +174,7 @@ def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueInd
     plt.savefig(imageName)
     return()
 
-def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName, folderWithFramesWithAirmasses):
+def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder):
     airMass  = []
     time     = []
     cfactors = []
@@ -193,6 +193,12 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundVal
     cfactors=np.array(cfactors,dtype='float')
     airMass=np.array(airMass,dtype='float')
     time = np.array(time)
+
+
+    with open(destinationFolder + "/cfactors.txt", "w") as file:
+        for a, b, c in zip(time, airMass, cfactors):
+            file.write(f"{a}\t{b}\t{c}\n")  # Tab-separated columns
+
 
     fig, ax = plt.subplots(2, 1, figsize=(20,10))
     configureAxis(ax[0], 'UTC', 'Calibration Factor',logScale=False)
@@ -374,7 +380,7 @@ saveHistogram(np.array(magnitudesPerArcSecSq), rejectedAstrometryIndices, reject
                 "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
 
 saveScatterFactors(totalCalibrationFactors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
-                "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses)
+                "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses, destinationFolder)
 
 x = [float(i) for i in valuesCalibrated]
 scatterPlotCountsVsMagnitudes(x, magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
