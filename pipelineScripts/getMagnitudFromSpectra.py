@@ -11,11 +11,18 @@ from scipy.interpolate import interp1d
 
 import matplotlib.pyplot as plt
 
-def getRaAndDecFromSpectrum(spectrumFile):
+def getRaAndDecFromSpectrum(spectrumFile, surveyForSpectra):
     with fits.open(spectrumFile) as hdul:
-        header = hdul[0].header
-        ra = header.get("PLUG_RA")
-        dec = header.get("PLUG_DEC")
+        if (surveyForSpectra == "SDSS"):
+            header = hdul[0].header
+            ra = hdul[0].header.get("PLUG_RA")
+            dec = hdul[0].header.get("PLUG_DEC")
+        elif (surveyForSpectra == "GAIA"):
+            header = hdul[1].header
+            ra = float(header["POS"].split(',')[0][1:])
+            dec = float(header["POS"].split(',')[1][:-1])
+        else:
+            raise Exception("Survey for spectra not recognised")
     return(ra, dec)
 
 def readFilterTransmittance(fileWithFilterTransmittance):
@@ -34,15 +41,21 @@ def getSpectrumData(specFile):
     sp = fits.open(specFile)
     data = sp[1].data
 
-    wavelength = 10 ** data['loglam']  # Convert log(wavelength) to wavelength in Ångstroms
-    flux = data['flux']
+    if (surveyForSpectra == "SDSS"):
+        wavelength = 10 ** data['loglam']  # Convert log(wavelength) to wavelength in Ångstroms
+        flux = data['flux'] * 1e-17        # The sdss is given with a factor / 1e-17
+    elif (surveyForSpectra == "GAIA"):
+        wavelength = 10 * data["wavelength"] # Convert wavelength from nm to Anstroms
+        flux = np.array(data["flux"]) * 100  # Convert from W m^(-2) nm^(-1) to erg cm(^-2) s(^-1) A(^-2)
+    else:
+        raise Exception("Survey for spectra not recognised")
     return(wavelength, flux)
 
 def obtainFluxFromSpectrumAndFilter(wavelengths, spectrumF,  filterT, plot=False):
     for i in range(len(filterT)):
         spectrumF[i] = spectrumF[i] * (wavelengths[i]**2) / 3e18 # Since the flux is in wavelenths, we need this factor to move it obtain the flux in frequency
                                                                 # the 3e18 is the lightspeed in angstroms
-        spectrumF[i] = spectrumF[i] / 1e-6   # This factor is because the sloan spectra is divided by 10**(-17) and for going to Yanskins we need to multiply by 10**(-23)
+        spectrumF[i] = spectrumF[i] / 1e-23
 
     convolvedSpec = []
     for i in range(len(spectrumF)):
@@ -62,9 +75,7 @@ def extractInstrumentAndObjectType(path):
     else:
         return None, None  # Return None if the pattern doesn't match
 
-def getMagnitudesFromSpectra(spectraFolder, filterFile, transmittanceUnits):
-    instruments = []
-    objectType  = []
+def getMagnitudesFromSpectra(spectraFolder, filterFile, transmittanceUnits, surveyForSpectra):
     magnitudes  = []
     ra          = []
     dec         = []
@@ -77,26 +88,7 @@ def getMagnitudesFromSpectra(spectraFolder, filterFile, transmittanceUnits):
     for i in glob.glob(spectraFolder + "/*.fits"):
         instrument_tmp, objectType_tmp = extractInstrumentAndObjectType(i)
 
-        if (instrument_tmp == "SDSS"):
-            instrument_tmp = 0
-        elif (instrument_tmp == "BOSS"):
-            instrument_tmp = 1
-        else:
-            instrument_tmp = -1
-
-        if (objectType_tmp == "STAR"):
-            objectType_tmp = 0
-        elif (objectType_tmp == "QSO"):
-            objectType_tmp = 1
-        elif (objectType_tmp == "GALAXY"):
-            objectType_tmp = 2
-        else:
-            objectType_tmp = -1
-            
-        instruments.append(instrument_tmp)
-        objectType.append(objectType_tmp)
-
-        ra_tmp, dec_tmp = getRaAndDecFromSpectrum(i)
+        ra_tmp, dec_tmp = getRaAndDecFromSpectrum(i, surveyForSpectra)
         ra.append(ra_tmp)
         dec.append(dec_tmp)
 
@@ -107,9 +99,9 @@ def getMagnitudesFromSpectra(spectraFolder, filterFile, transmittanceUnits):
         currentMag = obtainFluxFromSpectrumAndFilter(WAVELENGTHS_TO_SAMPLE, specFlux, transmittance)
         magnitudes.append(currentMag)
 
-    return(np.array(ra), np.array(dec), np.array(magnitudes), np.array(instruments), np.array(objectType))
+    return(np.array(ra), np.array(dec), np.array(magnitudes))
 
-def createCatalogueFromTable(filename, ra, dec, mag, counts, instruments, objectTypes):
+def createCatalogueFromTable(filename, ra, dec, mag, counts):
     with open(filename, 'w') as f:
 
         header1 = f"# Column 1: IDs\n"
@@ -117,13 +109,11 @@ def createCatalogueFromTable(filename, ra, dec, mag, counts, instruments, object
         header3 = f"# Column 3: DEC\n"
         header4 = f"# Column 4: MAGNITUDE\n"
         header5 = f"# Column 5: SUM\n"
-        header6 = f"# Column 6: INSTRUMENT\n"
-        header7 = f"# Column 7: OBJECT\n"
 
-        f.write(header1 + header2 + header3 + header4 + header5 + header6 + header7)
+        f.write(header1 + header2 + header3 + header4 + header5)
 
         for i in range(len(ra)):
-            f.write(str(i) + "\t" + str(ra[i]) + "\t" + str(dec[i]) + "\t" + str(mag[i]) + "\t" + str(counts[i]) + "\t" + str(instruments[i]) + "\t" + str(objectTypes[i]) + "\n")
+            f.write(str(i) + "\t" + str(ra[i]) + "\t" + str(dec[i]) + "\t" + str(mag[i]) + "\t" + str(counts[i])  + "\n")
     return()
 
 def getCountsFromMagnitude(mag, zp):
@@ -135,14 +125,16 @@ spectraDir         = sys.argv[1]
 transmittanceFile  = sys.argv[2]
 transmittanceUnits = sys.argv[3]
 catalogueName      = sys.argv[4]
+surveyForSpectra   = sys.argv[5]
+
 
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra
 DESIRED_ZP = 22.5
 
-ra, dec, magnitudes, instruments, objectTypes = getMagnitudesFromSpectra(spectraDir, transmittanceFile, transmittanceUnits)
+ra, dec, magnitudes = getMagnitudesFromSpectra(spectraDir, transmittanceFile, transmittanceUnits, surveyForSpectra)
 
 
 equivalentcountsInZP = getCountsFromMagnitude(magnitudes, DESIRED_ZP)
 
-createCatalogueFromTable(catalogueName, ra, dec, magnitudes, equivalentcountsInZP, instruments, objectTypes)
+createCatalogueFromTable(catalogueName, ra, dec, magnitudes, equivalentcountsInZP)
 

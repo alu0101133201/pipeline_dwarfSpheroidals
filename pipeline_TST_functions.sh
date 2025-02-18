@@ -83,6 +83,7 @@ outputConfigurationVariablesInformation() {
         "  Faint limit:$calibrationFaintLimit:[mag]"
         "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry:[FWHM]"
         "The calibration will be done using data from survey: $surveyForPhotometry"
+        "If the calibration is done with spectra, the survey to use is: $surveyForSpectra"
         "If the calibration is done with spectra, the transmittance of the filter is in the file: $transmittanceCurveFile:[$transmittanceWavelengthUnits]"
         "File containing the aperture corrections for calibrating with spectra: $apertureCorrectionsPerFilterFile"
         ""
@@ -187,6 +188,7 @@ checkIfAllVariablesAreSet() {
                 calibrationFaintLimit \
                 numberOfFWHMForPhotometry \
                 surveyForPhotometry \
+                surveyForSpectra \
                 transmittanceCurveFile \
                 transmittanceWavelengthUnits \
                 apertureCorrectionsPerFilterFile \
@@ -961,12 +963,13 @@ downloadSpectra() {
     ra=$3
     dec=$4
     sizeOfOurFieldDegrees=$5
+    surveyForSpectra=$6
 
     spectraDone=$spectraDir/done.txt
     if [ -f $spectraDone ]; then
         echo -e "\nSpectra already downloaded\n"
     else
-        python3 $pythonScriptsPath/downloadSpectraForField.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees
+        python3 $pythonScriptsPath/downloadSpectraForField.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
         echo "done" > $spectraDone
     fi
 }
@@ -1405,8 +1408,10 @@ prepareCalibrationData() {
     sizeOfOurFieldDegrees=${11} 
     gaiaCatalogue=${12}
     numberOfFWHMForPhotometry=${13}
-    transmittanceCurveFile=${14}
-    transmittanceWavelengthUnits=${15}
+    surveyForSpectra=${14}
+    transmittanceCurveFile=${15}
+    transmittanceWavelengthUnits=${16}
+
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
 
@@ -1414,7 +1419,7 @@ prepareCalibrationData() {
         spectraDir=$mosaicDir/spectra
 
         writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
-        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $transmittanceCurveFile $transmittanceWavelengthUnits
+        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile $transmittanceWavelengthUnits
     else
         surveyImagesDir=$mosaicDir/surveyImages
         writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
@@ -1433,12 +1438,14 @@ prepareSpectraDataForPhotometricCalibration() {
     mosaicDir=$5
     aperturePhotDir=$6
     sizeOfOurFieldDegrees=$7
-    transmittanceCurveFile=$8
-    transmittanceWavelengthUnits=$9
+    surveyForSpectra=$8
+    transmittanceCurveFile=$9
+    transmittanceWavelengthUnits=${10}
+
 
     if ! [ -d $spectraDir ]; then mkdir $spectraDir; fi
-    downloadSpectra $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees
-        
+    downloadSpectra $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+    
     aperturePhotDone=$aperturePhotDir/done.txt
     if ! [ -d $aperturePhotDir ]; then mkdir $aperturePhotDir; fi
     if [ -f $aperturePhotDone ]; then
@@ -1446,14 +1453,12 @@ prepareSpectraDataForPhotometricCalibration() {
     else
         output_tmpCat=$aperturePhotDir/wholeFieldPhotometricCatalogue_tmp.cat
         outputCat=$aperturePhotDir/wholeFieldPhotometricCatalogue.cat
-        python3 $pythonScriptsPath/getMagnitudFromSpectra.py $spectraDir $transmittanceCurveFile $transmittanceWavelengthUnits $output_tmpCat
+        python3 $pythonScriptsPath/getMagnitudFromSpectra.py $spectraDir $transmittanceCurveFile $transmittanceWavelengthUnits $output_tmpCat $surveyForSpectra
 
         asttable $output_tmpCat -p4 --colmetadata=2,RA,deg,"Right ascension" \
                         --colmetadata=3,DEC,none,"Declination" \
                         --colmetadata=4,MAGNITUDE,none,"Magnitude" \
                         --colmetadata=5,SUM,none,"sum" \
-                        --colmetadata=6,INSTRUMENT,none,"spectrograph" \
-                        --colmetadata=7,OBJ,none,"objectType" \
                         --output=$outputCat
         rm $output_tmpCat
         echo "done" > $aperturePhotDone
@@ -1612,7 +1617,7 @@ matchDecalsAndSingleFrame() {
     if [ $surveyForCalibration == "SPECTRA" ]; then
         calibrationCat=$calibrationCatalogues/wholeFieldPhotometricCatalogue.cat
         astmatch $ourDataCatalogue --hdu=1 $calibrationCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
-                --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM,bINSTRUMENT,bOBJ -o$tmpCatalogue
+                --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
 
         asttable $tmpCatalogue --output=$out --colmetadata=1,RA,deg,"Right ascension survey" \
             --colmetadata=2,DEC,none,"Declination survey" \
@@ -1621,10 +1626,7 @@ matchDecalsAndSingleFrame() {
             --colmetadata=5,MAGNITUDE_CALIBRATED,none,"Magnitude in survey data" \
             --colmetadata=6,SUM,none,"Sum in survey" \
             --colmetadata=7,MAGNITUDE_NONCALIBRATED,none,"Magnitude in data being reduced" \
-            --colmetadata=8,SUM,none,"Sum in in data being reduced" \
-            --colmetadata=9,INSTRUMENT,none,"spectrograph" \
-            --colmetadata=10,OBJ,none,"object type" 
-
+            --colmetadata=8,SUM,none,"Sum in in data being reduced"
     else
         calibrationCat=$calibrationCatalogues/entirecamera_$a.cat
         astmatch $ourDataCatalogue --hdu=1 $calibrationCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
@@ -1768,13 +1770,12 @@ computeAndStoreFactors() {
 
             alphatruet=$alphatruedir/"$objectName"_"$filter"_"$a".txt
             asttable $f -h1 --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
-
             if [ -z "$apertureCorrection" ]; then 
                 # apertureCorrection is empty, we are calibrating with a survey
                 asttable $alphatruet -h1 -c1,2,'arith $6 $8 /' -o$alphatruedir/$alphaFile
             else
                 # apertureCorrection is not empty, we are calibrating with spectra
-                asttable $alphatruet -h1 -c1,2,"arith \$6 \$8 $apertureCorrection / /",9,10 -o $alphatruedir/$alphaFile
+                asttable $alphatruet -h1 -c1,2,"arith \$6 \$8 $apertureCorrection / /" -o $alphatruedir/$alphaFile
             fi
 
             # python3 /home/sguerra/pipeline/pipelineScripts/tmp_diagnosis_distributionOfCalibrationFactorsInFrame.py $alphatruedir/$alphaFile $a
@@ -1866,7 +1867,6 @@ computeCalibrationFactors() {
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
     fi
 
-    
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration
    

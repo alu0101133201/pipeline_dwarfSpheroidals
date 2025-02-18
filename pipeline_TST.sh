@@ -1163,11 +1163,9 @@ selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
 
-exit 0
 
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $numberOfFWHMForPhotometry $transmittanceCurveFile $transmittanceWavelengthUnits
-
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $numberOfFWHMForPhotometry $surveyForSpectra $transmittanceCurveFile $transmittanceWavelengthUnits
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
