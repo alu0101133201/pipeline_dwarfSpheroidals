@@ -132,6 +132,7 @@ outputConfigurationVariablesInformation() {
         "·Number of CCDs of the camers:$num_ccd"
         "·Presence of overscan:$overscan"
         "·Keyword of the illuminated section:$trimsecKey"
+        "·Vignetting threshold in the flat field values:$vignettingThreshold"
         " "
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
@@ -220,6 +221,7 @@ checkIfAllVariablesAreSet() {
                 num_ccd \
                 overscan \
                 trimsecKey \
+                vignettingThreshold \
                 lowestScaleForIndex \
                 highestScaleForIndex \ 
                 solve_field_L_Param \
@@ -1208,7 +1210,7 @@ downloadIndex() {
     build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
                             -P $re \
                             -S phot_g_mean_mag \
-                            -E -A RA -D  DEC\
+                            -E -A RA -D  DEC \
                             -o $indexdir/index_$re.fits;
 }
 export -f downloadIndex
@@ -1993,7 +1995,7 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize
-
+    
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfFWHMForPhotometry
@@ -2713,3 +2715,43 @@ prepareRingTemplate(){
 
 }
 export -f prepareRingTemplate
+
+smallGridToFullGridSingleFrame(){
+    smallFrame=$1
+    fullDir=$2
+    fullSize=$3
+    fullRA=$4
+    fullDEC=$5
+
+    base=$( basename $smallFrame )
+    out=$fullDir/$base
+    for h in $(seq 1 $num_ccd); do
+        astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
+        astfits $fullDir/ccd_$base --copy=1 -o $out
+        rm $fullDir/ccd_$base
+    done
+}
+export -f smallGridToFullGridSingleFrame
+
+smallGridtoFullGrid(){
+    smallGridDir=$1
+    fullGridDir=$2
+    fullGridDone=$3
+    fullGridSize=$4
+    fullGridRA=$5
+    fullGridDEC=$6
+    
+
+    if [ -f $fullGridDone ]; then
+        echo -e "\n\tFrames from {$smallGridDir} have been already pased into the full grid\n"
+    else
+        framesToGrid=()
+        for frame in $smallGrid/*.fits; do
+            framesToGrid+=("$frame")
+        done
+        printf "%s\n" "${framesToGrud[@]}" | parallel -j "$num_cpus" smallGridToFullGridSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC 
+        echo done > $fullGridDone
+        
+    fi
+}
+export -f smallGridtoFullGrid

@@ -273,12 +273,13 @@ oneNightPreProcessing() {
   			    if [[ "$overscan" == "YES" ]]; then
   				    trsec=$(eval "astfits $nameWithEscapedSpaces -h $h --keyvalue=$trimsecKey -q")
       				trsec=${trsec//[\[\]]/}
-              
-	  			    eval "astcrop $nameWithEscapedSpaces -h $h --mode=img --section=$trsec  -o temp.fits"
-              astarithmetic temp.fits -h1 float32 -otemp2.fits 
-              rm temp.fits
-              astfits temp2.fits --copy=1  -o$out
-              rm temp2.fits
+              temp1=$currentINDIR/"$unixTimeInSeconds"_ccd"$h"_temp1.fits
+	  			    eval "astcrop $nameWithEscapedSpaces -h $h --mode=img --section=$trsec  -o $temp1"
+              temp2=$currentINDIR/"$unixTimeInSeconds"_ccd"$h"_temp2.fits
+              astarithmetic $temp1 -h1 float32 -o$temp2 
+              rm $temp1
+              astfits $temp2 --copy=1  -o$out
+              rm $temp2
       				gain_h=$(eval "astfits $nameWithEscapedSpaces -h $h --keyvalue=$gain -q")
               astfits $out -h$h --write=$gain,$gain_h,"e- ADU"
       	    else
@@ -910,7 +911,7 @@ oneNightPreProcessing() {
       tempStep=$maskedcornerdir/temp_$base
       astfits $i --copy=0 --primaryimghdu -o $out
       for h in $(seq 1 $num_ccd); do
-        astarithmetic $i -h$h set-m $currentFlatImage -h$h set-f m f 0.9 lt  nan where set-n n f 2. gt nan where -o $tempStep
+        astarithmetic $i -h$h set-m $currentFlatImage -h$h set-f m f $vignettingThreshold lt  nan where set-n n f 2. gt nan where -o $tempStep
         astfits $tempStep --copy=1 -o $out
         rm -f $tempStep
       done
@@ -927,7 +928,7 @@ oneNightPreProcessing() {
     echo -e "\nFrames already placed in the folder for frames prepared to common reduction"
   else
     initialValue=$( getHighestNumberFromFilesInFolder $framesForCommonReductionDir )
-
+    
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
       name=$(( $initialValue + $a ))
@@ -935,6 +936,7 @@ oneNightPreProcessing() {
       ###We need, so far: GAIN, DATEOBS and AIRMASS: we check if they exist and if not we propagate them
       air=$(astfits $framesForCommonReductionDir/$name.fits -h0 --keyvalue=$airMassKeyWord -q)
       dobs=$(astfits $framesForCommonReductionDir/$name.fits -h0 --keyvalue=$dateHeaderKey -q)
+
       if [ "$air" == "n/a" ]; then
         air=$(astfits $currentINDIR/$base -h0 --keyvalue=$airMassKeyWord -q)
         astfits $framesForCommonReductionDir/$name.fits -h0 --write=$airMassKeyWord,$air 
@@ -944,7 +946,7 @@ oneNightPreProcessing() {
         astfits $framesForCommonReductionDir/$name.fits -h0 --write=$dateHeaderKey,$dobs
       fi
       for h in $(seq 1 $num_ccd); do
-        gain_h=$(astfits $framesForCalibrationDir/$name.fits -h$h --keyvalue=$gain -q)
+        gain_h=$(astfits $framesForCommonReductionDir/$name.fits -h$h --keyvalue=$gain -q)
         if [ "$gain_h" == "n/a" ]; then
           gain_h=$(astfits $currentINDIR/$base -h$h --keyvalue=$gain -q)
           astfits $framesForCommonReductionDir/$name.fits -h$h --write=$gain,$gain_h
@@ -986,7 +988,7 @@ for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
-
+exit
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
@@ -1082,7 +1084,7 @@ echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
 echo -e "·Creating SExtractor catalogues and running scamp"
 
-numOfSextractorPlusScampIterations=3
+numOfSextractorPlusScampIterations=4
 
 sexcfg=$CDIR/sextractor_astrometry.sex
 sexparam=$CDIR/sextractor_astrometry.param
@@ -1122,7 +1124,7 @@ else
   done
   echo done > $scampdone
 fi
-
+exit
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1278,8 +1280,8 @@ else
 	if ! [ -d $mowdir ]; then mkdir $mowdir; fi
 	if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 	removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
-
-
+  
+  rm $wdir/*.fits $wonlydir/*.fits
   echo -e "\n·Removing bad frames"
 
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1299,6 +1301,7 @@ else
   #removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
   #removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
 
+ 
 	##Make the coadd
 	coaddDir=$BDIR/coadds-prephot
 	coaddDone=$coaddDir/done.txt
@@ -1311,6 +1314,7 @@ else
   echo done > $coaddprephot_done
   #Remove files not needed
   rm $BDIR/*w*prephot/*.fits
+  rm $BDIR/noise-sky_prephot/*.fits
 fi
 
 
@@ -1458,7 +1462,6 @@ else
 fi
 
 
-
 # ---------------------------------------------------
 
 echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
@@ -1535,7 +1538,6 @@ rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 #removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
 #removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-
 
 echo -e "\n·Building coadd"
 coaddDir=$BDIR/coadds
