@@ -81,11 +81,11 @@ outputConfigurationVariablesInformation() {
         "·Calibration range"
         "  Bright limit:$calibrationBrightLimit:[mag]"
         "  Faint limit:$calibrationFaintLimit:[mag]"
-        "The aperture photometry will be done with an aperture of:$numberOfFWHMForPhotometry:[FWHM]"
+        "The aperture photometry for calibrating our data is in units of:$apertureUnits"
+        "The aperture photometry will be done with an aperture of :$numberOfApertureUnitsForCalibration:[$apertureUnits]"
         "The calibration will be done using data from survey: $surveyForPhotometry"
         "If the calibration is done with spectra, the survey to use is: $surveyForSpectra"
         "If the calibration is done with spectra, the transmittance of the filter is in the file: $transmittanceCurveFile:[$transmittanceWavelengthUnits]"
-        "File containing the aperture corrections for calibrating with spectra: $apertureCorrectionsPerFilterFile"
         ""
         "·Saturation threshold:$saturationThreshold:[ADU]"
         "·Gain:$gain:[e-/ADU]"
@@ -186,12 +186,12 @@ checkIfAllVariablesAreSet() {
                 vignettingThreshold \
                 calibrationBrightLimit \
                 calibrationFaintLimit \
-                numberOfFWHMForPhotometry \
+                apertureUnits \
+                numberOfApertureUnitsForCalibration \
                 surveyForPhotometry \
                 surveyForSpectra \
                 transmittanceCurveFile \
                 transmittanceWavelengthUnits \
-                apertureCorrectionsPerFilterFile \
                 ringWidth \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
@@ -230,40 +230,31 @@ checkIfAllVariablesAreSet() {
 }
 export -f checkIfAllVariablesAreSet
 
-correctionAndPerformConsistencyChecks() {
-  apertureCorrectionsPerFilterFile=$1
-  filter=$2
-  numberOfFWHMForPhotometry=$3
+checkIfStringVariablesHaveValidValues() {
+    errorCode=10
 
-  FWHMCorrespondingTheCorrections=$( getFWHMCorrespondingToCorrectionsGiven $apertureCorrectionsPerFilterFile)
-  if [ "$FWHMCorrespondingTheCorrections" -ne $numberOfFWHMForPhotometry ]; then
-      errorNumber=10
-    echo -e "\nThe FWHM selected for calibration and the aperture correction given are not for the same FWHM"
-    exit $errorNumber
-  fi
+    if [[ ("$apertureUnits" != "FWHM") && ("$apertureUnits" != "Re") ]]; then
+        echo "Error. The variable apertureUnits has a value ($apertureUnits) which is not accepted"
+        exit $errorCode
+    fi
 
-  apertureCorrection=$( getApertureCorrectionForFilter $filter $apertureCorrectionsPerFilterFile )
+    if [[ ("$surveyForPhotometry" != "PANSTARRS") && ("$surveyForPhotometry" != "DECaLS") && ("$surveyForPhotometry" != "SPECTRA")]]; then
+        echo "Error. The variable surveyForPhotometry has a value ($surveyForPhotometry) which is not accepted"
+        exit $errorCode
+    fi
 
-  if [ -z $apertureCorrection ]; then
-    errorNumber=11
-    echo -e "\nTrying to calibrate with spectra but no aperture correction given"
-    exit $errorNumber
-  fi
+    if [[ ("$surveyForPhotometry" == "SPECTRA") && ("$surveyForSpectra" != "SDSS" && "$surveyForSpectra" != "GAIA") ]]; then
+        echo "Error. The variable surveyForSpectra has a value ($surveyForSpectra) which is not accepted"
+        exit $errorCode
+    fi
+
+    if [[ ("$transmittanceWavelengthUnits" != "nm") && ("$transmittanceWavelengthUnits" != "A") ]]; then
+        echo "Error. The variable transmittanceWavelengthUnits has a value ($transmittanceWavelengthUnits) which is not accepted"
+        exit $errorCode
+    fi
 }
-export -f correctionAndPerformConsistencyChecks
+export -f checkIfStringVariablesHaveValidValues
 
-getFWHMCorrespondingToCorrectionsGiven() {
-  local fileWithCorrections="$1"
-  grep "^FWHM" $fileWithCorrections | awk '{print $2}'
-}
-export -f getFWHMCorrespondingToCorrectionsGiven
-
-getApertureCorrectionForFilter() {
-  local filter="$1"
-  local fileWithCorrections="$2"
-  awk -v k="$filter" '$1 == k {print $2}' $fileWithCorrections
-}
-export -f getApertureCorrectionForFilter
 
 # Functions used in Flat
 maskImages() {
@@ -1228,6 +1219,7 @@ selectStarsAndSelectionRangeSurvey() {
     cataloguedir=$2
     methodToUse=$3
     survey=$4
+    apertureUnits=$5
 
     starSelectionDone=$cataloguedir/done.txt
     if ! [ -d $cataloguedir ]; then mkdir $cataloguedir; fi
@@ -1246,10 +1238,9 @@ selectStarsAndSelectionRangeSurvey() {
                 brickList+=("$currentName")
             done
         fi
-
         headerWithData=0 # After decompressing the data ends up in the hdu 0
         noisechiselTileSize=50
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $noisechiselTileSize 
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $noisechiselTileSize $apertureUnits
         echo "done" > $starSelectionDone
     fi
 }
@@ -1320,8 +1311,9 @@ performAperturePhotometryToSingleBrick() {
     automaticallySelectedDir=$3
     outputCat=$4
     filter=$5
-    numberOfFWHMToUse=$6
+    numberOfApertureForRecuperateGAIA=$6
     survey=$7
+
     if [[ "$survey" = "DECaLS" ]]; then
         brickName=decompressed_decal_image_"$brick"_"$filter".fits
     elif [[ "$survey" = "PANSTARRS" ]]; then
@@ -1332,7 +1324,7 @@ performAperturePhotometryToSingleBrick() {
     automaticCatalogue=$automaticallySelectedDir/selected_"$brickName"_automatic.txt
 
     r_decals_pix_=$(awk 'NR==1 {printf $1}' $fileWithAperture)
-    r_decals_pix=$(astarithmetic $r_decals_pix_ $numberOfFWHMToUse. x -q )
+    r_decals_pix=$(astarithmetic $r_decals_pix_ $numberOfApertureForRecuperateGAIA. x -q )
 
     dataHdu=0
 
@@ -1360,8 +1352,8 @@ performAperturePhotometryToBricks() {
     automaticallySelectedDir=$2
     outputCat=$3
     filter=$4
-    numberOfFWHMToUse=$5
-    survey=$6
+    survey=$5
+    numberOfApertureForRecuperateGAIA=$6
    
     outputDone=$outputCat/done.txt
     if ! [ -d $outputCat ]; then mkdir $outputCat; fi
@@ -1387,7 +1379,7 @@ performAperturePhotometryToBricks() {
         fi
         
         
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfFWHMToUse $survey
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfApertureForRecuperateGAIA $survey
         echo "done" > $outputDone
     fi
 }
@@ -1407,11 +1399,10 @@ prepareCalibrationData() {
     dataPixelScale=${10}
     sizeOfOurFieldDegrees=${11} 
     gaiaCatalogue=${12}
-    numberOfFWHMForPhotometry=${13}
-    surveyForSpectra=${14}
-    transmittanceCurveFile=${15}
-    transmittanceWavelengthUnits=${16}
-
+    surveyForSpectra=${13}
+    transmittanceCurveFile=${14}
+    transmittanceWavelengthUnits=${15}
+    apertureUnits=${16}
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
 
@@ -1425,7 +1416,7 @@ prepareCalibrationData() {
         writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
 
         prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
-                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $numberOfFWHMForPhotometry $aperturePhotDir
+                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits
     fi
 }
 export -f prepareCalibrationData
@@ -1479,8 +1470,10 @@ prepareSurveyDataForPhotometricCalibration() {
     survey=${10}
     sizeOfOurFieldDegrees=${11} 
     gaiaCatalogue=${12}
-    numberOfFWHMForPhotometry=${13}
-    aperturePhotDir=${14}
+    aperturePhotDir=${13}
+    apertureUnits=${14}
+    
+
 
     echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
     bricksIdentificationFile=$surveyImagesDir/brickIdentification.txt
@@ -1514,18 +1507,28 @@ prepareSurveyDataForPhotometricCalibration() {
     fi
     
     methodToUse="sextractor"
-    selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey
+    selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey $apertureUnits
     
+
     halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     if [ $survey == "DECaLS" ]; then
         produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
     elif [ "$survey" == "PANSTARRS" ]; then
         produceHalfMaxRadiusPlotsForPanstarrs $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
     fi
-    
-    performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $numberOfFWHMForPhotometry $survey
-    
 
+
+
+    # These values have been calculated for recovering GAIA photometry. We are calibrated to GAIA spectra.
+    if [ $apertureUnits == "FWHM" ]; then
+        numberOfApertureForRecuperateGAIA=5
+    elif [ $apertureUnits == "Re" ]; then 
+        numberOfApertureForRecuperateGAIA=5
+    else
+        echo "Error. Aperture Units not recognised. We should not get there never"
+    fi
+    performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
+    
     imagesHdu=1
     brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
     if [[ -f $brickDecalsAssociationFile ]]; then
@@ -1545,21 +1548,23 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     headerToUse=$4
     methodToUse=$5
     tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
+    apertureUnits=$7
 
     i=$framesForCalibrationDir/$a
     ##In the case of using it for Decals or Panstarrs, we need the variable survey
     
+
     if [[ "$methodToUse" == "sextractor" ]]; then
-        outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a )
+        outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a $apertureUnits )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
-        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse $tileSize  )
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse $tileSize $apertureUnits )
     else
         errorNumber=9
         echo "Error, method for selecting stars and the range in the calibration not recognised"
         echo "Exiting with error number: $erroNumber"
         exit $erroNumber
     fi
-    
+
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
     
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
@@ -1579,7 +1584,8 @@ selectStarsAndSelectionRangeOurData() {
     mycatdir=$3
     methodToUse=$4
     tileSize=$5
-    
+    apertureUnits=$6
+
     mycatdone=$mycatdir/done.txt
     if ! [ -d $mycatdir ]; then mkdir $mycatdir; fi
     if [ -f $mycatdone ]; then
@@ -1591,7 +1597,7 @@ selectStarsAndSelectionRangeOurData() {
         done
 
         headerWithData=1
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $tileSize 
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $tileSize $apertureUnits
         echo done > $mycatdone
     fi
 }
@@ -1672,14 +1678,14 @@ buildOurCatalogueOfMatchedSourcesForFrame() {
     ourDatadir=$2
     framesForCalibrationDir=$3
     mycatdir=$4
-    numberOfFWHMToUse=$5
+    numberOfApertureUnitsForCalibration=$5
 
     base="entirecamera_$a.fits"
     i=$framesForCalibrationDir/$base
     automaticCatalogue=$mycatdir/selected_"$base"_automatic.txt
 
     r_myData_pix_=$(awk 'NR==1 {printf $1}' $mycatdir/range_"$base".txt)
-    r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfFWHMToUse. x -q )
+    r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfApertureUnitsForCalibration. x -q )
 
     dataHdu=1
 
@@ -1701,7 +1707,7 @@ buildOurCatalogueOfMatchedSources() {
     ourDatadir=$1
     framesForCalibrationDir=$2
     mycatdir=$3
-    numberOfFWHMToUse=$4
+    numberOfApertureUnitsForCalibration=$4
 
     ourDatadone=$ourDatadir/done.txt
     if ! [ -d $ourDatadir ]; then mkdir $ourDatadir; fi
@@ -1712,7 +1718,7 @@ buildOurCatalogueOfMatchedSources() {
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToUse+=("$a")
         done
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $mycatdir $numberOfFWHMToUse
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
         echo done > $ourDatadone
     fi
 }
@@ -1800,13 +1806,13 @@ combineDecalsCataloguesForSingleFrame() {
     catalogueName=$( echo "$frame" | awk -F'.' '{print $1}')
     firstBrick=$(echo "$bricks" | awk '{print $1}')  
     
-    
     asttablePrompt="asttable $decalsCataloguesDir/$firstBrick.cat -o$outputDir/$catalogueName.cat"
 
     remainingBricks=$(echo "$bricks" | cut -d' ' -f2-)  # Get the rest of the bricks
     for brick in $remainingBricks; do
         asttablePrompt+=" --catrowfile=$decalsCataloguesDir/$brick.cat"
     done
+
     $asttablePrompt
 }
 
@@ -1844,18 +1850,19 @@ computeCalibrationFactors() {
     brightLimit=$9
     faintLimit=${10}
     tileSize=${11}
-    numberOfFWHMForPhotometry=${12}
-    apertureCorrection=${13}    # Only used if calibrating with spectra
+    apertureUnits=${12}
+    numberOfApertureUnitsForCalibration=${13}
+
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
-    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize
+    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
 
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
-    buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfFWHMForPhotometry
+    buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
     
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
@@ -1866,6 +1873,7 @@ computeCalibrationFactors() {
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
     fi
+
 
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration
@@ -2338,7 +2346,7 @@ export -f computeExposureMap
 # 3.- RA
 # 4.- DEC
 # 3.- Magnitude
-# 4.- FWHM/2
+# 4.- FWHM/2 or Re
 
 generateCatalogueFromImage_noisechisel() { 
     image=$1
@@ -2346,12 +2354,20 @@ generateCatalogueFromImage_noisechisel() {
     a=$3   
     header=$4
     tileSize=$5
+    apertureUnitsToCalculate=$6
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
     astconvolve $image -h$header --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits 1>/dev/null
     astnoisechisel $image -h$header -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=$tileSize,$tileSize 1>/dev/null
     astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --gthresh=-15 --objbordersn=0 1>/dev/null
-    astmkcatalog $outputDir/seg_$a.fits --x --y --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $outputDir/decals_$a.txt --zeropoint=22.5 1>/dev/null
+    
+    if [ $apertureUnitsToCalculate == "FWHM" ]; then
+        astmkcatalog $outputDir/seg_$a.fits --x --y --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $outputDir/decals_$a.txt --zeropoint=22.5 1>/dev/null
+    elif [ $apertureUnitsToCalculate == "Re" ]; then 
+        astmkcatalog $outputDir/seg_$a.fits --x --y --ra --dec --magnitude --half-sum-radius --sum --clumpscat -o $outputDir/decals_$a.txt --zeropoint=22.5 1>/dev/null
+    else
+        echo "Error. Aperture Units not recognised. We should not get there never"
+    fi
 
     rm $outputDir/kernel_$a.fits $outputDir/convolved_$a.fits $outputDir/det_$a.fits $outputDir/seg_$a.fits  $outputDir/decals_"$a"_o.txt
     mv $outputDir/decals_"$a"_c.txt $outputDir/catalogue_$a.cat
@@ -2364,16 +2380,42 @@ generateCatalogueFromImage_sextractor(){
     image=$1
     outputDir=$2
     a=$3   
-   
+    apertureUnitsToCalculate=$4
+
+
     # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
-   
-    source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII  1>/dev/null 2>&1
+    source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param 1>/dev/null 2>&1
 
+    # The following code is to identify the FWHM and Re columns numbers. This is needed because it is dependant
+    # on the order of the parameters in the .param file.
+    headerLines=$( grep '^#' "$outputDir/"$a"_tmp.cat")
+    while IFS= read -r line; do
+        if [[ ("$line" == *"FWHM_IMAGE"*) ]]; then
+            fwhmCol=$(echo "$line" | awk '{print $2}')
+        fi
 
-    ################# OJO LA DIVISIÓN DEPENDE DE SI ES FWHM (/2) O R_E (/1)
-    awk '{ $6 = $6 / 1; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
+        if [[ ("$line" == *"FLUX_RADIUS"*) ]]; then
+            reCol=$(echo "$line" | awk '{print $2}')
+        fi
+    done <<< $headerLines
 
+    # We divide the fwhm by 2 so we have a radius
+    # this is done here even if Re is chosen because then, when a column is removed, the column number changes and it's simpler to do it here
+    awk -v col="$fwhmCol" '{ $col = $col / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a"_tmp2.cat 
+
+    # Remove the sextractor headers to add later the noisechisel equivalents (for consistency)
+    numberOfHeaders=$( grep '^#' $outputDir/"$a"_tmp2.cat | wc -l)
+    sed -i "1,${numberOfHeaders}d" "$outputDir/"$a"_tmp2.cat"
+
+    if [ $apertureUnitsToCalculate == "FWHM" ]; then
+        awk -v col="$reCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
+    elif [ $apertureUnitsToCalculate == "Re" ]; then 
+        awk -v col="$fwhmCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
+    else
+        echo "Error. Aperture Units not recognised. We should not get there never"
+    fi
+ 
     # Headers to mimic the noisechisel format. Change between MacOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS (BSD sed)
@@ -2392,8 +2434,7 @@ generateCatalogueFromImage_sextractor(){
         sed -i '1i# Column 2: Y              ' $outputDir/$a.cat
         sed -i '1i# Column 1: X              ' $outputDir/$a.cat
     fi
-
-    rm $outputDir/"$a"_tmp.cat
+    rm $outputDir/"$a"_tmp.cat $outputDir/"$a"_tmp2.cat
 
     mv  $outputDir/$a.cat $outputDir/catalogue_$a.cat
     echo $outputDir/catalogue_$a.cat

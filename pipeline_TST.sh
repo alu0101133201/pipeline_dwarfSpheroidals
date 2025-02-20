@@ -82,15 +82,9 @@ confFile=$1
 loadVariablesFromFile $confFile
 
 checkIfAllVariablesAreSet
+checkIfStringVariablesHaveValidValues
 
 outputConfigurationVariablesInformation
-
-
-if [ $surveyForPhotometry == "SPECTRA" ]; then
-  correctionAndPerformConsistencyChecks $apertureCorrectionsPerFilterFile $filter $numberOfFWHMForPhotometry
-  apertureCorrection=$( getApertureCorrectionForFilter $filter $apertureCorrectionsPerFilterFile )
-fi
-
 
 # The following lines are responsible of the cpu's used for paralellise
 # If it is running in a system with slurm it takes the number of cpu's from the slurm job
@@ -1164,8 +1158,17 @@ rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
 
 
+# ****** Decision note *******
+
+# Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree, 
+# we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover 
+# magnitudes obtained with GAIA spectra.\\ \\
+# GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere.
+# It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need 
+# to calibrate Halpha (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
+
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $numberOfFWHMForPhotometry $surveyForSpectra $transmittanceCurveFile $transmittanceWavelengthUnits
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $transmittanceCurveFile $transmittanceWavelengthUnits $apertureUnits
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
@@ -1174,8 +1177,9 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
-                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry $apertureCorrection
+                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry $apertureUnits $numberOfApertureUnitsForCalibration
 
+exit 0
 
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1210,7 +1214,6 @@ else
 fi
 python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir
 
-exit 0
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
@@ -1243,9 +1246,10 @@ else
     fi
 
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $dirWithReferenceCat \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $apertureCorrection 
+                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
 
+exit 0
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
@@ -1605,7 +1609,7 @@ alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
 
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
-                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry $apertureCorrection
+                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry 
 
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
@@ -1915,7 +1919,7 @@ exit 0
 # imagesForCalibration=$subskySmallGrid_dir
 # alphatruedir=$BDIR/alpha-stars-true_it$iteration
 # computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
-#                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry $apertureCorrection
+#                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry 
 
 # photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 # photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
