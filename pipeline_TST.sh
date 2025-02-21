@@ -851,7 +851,7 @@ echo -e "·Downloading Gaia Catalogue"
 # This is because you don't want to use a field too big in order not to download bricks that you don't need
 # So I expect the "sizeofOurFieldDegrees" value to be quite tight. But since the catalogue is text and it doesn't take
 # long I prefer to add something and be sure that I don't lose any source because of the catalogue
-radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc)
+radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf ".%1f", $0}' ) #The awk part is to avoiod problems when R<1
 query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
 catName=$catdir/"$objectName"_Gaia_eDR3.fits
