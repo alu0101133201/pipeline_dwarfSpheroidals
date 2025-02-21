@@ -1505,10 +1505,10 @@ prepareSurveyDataForPhotometricCalibration() {
         #Panstarrs is calibrated at ZP=25. In order to be the most general possible, we transform panstarrs data so it is at zp=22.5, and we do not need to change anything else
         calibratePanstarrs $surveyImagesDir
     fi
+
     
     methodToUse="sextractor"
     selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey $apertureUnits
-    
 
     halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     if [ $survey == "DECaLS" ]; then
@@ -1516,7 +1516,6 @@ prepareSurveyDataForPhotometricCalibration() {
     elif [ "$survey" == "PANSTARRS" ]; then
         produceHalfMaxRadiusPlotsForPanstarrs $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
     fi
-
 
 
     # These values have been calculated for recovering GAIA photometry. We are calibrated to GAIA spectra.
@@ -2385,7 +2384,7 @@ generateCatalogueFromImage_sextractor(){
 
     # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
-    source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param 1>/dev/null 2>&1
+    source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII_HEAD 1>/dev/null 2>&1
 
     # The following code is to identify the FWHM and Re columns numbers. This is needed because it is dependant
     # on the order of the parameters in the .param file.

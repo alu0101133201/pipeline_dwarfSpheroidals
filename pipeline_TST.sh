@@ -1170,6 +1170,7 @@ aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final prod
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $transmittanceCurveFile $transmittanceWavelengthUnits $apertureUnits
 
+
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1179,7 +1180,6 @@ writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry $apertureUnits $numberOfApertureUnitsForCalibration
 
-exit 0
 
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
