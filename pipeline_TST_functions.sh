@@ -70,6 +70,7 @@ export -f loadVariablesFromFile
 
 outputConfigurationVariablesInformation() {
     data=(
+        "·Telescope:$telescope"
         "·Object name:$objectName"
         "·Right ascension:$ra_gal:[deg]"
         "·Declination:$dec_gal:[deg]"
@@ -81,11 +82,11 @@ outputConfigurationVariablesInformation() {
         "·Calibration range"
         "  Bright limit:$calibrationBrightLimit:[mag]"
         "  Faint limit:$calibrationFaintLimit:[mag]"
-        "The aperture photometry for calibrating our data is in units of:$apertureUnits"
-        "The aperture photometry will be done with an aperture of :$numberOfApertureUnitsForCalibration:[$apertureUnits]"
-        "The calibration will be done using data from survey: $surveyForPhotometry"
-        "If the calibration is done with spectra, the survey to use is: $surveyForSpectra"
-        "If the calibration is done with spectra, the transmittance of the filter is in the file: $transmittanceCurveFile:[$transmittanceWavelengthUnits]"
+        "·The aperture photometry for calibrating our data is in units of:$apertureUnits"
+        "·The aperture photometry will be done with an aperture of:$numberOfApertureUnitsForCalibration:[$apertureUnits]"
+        "·The calibration will be done using data from survey:$surveyForPhotometry"
+        "·If the calibration is done with spectra, the survey to use is:$surveyForSpectra"
+        "·The transmittances of the filters are in the folder:$folderWithTransmittances"
         ""
         "·Saturation threshold:$saturationThreshold:[ADU]"
         "·Gain:$gain:[e-/ADU]"
@@ -134,7 +135,7 @@ outputConfigurationVariablesInformation() {
     echo -e "Summary of the configuration variables provided for the reduction\n"
     for entry in "${data[@]}"; do
     IFS=":" read -r text value unit <<< "$entry" 
-    printf "\t%-60s $ORANGE %-20s $GREEN %-10s $NOCOLOUR\n" "$text" "$value" "$unit"
+    printf "\t%-70s $ORANGE %-20s $GREEN %-10s $NOCOLOUR\n" "$text" "$value" "$unit"
     done
 }
 export -f outputConfigurationVariablesInformation
@@ -175,6 +176,7 @@ checkIfAllVariablesAreSet() {
     variablesToCheck=(objectName \
                 ra_gal \
                 dec_gal \
+                telescope \
                 defaultNumOfCPUs \
                 ROOTDIR \
                 airMassKeyWord \ 
@@ -189,9 +191,8 @@ checkIfAllVariablesAreSet() {
                 apertureUnits \
                 numberOfApertureUnitsForCalibration \
                 surveyForPhotometry \
+                folderWithTransmittances \
                 surveyForSpectra \
-                transmittanceCurveFile \
-                transmittanceWavelengthUnits \
                 ringWidth \
                 USE_COMMON_RING \
                 commonRingDefinitionFile \
@@ -248,13 +249,91 @@ checkIfStringVariablesHaveValidValues() {
         exit $errorCode
     fi
 
-    if [[ ("$transmittanceWavelengthUnits" != "nm") && ("$transmittanceWavelengthUnits" != "A") ]]; then
-        echo "Error. The variable transmittanceWavelengthUnits has a value ($transmittanceWavelengthUnits) which is not accepted"
-        exit $errorCode
-    fi
 }
 export -f checkIfStringVariablesHaveValidValues
 
+checkTransmittanceFilterAndItsUnits() {
+    telescope=$1
+    survey=$2
+    filterFolder=$3
+    filterToUse=$4
+
+    filterFileNeeded=$( checkIfAllTheTransmittancesNeededAreGiven $telescope $surveyForPhotometry $folderWithTransmittances $filter )
+    checkUnitsAndConvertToCommonUnitsIfNeeded $filterFileNeeded
+}
+export -f checkTransmittanceFilterAndItsUnits
+
+# In this function we check the transmittances given. Just for having everything in the same units
+# We place everything into Angstroms and transmittances from 0 to 1.
+checkUnitsAndConvertToCommonUnitsIfNeeded() {
+    filterFile=$1
+    errorCode=12
+
+    # Since we may change the file (depending on the units) I create a backup in order not to loose the original file
+    cp $filterFile $filterFile.original
+
+    read units transmittanceFormat < <(head -n 1 $filterFile)
+    transmittanceFormat="${transmittanceFormat//$'\r'/}" # Remove the final endline
+
+    if [[ ("$units" != "A") && ("$units" != "nm" ) ]]; then
+        echo "Units ($units) for transmittance wavelengths not accepted. It is expected either nm or A"
+        exit $errorCode
+    fi
+
+    if [[ ("$transmittanceFormat" != "normalised") && ("$transmittanceFormat" != "percentage") ]]; then
+        echo "format ($transmittanceFormat) for transmittance not accepted. It is expected either normalised or percentage"
+        exit $errorCode
+    fi
+
+
+    awk 'NR>1 {print $1, $2}' $filterFile.original |  
+    {
+        if [[ "$units" == "nm" ]]; then
+            awk '{print $1 * 10, $2}'  # Convert nm to Å
+        else
+            cat  # Keep as is
+        fi
+    } | {
+        if [[ "$transmittanceFormat" == "percentage" ]]; then
+            awk '{print $1, $2 / 100}'  # Convert percentage to normalised
+        else
+            cat  # Keep as is
+        fi
+    } > "$filterFile"
+
+    sed -i '1s/^/A normalised\n/' "$filterFile"
+}
+export -f checkUnitsAndConvertToCommonUnitsIfNeeded
+
+
+
+checkIfAllTheTransmittancesNeededAreGiven() {
+    telescope=$1
+    survey=$2
+    filterFolder=$3
+    filterToUse=$4
+
+    errroCode=11
+
+    # If we calibrate with spectra (survey="SPECTRA") then only the transmittance of the filter to use is needed
+    if [[ "$survey" == "SPECTRA" ]]; then
+        filterPath=$filterFolder/"$telescope"_"$filterToUse".dat
+        if ! [ -e $filterPath ]; then
+            echo "Error. Calibrating with SPECTRA option but not found the transmittance of the filter to calibrate (expected file: $filterPath)"
+            exit $errorCode  
+        fi
+    else   
+        # If calibrating with imaging survey then the filter from the survey is needed (to calibrate it to GAIA). 
+        # No filter from the telescope of the data to reduce is needed because the imaging survey will be used
+        filterPath=$filterFolder/"$survey"_"$filterToUse".dat
+        if ! [ -e $filterPath ]; then
+            echo "Error. Calibrating with IMAGING SURVEY ($survey) option but not found the transmittance of the filter to calibrate this survey to our reference (GAIA). expected file: $filterPath"
+            exit $errorCode  
+        fi
+    fi
+    echo $filterPath
+}
+export -f checkIfAllTheTransmittancesNeededAreGiven
 
 # Functions used in Flat
 maskImages() {
@@ -924,7 +1003,7 @@ export -f getParametersFromHalfMaxRadius
 
 downloadSurveyData() {
     mosaicDir=$1
-    surveyImagesDir=$2
+    local surveyImagesDir=$2
     bricksIdentificationFile=$3
     filters=$4
     ra=$5
@@ -935,6 +1014,7 @@ downloadSurveyData() {
     
     echo -e "\n·Downloading ${survey} bricks"
     donwloadMosaicDone=$surveyImagesDir/done_downloads.txt
+
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
     if ! [ -d $surveyImagesDir ]; then mkdir $surveyImagesDir; fi
     if [ -f $donwloadMosaicDone ]; then
@@ -1181,7 +1261,7 @@ decompressBricks() {
 }
 export -f decompressBricks
 
-calibratePanstarrsFrame() {
+divideByExpTimeAndMoveZPForPanstarrsFrame() {
     brickName=$1
     dirWithBricks=$2
 
@@ -1194,9 +1274,9 @@ calibratePanstarrsFrame() {
     astfits $dirWithBricks/$cal -h0 --write=ZP,22.5
     rm $dirWithBricks/$cal_tm
 }
-export -f calibratePanstarrsFrame
+export -f divideByExpTimeAndMoveZPForPanstarrsFrame
 
-calibratePanstarrs() {
+divideByExpTimeAndMoveZPForPanstarrs() {
     dirWithBricks=$1
 
     calibratedBricks=$dirWithBricks/recalibrated_done.txt
@@ -1208,18 +1288,18 @@ calibratePanstarrs() {
             currentName=$( basename $i )
             brickList+=("$currentName")
         done
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" calibratePanstarrsFrame {} $dirWithBricks
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" divideByExpTimeAndMoveZPForPanstarrsFrame {} $dirWithBricks
         echo "done" > $calibratedBricks
     fi
 }
-export -f calibratePanstarrs
+export -f divideByExpTimeAndMoveZPForPanstarrs
 
 selectStarsAndSelectionRangeSurvey() {
-    dirWithBricks=$1
-    cataloguedir=$2
-    methodToUse=$3
-    survey=$4
-    apertureUnits=$5
+    local dirWithBricks=$1
+    local cataloguedir=$2
+    local methodToUse=$3
+    local survey=$4
+    local apertureUnits=$5
 
     starSelectionDone=$cataloguedir/done.txt
     if ! [ -d $cataloguedir ]; then mkdir $cataloguedir; fi
@@ -1306,13 +1386,13 @@ produceHalfMaxRadiusPlotsForPanstarrs() {
 export -f produceHalfMaxRadiusPlotsForPanstarrs
 
 performAperturePhotometryToSingleBrick() {
-    brick=$1
-    brickDir=$2
-    automaticallySelectedDir=$3
-    outputCat=$4
-    filter=$5
-    numberOfApertureForRecuperateGAIA=$6
-    survey=$7
+    local brick=$1
+    local brickDir=$2
+    local automaticallySelectedDir=$3
+    local outputCat=$4
+    local filter=$5
+    local numberOfApertureForRecuperateGAIA=$6
+    local survey=$7
 
     if [[ "$survey" = "DECaLS" ]]; then
         brickName=decompressed_decal_image_"$brick"_"$filter".fits
@@ -1348,12 +1428,12 @@ performAperturePhotometryToSingleBrick() {
 export -f performAperturePhotometryToSingleBrick
 
 performAperturePhotometryToBricks() {
-    brickDir=$1
-    automaticallySelectedDir=$2
-    outputCat=$3
-    filter=$4
-    survey=$5
-    numberOfApertureForRecuperateGAIA=$6
+    local brickDir=$1
+    local automaticallySelectedDir=$2
+    local outputCat=$3
+    local filter=$4
+    local survey=$5
+    local numberOfApertureForRecuperateGAIA=$6
    
     outputDone=$outputCat/done.txt
     if ! [ -d $outputCat ]; then mkdir $outputCat; fi
@@ -1400,9 +1480,8 @@ prepareCalibrationData() {
     sizeOfOurFieldDegrees=${11} 
     gaiaCatalogue=${12}
     surveyForSpectra=${13}
-    transmittanceCurveFile=${14}
-    transmittanceWavelengthUnits=${15}
-    apertureUnits=${16}
+    apertureUnits=${14}
+    folderWithTransmittances=${15}
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
 
@@ -1410,13 +1489,15 @@ prepareCalibrationData() {
         spectraDir=$mosaicDir/spectra
 
         writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
-        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile $transmittanceWavelengthUnits
+        transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat 
+        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
+
     else
         surveyImagesDir=$mosaicDir/surveyImages
         writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
 
         prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
-                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits
+                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances
     fi
 }
 export -f prepareCalibrationData
@@ -1431,8 +1512,6 @@ prepareSpectraDataForPhotometricCalibration() {
     sizeOfOurFieldDegrees=$7
     surveyForSpectra=$8
     transmittanceCurveFile=$9
-    transmittanceWavelengthUnits=${10}
-
 
     if ! [ -d $spectraDir ]; then mkdir $spectraDir; fi
     downloadSpectra $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
@@ -1444,6 +1523,7 @@ prepareSpectraDataForPhotometricCalibration() {
     else
         output_tmpCat=$aperturePhotDir/wholeFieldPhotometricCatalogue_tmp.cat
         outputCat=$aperturePhotDir/wholeFieldPhotometricCatalogue.cat
+        transmittanceWavelengthUnits=A # At the beginning of the pipeline everything was transformed to A. Nevertheless the python scripts handles transmittances in nm 
         python3 $pythonScriptsPath/getMagnitudFromSpectra.py $spectraDir $transmittanceCurveFile $transmittanceWavelengthUnits $output_tmpCat $surveyForSpectra
 
         asttable $output_tmpCat -p4 --colmetadata=2,RA,deg,"Right ascension" \
@@ -1472,22 +1552,37 @@ prepareSurveyDataForPhotometricCalibration() {
     gaiaCatalogue=${12}
     aperturePhotDir=${13}
     apertureUnits=${14}
+    folderWithTransmittances=${15}
     
 
+    sizeOfFieldForCalibratingPANSTARRStoGAIA=2
 
     echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
     bricksIdentificationFile=$surveyImagesDir/brickIdentification.txt
-    
+
+    surveyImagesDirForGaiaCalibration=$surveyImagesDir"ForGAIACalibration"
+
+
+    # We work with two downloads of survey bricks. One of the field to calibrate the data to reduce and another one
+    # (independent of the field to reduce) to calibrate the survey used for calibration (PANSTARRS or DECaLS) to our reference framework of GAIA
+
+    # Could this be done more efficient and not have duplicity? yes. Would it need quite extra logic? Yes
+    # Because sometimes the field for reducing the data is bigger than the field for calibrating the imaging survey, but other times
+    # it is not. So it would need to do checks and stuff that we are not doing right now. Either way this is not bottle neck in the pipeline.
+
     if [ "$filter" = "lum" ]; then
         filters="g,r" # We download 'g' and 'r' because our images are taken with a luminance filter which response is a sort of g+r
+        downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFile $filters $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey  
         downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey  
         # This step creates the images (g+r)/2. This is needed because we are using a luminance filter which is a sort of (g+r)
         # The division by 2 is because in AB system we work with Janskys, which are W Hz^-1 m^-2. So we have to give a flux per wavelenght
         # So, when we add two filters we have to take into account that we are increasing the wavelength rage. In our case, 'g' and 'r' have
         # practically the same wavelenght width, so dividing by 2 is enough
+        addTwoFiltersAndDivideByTwo $surveyImagesDirForGaiaCalibration "g" "r"
         addTwoFiltersAndDivideByTwo $surveyImagesDir "g" "r"
     else 
         filters=$filter
+        downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFile $filters $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
         downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filters $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
     fi
 
@@ -1499,15 +1594,17 @@ prepareSurveyDataForPhotometricCalibration() {
     
     # Preprocessing needed depending on what survey we are usiing
     if [ "$survey" = "DECaLS" ]; then 
+        decompressBricks $surveyImagesDirForGaiaCalibration
         decompressBricks $surveyImagesDir # I have to decompressed them, I don't know what DECaLS does exactly but otherwise I can't run sextractor directly on the downloaded bricks
                                           # I can run noisechisel, but since it is quickly to decompress I prefer to simplify the logic of the code and decompress always
     elif [ "$survey" = "PANSTARRS" ]; then
-        #Panstarrs is calibrated at ZP=25. In order to be the most general possible, we transform panstarrs data so it is at zp=22.5, and we do not need to change anything else
-        calibratePanstarrs $surveyImagesDir
+        # Panstarrs is calibrated at ZP=25. In order to be the most general possible, we transform panstarrs data so it is at zp=22.5 and we work always with the same zp
+        divideByExpTimeAndMoveZPForPanstarrs $surveyImagesDirForGaiaCalibration
+        divideByExpTimeAndMoveZPForPanstarrs $surveyImagesDir
     fi
-
     
     methodToUse="sextractor"
+    selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $methodToUse $survey $apertureUnits
     selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey $apertureUnits
 
     halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
@@ -1517,16 +1614,27 @@ prepareSurveyDataForPhotometricCalibration() {
         produceHalfMaxRadiusPlotsForPanstarrs $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
     fi
 
-
-    # These values have been calculated for recovering GAIA photometry. We are calibrated to GAIA spectra.
+    # These values have been calculated for having a stable photometry (increasing aperture does not change the magnitudes anymore)
+    # This should recover GAIA magnitudes (and in fact it generaly does) but sometimes an offset is observed. That's why we
+    # compute and correct that offset in "calibrationToGAIA" function
     if [ $apertureUnits == "FWHM" ]; then
-        numberOfApertureForRecuperateGAIA=5
+        numberOfApertureForRecuperateGAIA=10
     elif [ $apertureUnits == "Re" ]; then 
-        numberOfApertureForRecuperateGAIA=5
+        numberOfApertureForRecuperateGAIA=9
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
+    performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
+
+    exit 0
+
+    # As mentioned in other comments and in the README, our reference framework is gaia, so I compute any offset to the 
+    # photometry of PANSTARRS and GAIA magnitudes (from spectra) and correct it
+    spectraDir=$mosaicDir/gaiaSpectra
+    magFromSpectraDir=$mosaicDir/magnitudesFromGaiaSpectra
+    calibrationToGAIA $spectraDir $folderWithTransmittances $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir $aperturePhotDir"ForGAIACalibration"
+    
     
     imagesHdu=1
     brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
@@ -1536,6 +1644,29 @@ prepareSurveyDataForPhotometricCalibration() {
     python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
 }
 export -f prepareSurveyDataForPhotometricCalibration
+
+calibrationToGAIA() {
+    spectraDir=$1
+    folderWithTransmittances=$2
+    filter=$3
+    ra=$4
+    dec=$5
+    mosaicDir=$6
+    sizeOfFieldForCalibratingPANSTARRStoGAIA=$7
+    magFromSpectraDir=$8
+    panstarrsCatalogueDir=$9
+
+    brightLimitToCompareGAIAandPANSTARRS=14.5
+    faintLimitToCompareGAIAandPANSTARRS=15.5
+
+    transmittanceCurveFile="$folderWithTransmittances"/PANSTARRS_$filter.dat
+    prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $magFromSpectraDir $sizeOfFieldForCalibratingPANSTARRStoGAIA "GAIA" $transmittanceCurveFile
+    # python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir $magFromSpectraDir/wholeFieldPhotometricCatalogue.cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS
+
+    # At this point we have the catalogue from GAIA and the catalogue from PANSTARRS. It's a matter of compare them
+
+}
+export -f calibrationToGAIA
 
 # Photometric calibration functions
 # The function that is to be used (the 'public' function using OOP terminology)
@@ -1548,6 +1679,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     methodToUse=$5
     tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
     apertureUnits=$7
+
 
     i=$framesForCalibrationDir/$a
     ##In the case of using it for Decals or Panstarrs, we need the variable survey

@@ -82,9 +82,13 @@ confFile=$1
 loadVariablesFromFile $confFile
 
 checkIfAllVariablesAreSet
+
 checkIfStringVariablesHaveValidValues
 
+checkTransmittanceFilterAndItsUnits $telescope $surveyForPhotometry $folderWithTransmittances $filter
+
 outputConfigurationVariablesInformation
+
 
 # The following lines are responsible of the cpu's used for paralellise
 # If it is running in a system with slurm it takes the number of cpu's from the slurm job
@@ -1160,15 +1164,16 @@ aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final prod
 
 # ****** Decision note *******
 
-# Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree, 
-# we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover 
-# magnitudes obtained with GAIA spectra.\\ \\
-# GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere.
-# It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need 
-# to calibrate Halpha (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
-
+# Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
+# we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
+# magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. 
+# For solving this we compute this offset and correct it in each run of the pipeline (thus PANSTARRS always agreeing with GAIA)\\ 
+# GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. 
+#It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha 
+# (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $transmittanceCurveFile $transmittanceWavelengthUnits $apertureUnits
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances
+exit 0
 
 
 iteration=1

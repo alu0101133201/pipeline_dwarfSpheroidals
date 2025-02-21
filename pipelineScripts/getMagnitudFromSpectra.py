@@ -30,6 +30,7 @@ def readFilterTransmittance(fileWithFilterTransmittance):
     transmittance = []
 
     with open(fileWithFilterTransmittance, 'r') as f:
+        next(f)
         for line in f:
             splittedLine = line.split()
             wavelength.append(float(splittedLine[0]))
