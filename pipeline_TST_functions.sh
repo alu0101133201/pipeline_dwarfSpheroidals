@@ -1011,7 +1011,7 @@ solveField() {
     dec_gal=$6
     confFile=$7
     astroimadir=$8
-
+    sexcfg_sf=$9
     base=$( basename $i)
 
     # The default sextractor parameter file is used.
@@ -1022,7 +1022,7 @@ solveField() {
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
-        solve-field $image_temp --no-plots \
+        solve-field $i --no-plots \
         -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
         --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
