@@ -38,6 +38,7 @@ fi
 if (( $(echo "$rebinFactor > 0" | bc -l) )); then
     ./src/changePxScale.sh $objectName $rawImages $destination $rebinFactor $filter
 else
+    if ! [ -d $destination ]; then mkdir $destination; fi
     for i in $rawImages/*$objectName*$filter/*.fits; do
         cp $i $destination
     done
