@@ -887,7 +887,7 @@ else
 fi
 
 
-sexcfg=$CDIR/sextractor_solvefield.sex# Solving the images
+sexcfg_sf=$CDIR/sextractor_solvefield.sex# Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
 echo -e "·Solving fields"
 
@@ -911,7 +911,7 @@ else
       i=$framesForCommonReductionDir/$base
       frameNames+=("$i")
   done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf
   echo done > $astroimadone
 fi
 
