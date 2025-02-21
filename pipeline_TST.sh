@@ -988,7 +988,7 @@ for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
-exit
+
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
@@ -1043,7 +1043,7 @@ else
 fi
 
 
-sexcfg=$CDIR/default.sex
+sexcfg=$CDIR/sextractor_solvefield.sex
 # Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
 echo -e "·Solving fields"
@@ -1057,8 +1057,10 @@ echo "add_path $indexdir" >> $astrocfg
 echo autoindex >> $astrocfg
 
 astroimadir=$BDIR/astro-ima
+astroimadir_layer=$astroimadir/layers
 astroimadone=$astroimadir/done_"$filter".txt
 if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
+if ! [ -d $astroimadir_layer ]; then mkdir $astroimadir_layer; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
@@ -1068,7 +1070,19 @@ else
       i=$framesForCommonReductionDir/$base
       frameNames+=("$i")
   done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir_layer $sexcfg 
+  
+  for a in $(seq 1 $totalNumberOfFrames); do
+      base=$a.fits
+      i=$framesForCommonReductionDir/$base
+      out=$astroimadir/$base
+      astfits $i --copy=0 --primaryimghdu -o $out
+      for h in $(seq 1 $num_ccd); do
+        im_layer=$astroimadir_layer/layer"$h"_"$base"
+        astfits $im_layer --copy=1 -o $out
+      done
+  done
+  rm -rf $astroimadir_layer
   echo done > $astroimadone
 fi
 
@@ -1084,7 +1098,7 @@ echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
 echo -e "·Creating SExtractor catalogues and running scamp"
 
-numOfSextractorPlusScampIterations=4
+numOfSextractorPlusScampIterations=3
 
 sexcfg=$CDIR/sextractor_astrometry.sex
 sexparam=$CDIR/sextractor_astrometry.param
@@ -1112,19 +1126,14 @@ else
     echo -e "\tSExtractor + scamp iteration $i"
 
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold 
-    ##Let's make independent scamp 
-    for frame in $(ls -v $sexdir/*.cat); do
-      number=$(basename ${frame%.cat})
-      scamp -c $scampcfg $frame
-      mv $sexdir/"$number".head $astroimadir
-      if ! [ -d $scampres/frame"$number" ]; then mkdir $scampres/frame"$number"; fi
-      mv *.pdf $scampres/frame"$number"/
-      mv scamp.xml $scampdir/scamp_"$number".xml
-    done
+    scamp -c $scampcfg $(ls -v $sexdir/*.cat)
+    cp $sexdir/*.head $astroimadir
+    mv *.pdf $scampres/
+    mv scamp.xml $scampdir
   done
   echo done > $scampdone
 fi
-exit
+
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1165,7 +1174,7 @@ if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; f
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tBad astrometrised frames warning already done\n"
 else
-  scampXMLFilePath=$scampdir
+  scampXMLFilePath=$scampdir/scamp.xml
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile
   echo done > $badFilesWarningsDone
 fi
