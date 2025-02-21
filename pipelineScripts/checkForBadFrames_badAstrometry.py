@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
-import glob
+
 from astropy.stats import sigma_clipped_stats
 from astropy.stats import sigma_clip
 from matplotlib.ticker import MultipleLocator
@@ -92,50 +92,50 @@ def writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, badAstrometr
 
 setMatplotlibConf()
 
-###Problem: now we are doing a .xml for each frame :)
 diagnosisFolder = sys.argv[1]
-xmlPath         = sys.argv[2]
+xmlFile         = sys.argv[2]
 warningFile     = sys.argv[3]
-xmlFiles=sorted(glob.glob(xmlPath+'/scamp*.xml'))
-col1_name = 'XY_Contrast'
-threshold = 5
-data = []
-for xmlFile in xmlFiles:
-    tree = ET.parse(xmlFile)
-    root = tree.getroot()
-    ns = {'vo': 'http://www.ivoa.net/xml/VOTable/v1.1'}
-    rows = root.findall('.//vo:DATA/vo:TABLEDATA/vo:TR', namespaces=ns)
-    fields = root.findall('.//vo:FIELD', namespaces=ns)
-    headers = [field.get('name') for field in fields]
+
+tree = ET.parse(xmlFile)
+root = tree.getroot()
+ns = {'vo': 'http://www.ivoa.net/xml/VOTable/v1.1'}
+rows = root.findall('.//vo:DATA/vo:TABLEDATA/vo:TR', namespaces=ns)
+fields = root.findall('.//vo:FIELD', namespaces=ns)
+headers = [field.get('name') for field in fields]
 
 # Column that I found to be key for astrometry. 
 # The threshold comes by observing the frames and the documentation. In the docs the say that a threshold of 2 or lower
 # is not trustable; I have defined 2.5 to be conservative
+col1_name = 'XY_Contrast'
+threshold = 5
+data = []
 
+for row in rows:
+    values = [td.text for td in row.findall('./vo:TD', namespaces=ns)]
+    data.append(values)
+header_indices = {name: idx for idx, name in enumerate(headers)}
 
-    #for row in rows:
-        #values = [td.text for td in row.findall('./vo:TD', namespaces=ns)]
-        #data.append(values)
-    header_indices = {name: idx for idx, name in enumerate(headers)}
-    if col1_name in header_indices :
-        col1_idx = header_indices[col1_name]
-        
-        
-        for row in rows:
-            values = [td.text for td in row.findall('./vo:TD', namespaces=ns)]
+if col1_name in header_indices :
+    col1_idx = header_indices[col1_name]
+
+    data = []
+    for row in rows:
+        values = [td.text for td in row.findall('./vo:TD', namespaces=ns)]
 
         # There are some rows with different data (not frame information) so I skip them
         # I just store the values with 43 columns which are the proper data rows
-            if (len(values) == 43):
-                data.append((float(values[col1_idx])))
-    else:
-        print(f"The specified column ('{col1_name}') does not exist in the XML {xmlFile}.")
-        print(header_indices)
-        sys.exit()    
-df = pd.DataFrame(data, columns=[col1_name])
-potentiallyBadAstrometrised = identifyBadFrames(df, col1_name, threshold)
-writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, potentiallyBadAstrometrised)
-savePlot(col1_name, df, diagnosisFolder, threshold)
+        if (len(values) == 43):
+            data.append((float(values[col1_idx])))
+    
+    df = pd.DataFrame(data, columns=[col1_name])
+    potentiallyBadAstrometrised = identifyBadFrames(df, col1_name, threshold)
+    writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, potentiallyBadAstrometrised)
+    savePlot(col1_name, df, diagnosisFolder, threshold)
+else:
+    print(f"The specified column ('{col1_name}') does not exist in the XML.")
+
+
+
 
 
 

@@ -1223,28 +1223,41 @@ solveField() {
     ra_gal=$5
     dec_gal=$6
     confFile=$7
-    astroimadir=$8
-
+    astroimadir_layer=$8
+    sexcfg_sf=$9
     base=$( basename $i)
 
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
     ### Multi-layer problem: solve-field does not work with multiple layers. Because of that, we run solve-field into each of the layers and then store them into a single .fits with multiple layers
-    layer_temp=$astroimadir/layer_$base
-    astfits $i --copy=0 --primaryimghdu -o $astroimadir/$base
+    layer_temp=$astroimadir_layer/layer_$base
+    
     for h in $(seq 1 $num_ccd); do
         image_temp=image"$h"_$base
         astfits $i --copy=$h -o $image_temp
-        layer_temp=$astroimadir/layer"$h"_$base
-        solve-field $image_temp --no-plots \
-        -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
-        --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
-        --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
-        -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$layer_temp ;
-        astfits $layer_temp --copy=1 -o $astroimadir/$base
+        layer_temp=$astroimadir_layer/layer"$h"_$base
+        max_attempts=4
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+            #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
+            #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
+            solve-field $image_temp --no-plots \
+            -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
+            --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
+            --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
+            --source-extractor-config=$sexcfg_sf --x-column X_IMAGE --y-column Y_IMAGE \
+            --sort-column MAG_AUTO --sort-ascending  \
+            -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone -N$layer_temp ;
+            if [ -s "$layer_temp" ]; then
+                attempt=$max_attempts
+            fi
+            
+            ((attempt++))
+        done
+
         rm $image_temp image"$h"_*.wcs
-        rm $layer_temp
+        #rm $layer_temp
     done
 }
 export -f solveField
