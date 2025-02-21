@@ -887,8 +887,7 @@ else
 fi
 
 
-sexcfg=$CDIR/default.sex
-# Solving the images
+sexcfg=$CDIR/sextractor_solvefield.sex# Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
 echo -e "·Solving fields"
 
