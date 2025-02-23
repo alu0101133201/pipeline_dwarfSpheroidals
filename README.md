@@ -93,6 +93,18 @@ This version of the pipeline is an adaptation of the TST and Small telescopes pi
 
 * **Normalization ring treatement.** It has only been adapted and tested for single, flat ring. It will be adapted for other ring options in the future. The difference with respect to the monolitic lies in the partition of the normalization ring. For that, we have built an script that, given the center of the ring in the mosaic of CCDs, returns different .txt files with the corresponding centers for each one of the CCDs. For WFC of INT, you need to pass the center in the mosaic in X,Y (see documentation of WFC/INT on their webpage). For LBT, since they give an inital astrometry, you can pass the center of the ring in the **FIRST** image in WCS. Then, after astrometrization, a ring must be done again, since sizes change. But here there is a tricky problem. Now, the matrix of CCDs are aligned with the WCS axis. So, if there is a rotated CCD, the file of `pointings_smallGrid` will change NAXIS1 and NAXIS2. Because of that, for those `computeskyForFrame()` with ring that are after `SWARP`, we first check if CCD is rotated with respect to the original .fits or not, and if so we use the `astro-ima` image (which is not rotated) to pass the ring center to RA,DEC and then pass again the RA,DEC into the new system.
 
+*Examples of ring template: NGC3486/LBTg*
+
+The first image on LBT g-band of NGC3486 is centered (when you open it on DS9 in WCS mosaic) approximately on RA=165.0993 DEC=29.0016. A ring with enough radius for this camera and this galaxy can be:
+
+1 165.0993 29.0016 6 2805 1 1 1 1 1
+
+*Examples of ring template: INT/WFC*
+
+Since INT/WFC images are not astrometrized, the center must be given in pixels, but on the refference of the whole mosaic (see first image on [INT WFC description](https://www.ing.iac.es/astronomy/instruments/wfc/performance.html)). This center can be different from the center of the camera mosaic, but needs to be on the refference system of the whole mosaic (which is the refference on CCD4). A good example can be
+
+1 1839 3036 6 2505 1 1 1 1 1
+
 * **Multi-layer treatement.** All the pipeline runs so the .fits files created are stored in multi-layer files, one layer for each CCD. In order to keep the important keywords, `AIRMASS` and `DATE_OBS` or `MJD_OBS` are stored in `--hdu=0`.
 
 * **GAIN.** Now the gain might change from one CCD to another. Because of that, we ask for the corresponding keyword in the header instead of for the value.
@@ -106,3 +118,6 @@ This version of the pipeline is an adaptation of the TST and Small telescopes pi
 * **Diagnosis and bad files.** The diagnosis and bad files folder is now divided into each of the CCDs, except for the scamp contrast parameters plot.
 
 As with the single detector, multi-detector data should be passed with the `DATA-or` folder structure, but on a multi-layer way where **HDU=0 IS NOT AN IMAGE**.
+
+**Advice of bug**
+The pipeline actually has a bug in the build of Half Max Rad vs Mag plots. Don't worry about it. Will be fixed in the future :wink:
