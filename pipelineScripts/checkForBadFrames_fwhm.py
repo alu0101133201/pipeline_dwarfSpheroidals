@@ -135,9 +135,9 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
         date=obtainKeyWordFromFits(file,dateKey)
         air=obtainKeyWordFromFits(file,airKey)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime()
         fwhm=allTable.loc[row]['FWHM']
         ax[0].scatter(date_ok,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
@@ -162,9 +162,9 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
         date=obtainKeyWordFromFits(file,dateKey)
         air=obtainKeyWordFromFits(file,airKey)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime()
 
         ax[0].scatter(date_ok, fwhmRejectedValues[j],marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=6,label='Rejected by FWHM' if (j==0) else "")
@@ -176,9 +176,9 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
         date=obtainKeyWordFromFits(file,dateKey)
         air=obtainKeyWordFromFits(file,airKey)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime()
 
         ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry' if (j==0) else "")
@@ -190,9 +190,9 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
         date=obtainKeyWordFromFits(file,dateKey)
         air=obtainKeyWordFromFits(file,airKey)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime()
 
         ax[0].scatter(date_ok, backgroundValueRejectedValues[j], marker="X", color='darkred', edgecolor='k', s=120,zorder=6,label='Rejected by Background value' if (j==0) else "")
@@ -204,9 +204,9 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
         date=obtainKeyWordFromFits(file,dateKey)
         air=obtainKeyWordFromFits(file,airKey)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime()
 
         ax[0].scatter(date_ok, backgroundStdRejectedValues[j], marker="D", color='gold', edgecolor='k', s=120,zorder=6,label='Rejected by Background std' if (j==0) else "")

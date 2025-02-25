@@ -250,9 +250,9 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime()    
         bck=allTable.loc[row]['Background']
 
@@ -273,9 +273,9 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
@@ -288,9 +288,9 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.' if (j==0) else "")
         ax[1].scatter(air, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.'if (j==0) else "")
@@ -303,9 +303,9 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
         ax[1].scatter(air, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
@@ -335,9 +335,9 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime() 
         bck=allTable.loc[row]['STD']
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
@@ -357,9 +357,9 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
@@ -372,9 +372,9 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
         ax[1].scatter(air, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
@@ -387,9 +387,9 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
         date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,airMassKeyWord)
-        if dateHeaderKey=="DATE-OBS":
+        if dateHeaderKey.startswith("DATE"):
             date_ok=datetime.fromisoformat(date)
-        elif dateHeaderKey=="MJD-OBS":
+        elif dateHeaderKey.startswith("MJD"):
             date_ok=Time(date,format='mjd').to_datetime() 
         ax[0].scatter(date_ok, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
         ax[1].scatter(air, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
