@@ -101,9 +101,9 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=35
+tileSize=50,50
 noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --detgrowmaxholesize=5000 \
+                    --detgrowmaxholesize=1000 \
                     --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
@@ -216,7 +216,13 @@ oneNightPreProcessing() {
             out=$currentINDIR/$unixTimeInSeconds.fits
 
             # HERE A CHECK IF THE DATA IS IN FLOAT32 IS NEEDED
-            eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
+            if [[ "$overscan" == "YES" ]]; then
+              trsec=$(eval "astfits $nameWithEscapedSpaces -h $h --keyvalue=$trimsecKey -q" )
+              trsec=${trsec//[\[\]]/}
+              eval "astcrop $nameWithEscapedSpaces -h$h --mode=img --section=$trsec -o$out"
+            else
+              eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
+            fi
             nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
             eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
           done
@@ -256,11 +262,21 @@ oneNightPreProcessing() {
       if awk "BEGIN {exit !($gnuastro_version > 0.22)}"; then
         eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
                     3 0.2 sigclip-mean -g$h --writeall \
-                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+                    -o $mdadir/temp.fits"
       else
         eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
                     3 0.2 sigclip-mean -g$h  \
-                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+                    -o $mdadir/temp.fits"
+      fi
+      #If there is overscan
+      if [[ "$overscan" == "YES" ]]; then
+        first_file=$(echo "$escaped_files" | awk '{print $1}')
+        trsec=$(eval "astfits $first_file -h$h --keyvalue=$trimsecKey -q")
+        trsec=${trsec//[\[\]]/}
+        astcrop $mdadir/temp.fits -h1 --mode=img --section=$trsec -o$mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits
+        rm $mdadir/temp.fits
+      else
+        mv $mdadir/temp.fits $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits
       fi
     fi
     echo done > $mdadone

@@ -130,6 +130,9 @@ outputConfigurationVariablesInformation() {
         "·Pixel scale:$pixelScale:[arcsec/px]"
         "·Detector width:$detectorWidth:[px]"
         "·Detector height:$detectorHeight:[px]"
+        "·Is there overscan:$overscan"
+        "·Keyword for illuminated section:$trimsecKey"
+        "·Vignetting threshold on the flat field:$vignettingThreshold"
         " "
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
@@ -216,6 +219,9 @@ checkIfAllVariablesAreSet() {
                 pixelScale \
                 detectorWidth \
                 detectorHeight \ 
+                vignettingThreshold \
+                overscan \
+                trimsecKey \
                 lowestScaleForIndex \
                 highestScaleForIndex \ 
                 solve_field_L_Param \
