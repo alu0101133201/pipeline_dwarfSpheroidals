@@ -906,7 +906,7 @@ computeSkyForFrame(){
                     astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
                     rm -f $ringDir/$tmpRingDefinition
                 else
-                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $DIR/ring_ccd"$h".txt
+                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $BDIR/ring_ccd"$h".txt
                 fi
                 astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
                 rm -f $ringDir/$tmpRingFits_single
