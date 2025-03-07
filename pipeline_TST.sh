@@ -104,7 +104,7 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=50,50
+tileSize=50
 noisechisel_param="--tilesize=$tileSize,$tileSize \
                     --detgrowmaxholesize=1000 \
                     --rawoutput"
