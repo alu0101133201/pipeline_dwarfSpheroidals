@@ -104,7 +104,7 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=50,50
+tileSize=50
 noisechisel_param="--tilesize=$tileSize,$tileSize \
                     --detgrowmaxholesize=1000 \
                     --rawoutput"
@@ -821,7 +821,7 @@ oneNightPreProcessing() {
   fi
 
   # # Removing intermediate information to save space
-  r -rf $BDIR/bias-corrected_n$currentNight
+  rm -rf $BDIR/bias-corrected_n$currentNight
   rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/masterdark_n$currentNight
   rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
@@ -906,7 +906,7 @@ else
 fi
 
 
-sexcfg_sf=$CDIR/sextractor_solvefield.sex# Solving the images
+sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
 echo -e "·Solving fields"
 
@@ -1287,7 +1287,7 @@ else
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
 
-exit 0
+
 
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
@@ -1476,7 +1476,7 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-exit 0
+
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
