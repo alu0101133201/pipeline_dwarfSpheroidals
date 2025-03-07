@@ -85,6 +85,7 @@ outputConfigurationVariablesInformation() {
         "·The aperture photometry for calibrating our data is in units of:$apertureUnits"
         "·The aperture photometry will be done with an aperture of:$numberOfApertureUnitsForCalibration:[$apertureUnits]"
         "·The calibration will be done using data from survey:$surveyForPhotometry"
+        "·If the calibration is done with imaging, the offset between its filter and your filter is :$offsetBetweenFilters"
         "·If the calibration is done with spectra, the survey to use is:$surveyForSpectra"
         "·The transmittances of the filters are in the folder:$folderWithTransmittances"
         ""
@@ -192,6 +193,7 @@ checkIfAllVariablesAreSet() {
                 numberOfApertureUnitsForCalibration \
                 surveyForPhotometry \
                 folderWithTransmittances \
+                offsetBetweenFilters \
                 surveyForSpectra \
                 ringWidth \
                 USE_COMMON_RING \
@@ -1482,6 +1484,7 @@ prepareCalibrationData() {
     surveyForSpectra=${13}
     apertureUnits=${14}
     folderWithTransmittances=${15}
+    offsetBetweenFilters=${16}
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
 
@@ -1497,7 +1500,7 @@ prepareCalibrationData() {
         writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
 
         prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
-                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances
+                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances $offsetBetweenFilters
     fi
 }
 export -f prepareCalibrationData
@@ -1553,6 +1556,7 @@ prepareSurveyDataForPhotometricCalibration() {
     local aperturePhotDir=${13}
     local apertureUnits=${14}
     local folderWithTransmittances=${15}
+    local offsetBetweenFilters=${16}
     
 
     sizeOfFieldForCalibratingPANSTARRStoGAIA=2
@@ -1626,16 +1630,26 @@ prepareSurveyDataForPhotometricCalibration() {
     performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
 
-    # As mentioned in other comments and in the README, our reference framework is gaia, so I compute any offset to the 
+    # As mentioned in other comments and in the README, our reference framework is gaia, so I compute any offset between the 
     # photometry of PANSTARRS and GAIA magnitudes (from spectra) and correct it
     spectraDir=$mosaicDir/gaiaSpectra
     magFromSpectraDir=$mosaicDir/magnitudesFromGaiaSpectra
     calibrationToGAIA $spectraDir $folderWithTransmittances $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir $aperturePhotDir"ForGAIACalibration"
     cat $mosaicDir/offsetToCorrectPanstarrs.txt | read offset factorToApplyToCounts
 
-    correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration" $offset $factorToApplyToCounts
-    correctOffsetFromCatalogues $aperturePhotDir $offset $factorToApplyToCounts
 
+    correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration" $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
+    correctOffsetFromCatalogues $aperturePhotDir $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
+
+    # Second offset correction for correcting the filter difference between the survey to calibrate and your filter
+    # Since the offset is defined to be survey_filt - your_filt, if we want to apply the offset to the survey, we need to change the sign
+    offsetToApply=$(awk -v offset="$offsetBetweenFilters" "BEGIN {print -offset}")
+    factorToApply=$( awk -v offset="$offsetToApply" 'BEGIN {print 10^(-offset/2.5)}' )
+
+    correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration" $offsetToApply $factorToApply "beforeCorrectingFilterOffset"
+    correctOffsetFromCatalogues $aperturePhotDir $offsetToApply $factorToApply "beforeCorrectingFilterOffset"
+    exit 0
+    
     imagesHdu=1
     brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
     if [[ -f $brickDecalsAssociationFile ]]; then
@@ -1649,6 +1663,7 @@ correctOffsetFromCatalogues() {
     dirWithCatalogues=$1
     offset=$2
     factorToApplyToCounts=$3
+    suffix=$4
 
     # The following awk command corrects the magnitude and the counts of all the catalogues
     for i in $( ls $dirWithCatalogues/*.cat ); do
@@ -1665,7 +1680,7 @@ correctOffsetFromCatalogues() {
             }
         }' $i > "$i"_tmp
 
-        mv $i "${i%.txt}"_beforeGAIACalibration
+        mv $i "${i%.txt}"_$suffix
         mv "$i"_tmp $i
     done
 }
