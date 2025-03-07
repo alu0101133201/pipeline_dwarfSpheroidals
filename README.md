@@ -86,3 +86,8 @@ Then we have the pipeline itself (*pipeline_LuM_parallel.sh*) and the functions 
 Take into account that the configuration file (the one corresponding to *template.conf*) is provided to the pipeline as an argument and the normalisation ring(s) are indicated in the configuration file.
 
 Also, The common normalisation ring (most of the cases will be centered in the image) has to be provided (mandatory) Because it will be used also for selecting what decals bricks are going to be donwloaded for the photometric calibration The 2 rings needed for normalising with them are only requested if the normalisation is going to be done in that way (non mandatory)
+
+##### IMPORTANT calibration note
+
+Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree, we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. For solving this we compute this offset and correct it in each run of the pipeline (thus PANSTARRS always agreeing with GAIA)\\ 
+GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
