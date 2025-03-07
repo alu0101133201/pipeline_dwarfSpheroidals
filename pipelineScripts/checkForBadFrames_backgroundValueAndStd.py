@@ -402,20 +402,32 @@ def saveValuesVSStats(values, STD, Skew, kurto, backgroundRejectedIndices, stdRe
     ax[1].scatter(goodValues, goodSkew, s=120,edgecolor='k',color='mediumorchid')
     ax[2].scatter(goodValues, goodKurto,s=120,edgecolor='k',color='red')
 
+    negSkew=[value<0 for value in goodSkew]; negKurto=[value<0 for value in goodKurto]
+    if True in negSkew:
+        negSkew_vals=[np.abs(value) for value, is_negative in zip(goodSkew,negSkew) if is_negative]
+        negSkew_bckvals=[value for value,is_negative in zip(goodValues,negSkew) if is_negative]
+        ax[1].scatter(negSkew_bckvals,negSkew_vals,marker='s',s=120,edgecolor='k',color='violet',label='Negative values')
+    if True in negKurto:
+        negKurto_vals=[np.abs(value) for value, is_negative in zip(goodKurto,negKurto) if is_negative]
+        negKurto_bckvals=[value for value,is_negative in zip(goodValues,negKurto) if is_negative]
+        ax[2].scatter(negKurto_bckvals,negKurto_vals,marker='s',s=120,edgecolor='k',color='lightsalmon',label='Negative values')
+        ax[2].legend(fontsize=20)
+    
+
     if (len(backgroundRejectedIndices) != 0):
         ax[0].scatter(np.sqrt(values)[backgroundRejectedIndices], STD[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred')
-        ax[1].scatter(values[backgroundRejectedIndices], Skew[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred', label="Rejected by background value")
-        ax[2].scatter(values[backgroundRejectedIndices], kurto[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred')
-
+        ax[1].scatter(values[backgroundRejectedIndices], np.abs(Skew[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred', label="Rejected by background value")
+        ax[2].scatter(values[backgroundRejectedIndices], np.abs(kurto[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred')
+        
     if (len(stdRejectedIndices) != 0):
         ax[0].scatter(np.sqrt(values)[stdRejectedIndices], STD[stdRejectedIndices], s=120, marker="D", edgecolor='k',color='gold')
-        ax[1].scatter(values[stdRejectedIndices], Skew[stdRejectedIndices], s=120, marker="D", edgecolor='k',color='gold', label="Rejected by background std")
-        ax[2].scatter(values[stdRejectedIndices], kurto[stdRejectedIndices], s=120, marker="D", edgecolor='k',color='gold')
+        ax[1].scatter(values[stdRejectedIndices], np.abs(Skew[stdRejectedIndices]), s=120, marker="D", edgecolor='k',color='gold', label="Rejected by background std")
+        ax[2].scatter(values[stdRejectedIndices], np.abs(kurto[stdRejectedIndices]), s=120, marker="D", edgecolor='k',color='gold')
 
     if (len(badAstrometrisedIndices) != 0):
         ax[0].scatter(np.sqrt(values)[badAstrometrisedIndices], STD[badAstrometrisedIndices], s=350, lw=1.5, edgecolor='blue', facecolors='none')
-        ax[1].scatter(values[badAstrometrisedIndices], Skew[badAstrometrisedIndices], s=350, lw=1.5, edgecolor='blue', facecolors='none', label="Rejected by astrometry")
-        ax[2].scatter(values[badAstrometrisedIndices], kurto[badAstrometrisedIndices], s=350, lw=1.5, edgecolor='blue', facecolors='none')
+        ax[1].scatter(values[badAstrometrisedIndices], np.abs(Skew[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none', label="Rejected by astrometry")
+        ax[2].scatter(values[badAstrometrisedIndices], np.abs(kurto[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none')
 
     ax[1].legend(fontsize=20)
     plt.tight_layout()

@@ -126,6 +126,9 @@ outputConfigurationVariablesInformation() {
         "·Pixel scale:$pixelScale:[arcsec/px]"
         "·Detector width:$detectorWidth:[px]"
         "·Detector height:$detectorHeight:[px]"
+        "·Is there overscan:$overscan"
+        "·Keyword for illuminated section:$trimsecKey"
+        "·Vignetting threshold on the flat field:$vignettingThreshold"
         " "
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
@@ -212,6 +215,9 @@ checkIfAllVariablesAreSet() {
                 pixelScale \
                 detectorWidth \
                 detectorHeight \ 
+                vignettingThreshold \
+                overscan \
+                trimsecKey \
                 lowestScaleForIndex \
                 highestScaleForIndex \ 
                 solve_field_L_Param \
@@ -1125,19 +1131,30 @@ solveField() {
     dec_gal=$6
     confFile=$7
     astroimadir=$8
-
+    sexcfg_sf=$9
     base=$( basename $i)
 
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
-    solve-field $i --no-plots \
-    -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
-    --ra=$ra_gal --dec=$dec_gal --radius=3. \
-    --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify -E 1 -c 0.01 \
-    --odds-to-solve 1e9 \
-    --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
-    -Unone --temp-axy -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
+    max_attempts=4
+    attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
+        #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
+        solve-field $i --no-plots \
+        -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
+        --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
+        --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
+        --source-extractor-config=$sexcfg_sf --x-column X_IMAGE --y-column Y_IMAGE \
+        --sort-column MAG_AUTO --sort-ascending  \
+        -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
+        if [ -s "$layer_temp" ]; then
+            attempt=$max_attempts
+        fi
+            
+        ((attempt++))
+    done
 }
 export -f solveField
 
