@@ -83,6 +83,10 @@ loadVariablesFromFile $confFile
 
 checkIfAllVariablesAreSet
 
+checkIfStringVariablesHaveValidValues
+
+checkTransmittanceFilterAndItsUnits $telescope $surveyForPhotometry $folderWithTransmittances $filter
+
 outputConfigurationVariablesInformation
 
 
@@ -1346,16 +1350,15 @@ export iterationsForStdSigClip
 ### PREPARING DECALS DATA FOR CALIBRATION ###
 referenceImagesForMosaic=$entiredir_smallGrid
 mosaicDir=$DIR/mosaic
-selectedDecalsStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
-rangeUsedDecalsDir=$mosaicDir/rangesUsedForCalibration
-decalsImagesDir=$mosaicDir/decalsImages
+selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
+rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
+aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues
 
 
 
 writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
-prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $decalsImagesDir $filter $ra $dec $mosaicDir $selectedDecalsStarsDir $rangeUsedDecalsDir \
-                                            $pixelScale $surveyForPhotometry $diagnosis_and_badFilesDir $sizeOfOurFieldDegrees $galaxySMA $galaxyAxisRatio $galaxyPA $catName $starMagnitudeThresholdToReject_gBand \
-                                            $numberOfFWHMForPhotometry
+prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
@@ -1363,7 +1366,8 @@ alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
-computeCalibrationFactors $iteration $imagesForCalibration $selectedDecalsStarsDir $matchdir $rangeUsedDecalsDir $mosaicDir $decalsImagesDir $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry
+computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
+                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
 
 
 

@@ -138,18 +138,21 @@ filters                         = sys.argv[1].split(',')
 downloadDestination             = sys.argv[2]
 galaxyRA                        = float(sys.argv[3])
 galaxyDec                       = float(sys.argv[4])
-galaxySMA                       = float(sys.argv[5])
-galaxyAxisRatio                 = float(sys.argv[6])
-galaxyPA                        = float(sys.argv[7])
-fieldSize                       = float(sys.argv[8])
-mosaicDir                       = sys.argv[9]
-bricksIdentificationFile        = sys.argv[10]
-gaiaCatalogue                   = sys.argv[11]
-starThresholdForRejectingBricks = float(sys.argv[12])
-survey                          = sys.argv[13]
+fieldSize                       = float(sys.argv[5])
+mosaicDir                       = sys.argv[6]
+bricksIdentificationFile        = sys.argv[7]
+gaiaCatalogue                   = sys.argv[8]
+survey                          = sys.argv[9]
 setMatplotlibConf()
 decalsBrickWidthDeg = 15.5 / 60 
 panstarrsBrickWidthDeg=15.0 / 60
+
+# These parameters were used when we were rejecting decals bricks that were on top of the galaxy or with bright stars
+# Now we are not using them, so we hide them from the user and just let them here (just in case)
+galaxySMA       = 0
+galaxyAxisRatio = 0
+galaxyPA        = 0
+starThresholdForRejectingBricks = -999
 
 # Compute corners of the field
 galaxyMinimumRA  = galaxyRA  - (fieldSize / 2)

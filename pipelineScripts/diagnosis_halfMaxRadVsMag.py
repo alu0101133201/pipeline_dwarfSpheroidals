@@ -57,7 +57,7 @@ def readHalfMaxRadAndMag(file, halfMaxRadCol, magnitudeColumn,h):
         return half_max_radius, magnitude
     elif file.endswith(".cat"):
         data = fits.open(file)[h].data
-        return data['HALF_MAX_RADIUS'],data['MAGNITUDE']
+        return data['FWHM'],data['MAGNITUDE']
 
 
 wholeTableFile   = sys.argv[1]
