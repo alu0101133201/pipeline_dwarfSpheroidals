@@ -36,14 +36,14 @@ load_module() {
 export -f load_module
 
 writeTimeOfStepToFile() {
-    step=$1
-    file=$2
+    local step=$1
+    local file=$2
     echo "Step: $step. Start time:  $(date +%D-%T)" >> $file
 }
 export -f writeTimeOfStepToFile
 
 loadVariablesFromFile() {
-  file=$1
+  local file=$1
   initialShellVariables=$(compgen -v)
 
   if [[ -f $confFile ]]; then 
@@ -151,7 +151,7 @@ escapeSpacesFromString() {
 export -f escapeSpacesFromString
 
 checkIfExist_DATEOBS() {
-    DATEOBSValue=$1
+    local DATEOBSValue=$1
 
     if [ "$DATEOBSValue" = "n/a" ]; then
         errorNumber=3
@@ -163,7 +163,7 @@ checkIfExist_DATEOBS() {
 export -f checkIfExist_DATEOBS
 
 getHighestNumberFromFilesInFolder() {
-    folderToCheck=$1
+    local folderToCheck=$1
     # Find all files, remove non-numeric parts, sort numerically, get the highest number
     highest=$(ls "$folderToCheck" | grep -oE '[0-9]+' | sort -n | tail -1)
     if [ -z "$highest" ]; then
@@ -272,7 +272,7 @@ export -f checkTransmittanceFilterAndItsUnits
 # In this function we check the transmittances given. Just for having everything in the same units
 # We place everything into Angstroms and transmittances from 0 to 1.
 checkUnitsAndConvertToCommonUnitsIfNeeded() {
-    filterFile=$1
+    local filterFile=$1
     errorCode=12
 
     # Since we may change the file (depending on the units) I create a backup in order not to loose the original file
@@ -314,10 +314,10 @@ export -f checkUnitsAndConvertToCommonUnitsIfNeeded
 
 
 checkIfAllTheTransmittancesNeededAreGiven() {
-    telescope=$1
-    survey=$2
-    filterFolder=$3
-    filterToUse=$4
+    local telescope=$1
+    local survey=$2
+    local filterFolder=$3
+    local filterToUse=$4
 
     errroCode=11
 
@@ -343,11 +343,11 @@ export -f checkIfAllTheTransmittancesNeededAreGiven
 
 # Functions used in Flat
 maskImages() {
-    inputDirectory=$1
-    masksDirectory=$2
-    outputDirectory=$3
-    useCommonRing=$4
-    keyWordToDecideRing=$5
+    local inputDirectory=$1
+    local masksDirectory=$2
+    local outputDirectory=$3
+    local useCommonRing=$4
+    local keyWordToDecideRing=$5
 
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -366,7 +366,7 @@ maskImages() {
 export -f maskImages
 
 getInitialMidAndFinalFrameTimes() {
-  directoryWithNights=$1
+  local directoryWithNights=$1
 
   declare -a date_obs_array
   
@@ -391,20 +391,20 @@ export -f getInitialMidAndFinalFrameTimes
 
 
 writeKeywordToFits() {
-    fitsFile=$1
-    header=$2
-    keyWord=$3
-    value=$4
-    comment=$5
+    local fitsFile=$1
+    local header=$2
+    local keyWord=$3
+    local value=$4
+    local comment=$5
 
     astfits --write=$keyWord,$value,"$comment" $fitsFile -h$header
 }
 export -f writeKeywordToFits
 
 propagateKeyword() {
-    image=$1
-    keyWordToPropagate=$2
-    out=$3
+    local image=$1
+    local keyWordToPropagate=$2
+    local out=$3
 
     variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate)
     eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h1" 
@@ -443,15 +443,15 @@ export -f addkeywords
 
 
 getMedianValueInsideRing() {
-    i=$1
-    commonRing=$2
-    doubleRing_first=$3
-    doubleRing_second=$4
-    useCommonRing=$5
-    keyWordToDecideRing=$6
-    keyWordThreshold=$7
-    keyWordValueForFirstRing=$8
-    keyWordValueForSecondRing=$9
+    local i=$1
+    local commonRing=$2
+    local doubleRing_first=$3
+    local doubleRing_second=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    local keyWordThreshold=$7
+    local keyWordValueForFirstRing=$8
+    local keyWordValueForSecondRing=$9
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
@@ -481,15 +481,15 @@ getMedianValueInsideRing() {
 export -f getMedianValueInsideRing
 
 getStdValueInsideRing() {
-    i=$1
-    commonRing=$2
-    doubleRing_first=$3
-    doubleRing_second=$4
-    useCommonRing=$5
-    keyWordToDecideRing=$6
-    keyWordThreshold=$7
-    keyWordValueForFirstRing=$8
-    keyWordValueForSecondRing=$9
+    local i=$1
+    local commonRing=$2
+    local doubleRing_first=$3
+    local doubleRing_second=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    local keyWordThreshold=$7
+    local keyWordValueForFirstRing=$8
+    local keyWordValueForSecondRing=$9
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
@@ -520,15 +520,15 @@ getStdValueInsideRing() {
 export -f getStdValueInsideRing
 
 getSkewKurtoValueInsideRing(){
-    i=$1
-    commonRing=$2
-    doubleRing_first=$3
-    doubleRing_second=$4
-    useCommonRing=$5
-    keyWordToDecideRing=$6
-    keyWordThreshold=$7
-    keyWordValueForFirstRing=$8
-    keyWordValueForSecondRing=$9
+    local i=$1
+    local commonRing=$2
+    local doubleRing_first=$3
+    local doubleRing_second=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    local keyWordThreshold=$7
+    local keyWordValueForFirstRing=$8
+    local keyWordValueForSecondRing=$9
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
@@ -567,16 +567,16 @@ getSkewKurtoValueInsideRing(){
 export -f getSkewKurtoValueInsideRing
 
 normaliseImagesWithRing() {
-    imageDir=$1
-    outputDir=$2
-    useCommonRing=$3
-    commonRing=$4
-    doubleRing_first=$5
-    doubleRing_second=$6
-    keyWordToDecideRing=$7
-    keyWordThreshold=$8
-    keyWordValueForFirstRing=$9
-    keyWordValueForSecondRing=${10}
+    local imageDir=$1
+    local outputDir=$2
+    local useCommonRing=$3
+    local commonRing=$4
+    local doubleRing_first=$5
+    local doubleRing_second=$6
+    local keyWordToDecideRing=$7
+    local keyWordThreshold=$8
+    local keyWordValueForFirstRing=$9
+    local keyWordValueForSecondRing=${10}
 
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -591,9 +591,9 @@ normaliseImagesWithRing() {
 export -f normaliseImagesWithRing
 
 calculateFlat() {
-    flatName="$1"
+    local flatName="$1"
     shift
-    filesToUse="$@"
+    local filesToUse="$@"
     numberOfFiles=$#
 
     # ****** Decision note *******
@@ -612,10 +612,10 @@ calculateFlat() {
 export -f calculateFlat
 
 calculateRunningFlat() {
-    normalisedDir=$1
-    outputDir=$2
-    doneFile=$3
-    iteration=$4
+    local normalisedDir=$1
+    local outputDir=$2
+    local doneFile=$3
+    local iteration=$4
 
     fileArray=()
     fileArray=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*_ccd"$h".fits) )
@@ -640,10 +640,10 @@ calculateRunningFlat() {
 export -f calculateRunningFlat
 
 divideImagesByRunningFlats(){
-    imageDir=$1
-    outputDir=$2
-    flatDir=$3
-    flatDone=$4
+    local imageDir=$1
+    local outputDir=$2
+    local flatDir=$3
+    local flatDone=$4
 
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -668,10 +668,10 @@ divideImagesByRunningFlats(){
 export -f divideImagesByRunningFlats
 
 divideImagesByWholeNightFlat(){
-    imageDir=$1
-    outputDir=$2
-    flatToUse=$3
-    flatDone=$4
+    local imageDir=$1
+    local outputDir=$2
+    local flatToUse=$3
+    local flatDone=$4
 
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -686,10 +686,10 @@ divideImagesByWholeNightFlat(){
 export -f divideImagesByWholeNightFlat
 
 runNoiseChiselOnFrame() {
-    baseName=$1
-    inputFileDir=$2
-    outputDir=$3
-    noiseChiselParams=$4
+    local baseName=$1
+    local inputFileDir=$2
+    local outputDir=$3
+    local noiseChiselParams=$4
 
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
@@ -699,7 +699,7 @@ export -f runNoiseChiselOnFrame
 
 # Functions for Warping the frames
 getCentralCoordinate(){
-    image=$1
+    local image=$1
 
     NAXIS1=$(gethead $image NAXIS1)
     NAXIS2=$(gethead $image NAXIS2)
@@ -715,12 +715,12 @@ getCentralCoordinate(){
 export -f getCentralCoordinate
 
 warpImage() {
-    imageToSwarp=$1
-    entireDir_fullGrid=$2
-    entiredir=$3
-    ra=$4
-    dec=$5
-    coaddSizePx=$6
+    local imageToSwarp=$1
+    local entireDir_fullGrid=$2
+    local entiredir=$3
+    local ra=$4
+    local dec=$5
+    local coaddSizePx=$6
 
     # ****** Decision note *******
     # We need to regrid the frames into the final coadd grid. But if we do this right now we will be processing
@@ -752,10 +752,10 @@ warpImage() {
 export -f warpImage
 
 removeBadFramesFromReduction() {
-    sourceToRemoveFiles=$1
-    destinationDir=$2
-    badFilesWarningDir=$3
-    badFilesWarningFile=$4
+    local sourceToRemoveFiles=$1
+    local destinationDir=$2
+    local badFilesWarningDir=$3
+    local badFilesWarningFile=$4
 
     filePath=$badFilesWarningDir/$badFilesWarningFile
 
@@ -772,20 +772,20 @@ export -f removeBadFramesFromReduction
 
 # Functions for compute and subtract sky from frames
 computeSkyForFrame(){
-    base=$1
-    entiredir=$2
-    noiseskydir=$3
-    constantSky=$4
-    constantSkyMethod=$5
-    polyDegree=$6
-    inputImagesAreMasked=$7
-    ringDir=$8
-    useCommonRing=$9
-    keyWordToDecideRing=${10}
-    keyWordThreshold=${11}
-    keyWordValueForFirstRing=${12}
-    keyWordValueForSecondRing=${13}
-    ringWidth=${14}
+    local base=$1
+    local entiredir=$2
+    local noiseskydir=$3
+    local constantSky=$4
+    local constantSkyMethod=$5
+    local polyDegree=$6
+    local inputImagesAreMasked=$7
+    local ringDir=$8
+    local useCommonRing=$9
+    local keyWordToDecideRing=${10}
+    local keyWordThreshold=${11}
+    local keyWordValueForFirstRing=${12}
+    local keyWordValueForSecondRing=${13}
+    local ringWidth=${14}
 
     i=$entiredir/$1
 
@@ -883,20 +883,20 @@ computeSkyForFrame(){
 export -f computeSkyForFrame
 
 computeSky() {
-    framesToUseDir=$1
-    noiseskydir=$2
-    noiseskydone=$3
-    constantSky=$4
-    constantSkyMethod=$5
-    polyDegree=$6
-    inputImagesAreMasked=$7
-    ringDir=$8
-    useCommonRing=$9
-    keyWordToDecideRing=${10}
-    keyWordThreshold=${11}
-    keyWordValueForFirstRing=${12}
-    keyWordValueForSecondRing=${13}
-    ringWidth=${14}
+    local framesToUseDir=$1
+    local noiseskydir=$2
+    local noiseskydone=$3
+    local constantSky=$4
+    local constantSkyMethod=$5
+    local polyDegree=$6
+    local inputImagesAreMasked=$7
+    local ringDir=$8
+    local useCommonRing=$9
+    local keyWordToDecideRing=${10}
+    local keyWordThreshold=${11}
+    local keyWordValueForFirstRing=${12}
+    local keyWordValueForSecondRing=${13}
+    local ringWidth=${14}
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -914,11 +914,11 @@ computeSky() {
 export -f computeSky
 
 subtractSkyForFrame() {
-    a=$1
-    directoryWithSkyValues=$2
-    framesToSubtract=$3
-    directoryToStoreSkySubtracted=$4
-    constantSky=$5
+    local a=$1
+    local directoryWithSkyValues=$2
+    local framesToSubtract=$3
+    local directoryToStoreSkySubtracted=$4
+    local constantSky=$5
 
     base="entirecamera_"$a.fits
     input=$framesToSubtract/$base
@@ -945,11 +945,11 @@ subtractSkyForFrame() {
 export -f subtractSkyForFrame
 
 subtractSky() {
-    framesToSubtract=$1
-    directoryToStoreSkySubtracted=$2
-    directoryToStoreSkySubtracteddone=$3
-    directoryWithSkyValues=$4
-    constantSky=$5
+    local framesToSubtract=$1
+    local directoryToStoreSkySubtracted=$2
+    local directoryToStoreSkySubtracteddone=$3
+    local directoryWithSkyValues=$4
+    local constantSky=$5
 
 
     if ! [ -d $directoryToStoreSkySubtracted ]; then mkdir $directoryToStoreSkySubtracted; fi
@@ -969,8 +969,8 @@ export -f subtractSky
 # Functions for decals data
 # The function that is to be used (the 'public' function using OOP terminology) is 'prepareSurveyDataForPhotometricCalibration'
 getBricksWhichCorrespondToFrame() {
-    frame=$1
-    frameBrickMapFile=$2
+    local frame=$1
+    local frameBrickMapFile=$2
 
     bricks=$( awk -v var=$(basename $frame) '$1==var { match($0, /\[([^]]+)\]/, arr); print arr[1] }' $frameBrickMapFile )
     IFS=", "
@@ -985,10 +985,10 @@ getBricksWhichCorrespondToFrame() {
 export -f getBricksWhichCorrespondToFrame
 
 getParametersFromHalfMaxRadius() {
-    image=$1
-    gaiaCatalogue=$2
-    kernel=$3
-    tmpFolder=$4
+    local image=$1
+    local gaiaCatalogue=$2
+    local kernel=$3
+    local tmpFolder=$4
 
     # The output of the commands are redirected to /dev/null because otherwise I cannot return the median and std.
     # Quite uncomfortable the return way of bash. Nevertheless, the error output is not modified so if an instruction fails we still get the error message.
@@ -1008,15 +1008,15 @@ export -f getParametersFromHalfMaxRadius
 
 
 downloadSurveyData() {
-    mosaicDir=$1
+    local mosaicDir=$1
     local surveyImagesDir=$2
     local bricksIdentificationFile=$3
-    filters=$4
-    ra=$5
-    dec=$6
-    fieldSizeDeg=$7
-    gaiaCatalogue=$8
-    survey=$9
+    local filters=$4
+    local ra=$5
+    local dec=$6
+    local fieldSizeDeg=$7
+    local gaiaCatalogue=$8
+    local survey=$9
     
     echo -e "\n·Downloading ${survey} bricks"
     donwloadMosaicDone=$surveyImagesDir/done_downloads.txt
@@ -1035,12 +1035,12 @@ downloadSurveyData() {
 export -f downloadSurveyData
 
 downloadSpectra() {
-    mosaicDir=$1
-    spectraDir=$2
-    ra=$3
-    dec=$4
-    sizeOfOurFieldDegrees=$5
-    surveyForSpectra=$6
+    local mosaicDir=$1
+    local spectraDir=$2
+    local ra=$3
+    local dec=$4
+    local sizeOfOurFieldDegrees=$5
+    local surveyForSpectra=$6
 
     spectraDone=$spectraDir/done.txt
     if [ -f $spectraDone ]; then
@@ -1053,9 +1053,9 @@ downloadSpectra() {
 export -f downloadSpectra
 
 addTwoFiltersAndDivideByTwo() {
-    decalsImagesDir=$1
-    filter1=$2
-    filter2=$3
+    local decalsImagesDir=$1
+    local filter1=$2
+    local filter2=$3
 
     addBricksDone=$mosaicDir/decalsImages/done_adding.txt
     if [ -f $addBricksDone ]; then
@@ -1077,9 +1077,9 @@ export -f addTwoFiltersAndDivideByTwo
 
 
 downloadGaiaCatalogue() {
-    query=$1
-    catdir=$2
-    catName=$3
+    local query=$1
+    local catdir=$2
+    local catName=$3
 
     astquery $query -o $catdir/"$objectName"_Gaia_eDR3_tmp.fits
     asttable $catdir/"$objectName"_Gaia_eDR3_tmp.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -o$catdir/tmp.txt
@@ -1109,10 +1109,10 @@ downloadGaiaCatalogue() {
 export -f downloadGaiaCatalogue
 
 downloadIndex() {
-    re=$1
-    catdir=$2
-    objectName=$3
-    indexdir=$4
+    local re=$1
+    local catdir=$2
+    local objectName=$3
+    local indexdir=$4
 
     build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
                             -P $re \
@@ -1123,15 +1123,15 @@ downloadIndex() {
 export -f downloadIndex
 
 solveField() {
-    i=$1
-    solve_field_L_Param=$2
-    solve_field_H_Param=$3
-    solve_field_u_Param=$4
-    ra_gal=$5
-    dec_gal=$6
-    confFile=$7
-    astroimadir=$8
-    sexcfg_sf=$9
+    local i=$1
+    local solve_field_L_Param=$2
+    local solve_field_H_Param=$3
+    local solve_field_u_Param=$4
+    local ra_gal=$5
+    local dec_gal=$6
+    local confFile=$7
+    local astroimadir=$8
+    local sexcfg_sf=$9
     base=$( basename $i)
 
     # The default sextractor parameter file is used.
@@ -1159,14 +1159,14 @@ solveField() {
 export -f solveField
 
 runSextractorOnImage() {
-    a=$1
-    sexcfg=$2
-    sexparam=$3
-    sexconv=$4
-    astroimadir=$5
-    sexdir=$6
-    saturationThreshold=$7
-    gain=$8 
+    local a=$1
+    local sexcfg=$2
+    local sexparam=$3
+    local sexconv=$4
+    local astroimadir=$5
+    local sexdir=$6
+    local saturationThreshold=$7
+    local gain=$8 
 
     # Here I put the saturation threshold and the gain directly.
     # This is because it's likely that we end up forgetting about tuning the sextractor configuration file but we will be more careful with the configuration file of the reductions
@@ -1253,15 +1253,15 @@ export -f runSextractorOnImage
 # export -f buildDecalsMosaic
 
 decompressDecalsFrame() {
-    frameName=$1
-    dirWithbricks=$2
+    local frameName=$1
+    local dirWithbricks=$2
 
     funpack -O $dirWithbricks/decompressed_$frameName $dirWithbricks/$frameName 
 }
 export -f decompressDecalsFrame
 
 decompressBricks() {
-    dirWithBricks=$1
+    local dirWithBricks=$1
 
     decompressedBricks=$dirWithBricks/decompressed_done.txt
     if [ -f $decompressedBricks ]; then
@@ -1279,8 +1279,8 @@ decompressBricks() {
 export -f decompressBricks
 
 divideByExpTimeAndMoveZPForPanstarrsFrame() {
-    brickName=$1
-    dirWithBricks=$2
+    local brickName=$1
+    local dirWithBricks=$2
 
     cal_tm="cal_tm_"$brickName
     ##We need to divide /10 to get into zp=22.5, and to divide between exposure time
@@ -1294,7 +1294,7 @@ divideByExpTimeAndMoveZPForPanstarrsFrame() {
 export -f divideByExpTimeAndMoveZPForPanstarrsFrame
 
 divideByExpTimeAndMoveZPForPanstarrs() {
-    dirWithBricks=$1
+    local dirWithBricks=$1
 
     calibratedBricks=$dirWithBricks/recalibrated_done.txt
     if [ -f $calibratedBricks ]; then
@@ -1344,9 +1344,9 @@ selectStarsAndSelectionRangeSurvey() {
 export -f selectStarsAndSelectionRangeSurvey
 
 produceHalfMaxRadiusPlotsForDecals() {
-    folderWithCatalogues=$1
-    outputDir=$2
-    filter=$3
+    local folderWithCatalogues=$1
+    local outputDir=$2
+    local filter=$3
 
     decalsHalfMaxRadiusPlotsDone=$outputDir/done.txt
 
@@ -1374,9 +1374,9 @@ produceHalfMaxRadiusPlotsForDecals() {
 export -f produceHalfMaxRadiusPlotsForDecals
 
 produceHalfMaxRadiusPlotsForPanstarrs() {
-    folderWithCatalogues=$1
-    outputDir=$2
-    filter=$3
+    local folderWithCatalogues=$1
+    local outputDir=$2
+    local filter=$3
     #ps==panstarrs
     psHalfMaxRadiusPlotsDone=$outputDir/done.txt
     if ! [ -d $outputDir ]; then mkdir $outputDir; fi
@@ -1484,21 +1484,21 @@ export -f performAperturePhotometryToBricks
 
 
 prepareCalibrationData() {
-    surveyForCalibration=$1
-    referenceImagesForMosaic=$2
-    aperturePhotDir=$3
-    filter=$4
-    ra=$5
-    dec=$6
-    mosaicDir=$7
-    selectedSurveyStarsDir=$8
-    rangeUsedSurveyDir=$9
-    dataPixelScale=${10}
-    sizeOfOurFieldDegrees=${11} 
-    gaiaCatalogue=${12}
-    surveyForSpectra=${13}
-    apertureUnits=${14}
-    folderWithTransmittances=${15}
+    local surveyForCalibration=$1
+    local referenceImagesForMosaic=$2
+    local aperturePhotDir=$3
+    local filter=$4
+    local ra=$5
+    local dec=$6
+    local mosaicDir=$7
+    local selectedSurveyStarsDir=$8
+    local rangeUsedSurveyDir=$9
+    local dataPixelScale=${10}
+    local sizeOfOurFieldDegrees=${11} 
+    local gaiaCatalogue=${12}
+    local surveyForSpectra=${13}
+    local apertureUnits=${14}
+    local folderWithTransmittances=${15}
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
 
@@ -1663,9 +1663,9 @@ prepareSurveyDataForPhotometricCalibration() {
 export -f prepareSurveyDataForPhotometricCalibration
 
 correctOffsetFromCatalogues() {
-    dirWithCatalogues=$1
-    offset=$2
-    factorToApplyToCounts=$3
+    local dirWithCatalogues=$1
+    local offset=$2
+    local factorToApplyToCounts=$3
 
     # The following awk command corrects the magnitude and the counts of all the catalogues
     for i in $( ls $dirWithCatalogues/*.cat ); do
@@ -1730,13 +1730,13 @@ export -f calibrationToGAIA
 # The function that is to be used (the 'public' function using OOP terminology)
 # Is 'computeCalibrationFactors' and 'applyCalibrationFactors'
 selectStarsAndRangeForCalibrateSingleFrame(){
-    a=$1
-    framesForCalibrationDir=$2
-    mycatdir=$3
-    headerToUse=$4
-    methodToUse=$5
-    tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
-    apertureUnits=$7
+    local a=$1
+    local framesForCalibrationDir=$2
+    local mycatdir=$3
+    local headerToUse=$4
+    local methodToUse=$5
+    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
+    local apertureUnits=$7
 
 
     i=$framesForCalibrationDir/$a
@@ -1768,12 +1768,12 @@ selectStarsAndRangeForCalibrateSingleFrame(){
 export -f selectStarsAndRangeForCalibrateSingleFrame
 
 selectStarsAndSelectionRangeOurData() {
-    iteration=$1
-    framesForCalibrationDir=$2
-    mycatdir=$3
-    methodToUse=$4
-    tileSize=$5
-    apertureUnits=$6
+    local iteration=$1
+    local framesForCalibrationDir=$2
+    local mycatdir=$3
+    local methodToUse=$4
+    local tileSize=$5
+    local apertureUnits=$6
 
     mycatdone=$mycatdir/done.txt
     if ! [ -d $mycatdir ]; then mkdir $mycatdir; fi
@@ -1794,11 +1794,11 @@ export -f selectStarsAndSelectionRangeOurData
 
 
 matchDecalsAndSingleFrame() {
-    a=$1
-    myCatalogues=$2
-    calibrationCatalogues=$3
-    matchdir=$4
-    surveyForCalibration=$5
+    local a=$1
+    local myCatalogues=$2
+    local calibrationCatalogues=$3
+    local matchdir=$4
+    local surveyForCalibration=$5
 
     base="entirecamera_$a.fits"
     out=$matchdir/matched_"$base".cat
@@ -1842,10 +1842,10 @@ matchDecalsAndSingleFrame() {
 export -f matchDecalsAndSingleFrame
 
 matchDecalsAndOurData() {
-    myCatalogues=$1
-    calibrationCatalogues=$2
-    matchdir=$3
-    surveyForCalibration=$4
+    local myCatalogues=$1
+    local calibrationCatalogues=$2
+    local matchdir=$3
+    local surveyForCalibration=$4
 
     matchdirdone=$matchdir/done_automatic.txt
     if ! [ -d $matchdir ]; then mkdir $matchdir; fi
@@ -1863,11 +1863,11 @@ matchDecalsAndOurData() {
 export -f matchDecalsAndOurData
 
 buildOurCatalogueOfMatchedSourcesForFrame() {
-    a=$1
-    ourDatadir=$2
-    framesForCalibrationDir=$3
-    mycatdir=$4
-    numberOfApertureUnitsForCalibration=$5
+    local a=$1
+    local ourDatadir=$2
+    local framesForCalibrationDir=$3
+    local mycatdir=$4
+    local numberOfApertureUnitsForCalibration=$5
 
     base="entirecamera_$a.fits"
     i=$framesForCalibrationDir/$base
@@ -1893,10 +1893,10 @@ buildOurCatalogueOfMatchedSourcesForFrame() {
 export -f buildOurCatalogueOfMatchedSourcesForFrame
 
 buildOurCatalogueOfMatchedSources() {
-    ourDatadir=$1
-    framesForCalibrationDir=$2
-    mycatdir=$3
-    numberOfApertureUnitsForCalibration=$4
+    local ourDatadir=$1
+    local framesForCalibrationDir=$2
+    local mycatdir=$3
+    local numberOfApertureUnitsForCalibration=$4
 
     ourDatadone=$ourDatadir/done.txt
     if ! [ -d $ourDatadir ]; then mkdir $ourDatadir; fi
@@ -1914,9 +1914,9 @@ buildOurCatalogueOfMatchedSources() {
 export -f buildOurCatalogueOfMatchedSources
 
 matchCalibrationStarsCatalogues() {
-    matchdir2=$1
-    ourDatadir=$2
-    decalsdir=$3
+    local matchdir2=$1
+    local ourDatadir=$2
+    local decalsdir=$3
     matchdir2done=$matchdir2/done_aperture.txt
 
     if [ -f $matchdir2done ]; then
@@ -1946,10 +1946,10 @@ matchCalibrationStarsCatalogues() {
 export -f matchCalibrationStarsCatalogues
 
 computeAndStoreFactors() {
-    alphatruedir=$1
-    matchdir=$2
-    brightLimit=$3
-    faintLimit=$4
+    local alphatruedir=$1
+    local matchdir=$2
+    local brightLimit=$3
+    local faintLimit=$4
 
     alphatruedone=$alphatruedir/done.txt
     numberOfStarsUsedToCalibrateFile=$alphatruedir/numberOfStarsUsedForCalibrate.txt
@@ -1981,11 +1981,11 @@ computeAndStoreFactors() {
 export -f computeAndStoreFactors
 
 combineCatalogues() {
-    outputDir=$1
-    cataloguesDir=$2
-    frame=$3
+    local outputDir=$1
+    local cataloguesDir=$2
+    local frame=$3
     shift 3
-    bricks=("$@")
+    local bricks=("$@")
 
   
     catalogueName=$( echo "$frame" | awk -F'.' '{print $1}')
@@ -2014,9 +2014,9 @@ export -f combineCatalogues
 
 
 combineDecalsBricksCataloguesForEachFrame() {
-    outputDir=$1
-    frameBrickAssociationFile=$2
-    decalsCataloguesDir=$3
+    local outputDir=$1
+    local frameBrickAssociationFile=$2
+    local decalsCataloguesDir=$3
 
     combinationDone=$outputDir/done.txt
     if ! [ -d $outputDir ]; then mkdir $outputDir; fi
@@ -2041,19 +2041,19 @@ combineDecalsBricksCataloguesForEachFrame() {
 export -f combineDecalsBricksCataloguesForEachFrame
 
 computeCalibrationFactors() {
-    surveyForPhotometry=$1
-    iteration=$2
-    imagesForCalibration=$3
-    selectedDecalsStarsDir=$4
-    matchdir=$5
-    rangeUsedDecalsDir=$6
-    mosaicDir=$7
-    alphatruedir=$8
-    brightLimit=$9
-    faintLimit=${10}
-    tileSize=${11}
-    apertureUnits=${12}
-    numberOfApertureUnitsForCalibration=${13}
+    local surveyForPhotometry=$1
+    local iteration=$2
+    local imagesForCalibration=$3
+    local selectedDecalsStarsDir=$4
+    local matchdir=$5
+    local rangeUsedDecalsDir=$6
+    local mosaicDir=$7
+    local alphatruedir=$8
+    local brightLimit=$9
+    local faintLimit=${10}
+    local tileSize=${11}
+    local apertureUnits=${12}
+    local numberOfApertureUnitsForCalibration=${13}
 
 
     mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
@@ -2085,10 +2085,10 @@ computeCalibrationFactors() {
 export -f computeCalibrationFactors
 
 applyCalibrationFactorsToFrame() {
-    a=$1
-    imagesForCalibration=$2
-    alphatruedir=$3
-    photCorrDir=$4
+    local a=$1
+    local imagesForCalibration=$2
+    local alphatruedir=$3
+    local photCorrDir=$4
 
     base=entirecamera_"$a".fits
     f=$imagesForCalibration/"entirecamera_$a.fits"
@@ -2099,9 +2099,9 @@ applyCalibrationFactorsToFrame() {
 export -f applyCalibrationFactorsToFrame
 
 applyCalibrationFactors() {
-    imagesForCalibration=$1
-    alphatruedir=$2
-    photCorrDir=$3
+    local imagesForCalibration=$1
+    local alphatruedir=$2
+    local photCorrDir=$3
 
     muldone=$photCorrDir/done.txt
     if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
@@ -2121,13 +2121,13 @@ export -f applyCalibrationFactors
 # Compute the weights o the frames based on the std of the background
 # In order to perform a weighted mean
 computeWeightForFrame() {
-    a=$1
-    wdir=$2
-    wonlydir=$3
-    photCorrDir=$4
-    noiseskydir=$5 
-    iteration=$6
-    minRmsFileName=$7
+    local a=$1
+    local wdir=$2
+    local wonlydir=$3
+    local photCorrDir=$4
+    local noiseskydir=$5 
+    local iteration=$6
+    local minRmsFileName=$7
 
     h=0
     base=entirecamera_"$a".fits
@@ -2160,14 +2160,14 @@ computeWeightForFrame() {
 export -f computeWeightForFrame
 
 computeWeights() {
-    wdir=$1
-    wdone=$2
-    wonlydir=$3
-    wonlydone=$4
-    photCorrDir=$5
-    noiseskydir=$6 
-    iteration=$7
-    minRmsFileName=$8
+   local wdir=$1
+   local wdone=$2
+   local wonlydir=$3
+   local wonlydone=$4
+   local photCorrDir=$5
+   local noiseskydir=$6 
+   local iteration=$7
+   local minRmsFileName=$8
 
     if [ -f $wdone ]; then
         echo -e "\n\tWeights computation done for extension $h\n"
@@ -2185,10 +2185,10 @@ export -f computeWeights
 
 # Outliers functions
 buildUpperAndLowerLimitsForOutliers() {
-    clippingdir=$1
-    clippingdone=$2
-    wdir=$3
-    sigmaForStdSigclip=$4
+    local clippingdir=$1
+    local clippingdone=$2
+    local wdir=$3
+    local sigmaForStdSigclip=$4
 
     if ! [ -d $clippingdir ]; then mkdir $clippingdir; fi
     if [ -f $clippingdone ]; then
@@ -2221,12 +2221,12 @@ buildUpperAndLowerLimitsForOutliers() {
 export -f buildUpperAndLowerLimitsForOutliers
 
 removeOutliersFromFrame(){
-    a=$1
-    mowdir=$2
-    moonwdir=$3
-    clippingdir=$4
-    wdir=$5
-    wonlydir=$6
+    local a=$1
+    local mowdir=$2
+    local moonwdir=$3
+    local clippingdir=$4
+    local wdir=$5
+    local wonlydir=$6
 
     base=entirecamera_"$a".fits
     tmp_ab=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_maskabove.fits
@@ -2248,13 +2248,13 @@ removeOutliersFromFrame(){
 export -f removeOutliersFromFrame
 
 removeOutliersFromWeightedFrames () {
-  mowdone=$1
-  totalNumberOfFrames=$2
-  mowdir=$3
-  moonwdir=$4
-  clippingdir=$5
-  wdir=$6
-  wonlydir=$7
+  local mowdone=$1
+  local totalNumberOfFrames=$2
+  local mowdir=$3
+  local moonwdir=$4
+  local clippingdir=$5
+  local wdir=$6
+  local wonlydir=$7
 
   if [ -f $mowdone ]; then
       echo -e "\n\tOutliers of the weighted images already masked\n"
@@ -2271,11 +2271,11 @@ export -f removeOutliersFromWeightedFrames
 
 # Functions for applying the mask of the coadd for a second iteration
 cropAndApplyMaskPerFrame() {
-    a=$1
-    dirOfFramesToMask=$2
-    dirOfFramesMasked=$3
-    wholeMask=$4
-    dirOfFramesFullGrid=$5
+    local a=$1
+    local dirOfFramesToMask=$2
+    local dirOfFramesMasked=$3
+    local wholeMask=$4
+    local dirOfFramesFullGrid=$5
 
 
     frameToMask=$dirOfFramesToMask/entirecamera_$a.fits
@@ -2298,11 +2298,11 @@ export -f cropAndApplyMaskPerFrame
 # maskPointings receives the directory with the frames in the full grid because we need it in order to know the region of the full grid
 # in which the specific frame is located. That is obtained by using getRegionToCrop.py frame
 maskPointings() {
-    entiredir_smallGrid=$1
-    smallPointings_maskedDir=$2
-    maskedPointingsDone=$3
-    maskName=$4
-    dirOfFramesFullGrid=$5
+    local entiredir_smallGrid=$1
+    local smallPointings_maskedDir=$2
+    local maskedPointingsDone=$3
+    local maskName=$4
+    local dirOfFramesFullGrid=$5
 
     if ! [ -d $smallPointings_maskedDir ]; then mkdir $smallPointings_maskedDir; fi
     if [ -f $maskedPointingsDone ]; then
@@ -2319,10 +2319,10 @@ maskPointings() {
 export -f maskPointings
 
 produceAstrometryCheckPlot() {
-    matchCataloguesDir=$1
-    pythonScriptsPath=$2
-    output=$3
-    pixelScale=$4
+    local matchCataloguesDir=$1
+    local pythonScriptsPath=$2
+    local output=$3
+    local pixelScale=$4
 
     astrometryTmpDir="./astrometryDiagnosisTmp"
     if ! [ -d $astrometryTmpDir ]; then mkdir $astrometryTmpDir; fi
@@ -2332,18 +2332,18 @@ produceAstrometryCheckPlot() {
 export -f produceAstrometryCheckPlot
 
 produceCalibrationCheckPlot() {
-    myCatalogue_nonCalibrated=$1
-    myFrames_calibrated=$2
-    aperturesForMyData_dir=$3
-    referenceCatalogueDir=$4
-    pythonScriptsPath=$5
-    output=$6
-    calibrationBrighLimit=$7
-    calibrationFaintLimit=$8
-    numberOfApertureUnitsForCalibration=$9
-    outputDir=${10}
-    survey=${11}
-    BDIR=${12}
+    local myCatalogue_nonCalibrated=$1
+    local myFrames_calibrated=$2
+    local aperturesForMyData_dir=$3
+    local referenceCatalogueDir=$4
+    local pythonScriptsPath=$5
+    local output=$6
+    local calibrationBrighLimit=$7
+    local calibrationFaintLimit=$8
+    local numberOfApertureUnitsForCalibration=$9
+    local outputDir=${10}
+    local survey=${11}
+    local BDIR=${12}
 
     calibratedCataloguesDir=$BDIR/calibratedCatalogues
     if ! [ -d $calibratedCataloguesDir ]; then mkdir $calibratedCataloguesDir; fi
@@ -2392,14 +2392,14 @@ produceCalibrationCheckPlot() {
 export -f produceCalibrationCheckPlot
 
 produceHalfMaxRadVsMagForSingleImage() {
-    image=$1 
-    outputDir=$2
-    gaiaCat=$3
-    toleranceForMatching=$4
-    pythonScriptsPath=$5
-    alternativeIdentifier=$6 # Applied when there is no number in the name
-    tileSize=$7
-    apertureUnits=$8
+    local image=$1 
+    local outputDir=$2
+    local gaiaCat=$3
+    local toleranceForMatching=$4
+    local pythonScriptsPath=$5
+    local alternativeIdentifier=$6 # Applied when there is no number in the name
+    local tileSize=$7
+    local apertureUnits=$8
 
     a=$( echo $image | grep -oP '\d+(?=\.fits)' )
     if ! [[ -n "$a" ]]; then
@@ -2425,14 +2425,14 @@ export -f produceHalfMaxRadVsMagForSingleImage
 
 
 produceHalfMaxRadVsMagForOurData() {
-    imagesDir=$1
-    outputDir=$2
-    gaiaCat=$3
-    toleranceForMatching=$4
-    pythonScriptsPath=$5
-    num_cpus=$6
-    tileSize=$7
-    apertureUnits=$8
+    local imagesDir=$1
+    local outputDir=$2
+    local gaiaCat=$3
+    local toleranceForMatching=$4
+    local pythonScriptsPath=$5
+    local num_cpus=$6
+    local tileSize=$7
+    local apertureUnits=$8
 
     images=()
     for i in $imagesDir/*.fits; do
@@ -2445,11 +2445,11 @@ produceHalfMaxRadVsMagForOurData() {
 export -f produceHalfMaxRadVsMagForOurData
 
 buildCoadd() {
-    coaddir=$1
-    coaddName=$2
-    mowdir=$3
-    moonwdir=$4
-    coaddone=$5
+    local coaddir=$1
+    local coaddName=$2
+    local mowdir=$3
+    local moonwdir=$4
+    local coaddone=$5
 
     if ! [ -d $coaddir ]; then mkdir $coaddir; fi
     if [ -f $coaddone ]; then
@@ -2470,9 +2470,9 @@ buildCoadd() {
 export -f buildCoadd
 
 subtractCoaddToFrames() {
-    dirWithFrames=$1
-    coadd=$2
-    destinationDir=$3
+    local dirWithFrames=$1
+    local coadd=$2
+    local destinationDir=$3
 
     for i in $dirWithFrames/*.fits; do
         astarithmetic $i $coadd - -o$destinationDir/$( basename $i ) -g1
@@ -2481,9 +2481,9 @@ subtractCoaddToFrames() {
 export -f subtractCoaddToFrames
 
 changeNonNansOfFrameToOnes() {
-  a=$1
-  framesDir=$2
-  outputDir=$3
+  local a=$1
+  local framesDir=$2
+  local outputDir=$3
 
   frame=$framesDir/entirecamera_$a.fits
   output=$outputDir/exposure_tmp_$a.fits
@@ -2493,9 +2493,9 @@ changeNonNansOfFrameToOnes() {
 export -f changeNonNansOfFrameToOnes
 
 computeExposureMap() {
-    framesDir=$1
-    exposureMapDir=$2
-    exposureMapDone=$3
+    local framesDir=$1
+    local exposureMapDir=$2
+    local exposureMapDone=$3
 
     if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
     if [ -f $exposuremapdone ]; then
@@ -2538,12 +2538,12 @@ export -f computeExposureMap
 # 4.- FWHM/2 or Re
 
 generateCatalogueFromImage_noisechisel() { 
-    image=$1
-    outputDir=$2
-    a=$3   
-    header=$4
-    tileSize=$5
-    apertureUnitsToCalculate=$6
+    local image=$1
+    local outputDir=$2
+    local a=$3   
+    local header=$4
+    local tileSize=$5
+    local apertureUnitsToCalculate=$6
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
     astconvolve $image -h$header --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits 1>/dev/null
@@ -2566,10 +2566,10 @@ export -f generateCatalogueFromImage_noisechisel
 
 
 generateCatalogueFromImage_sextractor(){
-    image=$1
-    outputDir=$2
-    a=$3   
-    apertureUnitsToCalculate=$4
+    local image=$1
+    local outputDir=$2
+    local a=$3   
+    local apertureUnitsToCalculate=$4
 
 
     # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
@@ -2644,16 +2644,16 @@ export -f generateCatalogueFromImage_sextractor
 # 7.- SUM
 
 photometryOnImage_noisechisel() {
-    a=$1
-    directoryToWork=$2
-    matchedCatalogue=$3
-    imageToUse=$4
-    aperture_radius_px=$5
-    outputCatalogue=$6
-    zeropoint=$7
-    hduWithData=$8
-    raColumnName=$9
-    decColumnName=${10}
+    local a=$1
+    local directoryToWork=$2
+    local matchedCatalogue=$3
+    local imageToUse=$4
+    local aperture_radius_px=$5
+    local outputCatalogue=$6
+    local zeropoint=$7
+    local hduWithData=$8
+    local raColumnName=$9
+    local decColumnName=${10}
 
     asttable $matchedCatalogue -hSOURCE_ID -c$raColumnName,$decColumnName | awk '!/^#/{print NR, $1, $2, 5, '$aperture_radius_px', 0, 0, 1, NR, 1}' > $directoryToWork/apertures_decals_$a.txt
     astmkprof $directoryToWork/apertures_decals_$a.txt --background=$imageToUse --backhdu=$hduWithData \
@@ -2670,18 +2670,18 @@ photometryOnImage_noisechisel() {
 export -f photometryOnImage_noisechisel
 
 photometryOnImage_photutils() {
-    a=$1
-    directoryToWork=$2
-    matchedCatalogue=$3
-    imageToUse=$4
-    aperture_radius_px=$5
-    outputCatalogue=$6
-    zeropoint=$7
-    hduWithData=$8
-    xColumnPx=$9
-    yColumnPx=${10}
-    xColumnWCS=${11}
-    yColumnWCS=${12}
+    local a=$1
+    local directoryToWork=$2
+    local matchedCatalogue=$3
+    local imageToUse=$4
+    local aperture_radius_px=$5
+    local outputCatalogue=$6
+    local zeropoint=$7
+    local hduWithData=$8
+    local xColumnPx=$9
+    local yColumnPx=${10}
+    local xColumnWCS=${11}
+    local yColumnWCS=${12}
 
     tmpCatalogName=$directoryToWork/tmp_"$a".cat
     python3 $pythonScriptsPath/photutilsPhotometry.py $matchedCatalogue $imageToUse $aperture_radius_px $tmpCatalogName $zeropoint $hduWithData $xColumnPx $yColumnPx $xColumnWCS $yColumnWCS
@@ -2698,14 +2698,14 @@ photometryOnImage_photutils() {
 export -f photometryOnImage_photutils
 
 limitingSurfaceBrightness() {
-    image=$1
-    mask=$2
-    exposureMap=$3
-    directoryOfImages=$4
-    areaSB=$5
-    fracExpMap=$6
-    pixelScale=$7
-    outFile=$8
+    local image=$1
+    local mask=$2
+    local exposureMap=$3
+    local directoryOfImages=$4
+    local areaSB=$5
+    local fracExpMap=$6
+    local pixelScale=$7
+    local outFile=$8
 
     numOfSigmasForMetric=3
 
