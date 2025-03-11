@@ -87,7 +87,15 @@ checkIfStringVariablesHaveValidValues
 
 checkTransmittanceFilterAndItsUnits $telescope $surveyForPhotometry $folderWithTransmittances $filter
 
+filterCorrectionCoeff=$( checkIfNeededFilterCorrectionIsGiven $telescope $filter $surveyForPhotometry $ROOTDIR/"$objectName"/config )
+if [[ $filterCorrectionCoeff == 11 ]]; then
+  echo "The filter corrections for the filter $filter, telescope $telescope and survey $survey were not found"
+  echo "Exiting with error code 11"
+  exit 11
+fi
+
 outputConfigurationVariablesInformation
+
 
 # The following lines are responsible of the cpu's used for paralellise
 # If it is running in a system with slurm it takes the number of cpu's from the slurm job
@@ -1171,12 +1179,9 @@ aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final prod
 # GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. 
 #It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha 
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
-
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances $offsetBetweenFilters
-exit 0
-
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $calibrationBrightLimit $calibrationFaintLimit
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1184,7 +1189,7 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
-                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry $apertureUnits $numberOfApertureUnitsForCalibration
+                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
 
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1253,7 +1258,6 @@ else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $dirWithReferenceCat \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
-
 exit 0
 
 
@@ -1442,8 +1446,6 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo done > $framesWithCoaddSubtractedDone 
 fi
-
-exit 0
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
