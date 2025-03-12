@@ -20,6 +20,7 @@ This repository contains the source code of a pipeline implemented for reducing 
 * Darks (the pipeline creates a masterdark to correct the BIAS and dark)
 * Config directory for software used by the pipeline (template given)
 * Configuration file for the specific reduction to perform (.conf file, template give)
+* "filters" directory containing the transmittances of the filters needed for reduction
 * Files specifing the rings to perform the normalisation (also used in data calibration - template given)
 
 ##### How the pipeline expects the data
@@ -47,7 +48,7 @@ The pipeline is going to look for the following things:
       · Swarp conf file
       · Sextractor conf files (.conv, .param and .sex)
 
-* filters
+* filters - 
     Must contain the transmittances of the filters needed for the reduction.
 
 
@@ -86,15 +87,12 @@ in order to take into account the difference in the filters' shape.
 
 * **pipelineScripts**: Contains python scripts used by the pipeline. From checking for bad frames to downloading data from decals. This folder is essential.
 
-
 Then we have the pipeline itself (*pipeline_LuM_parallel.sh*) and the functions which are in another script (*pipeline_LuM_parallel_functions.sh*). Additionally *template.conf* contains the a template with the configuration for the pipeline itself. Here is specified the details of the reduction to be performed (coordinates, type of flat to use, how to model the background, normalisation ring(s), details from the instrument used, etc...). Finally, *flat_ring_template.txt* is a template about how to define the normalisation ring(s).
 
 
 ##### Notes
 
 Take into account that the configuration file (the one corresponding to *template.conf*) is provided to the pipeline as an argument and the normalisation ring(s) are indicated in the configuration file.
-
-Also, The common normalisation ring (most of the cases will be centered in the image) has to be provided (mandatory) Because it will be used also for selecting what decals bricks are going to be donwloaded for the photometric calibration The 2 rings needed for normalising with them are only requested if the normalisation is going to be done in that way (non mandatory)
 
 ##### IMPORTANT calibration note
 
