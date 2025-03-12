@@ -1296,11 +1296,6 @@ else
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 86a987ef69f567cbdcd6699d158072bd63231840
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
@@ -1490,11 +1485,6 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 86a987ef69f567cbdcd6699d158072bd63231840
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   coaddPlaneDone=$coaddDir/done_plane.txt

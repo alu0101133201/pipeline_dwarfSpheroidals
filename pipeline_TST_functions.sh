@@ -219,14 +219,7 @@ checkIfAllVariablesAreSet() {
                 filter \
                 pixelScale \
                 detectorWidth \
-<<<<<<< HEAD
                 detectorHeight \
-=======
-                detectorHeight \ 
-                vignettingThreshold \
-                overscan \
-                trimsecKey \
->>>>>>> 86a987ef69f567cbdcd6699d158072bd63231840
                 lowestScaleForIndex \
                 highestScaleForIndex \
                 solve_field_L_Param \
