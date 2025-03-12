@@ -755,7 +755,7 @@ runNoiseChiselOnFrame() {
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
     for h in $(seq 1 $num_ccd); do
-        astnoisechisel $imageToUse -h$h $noiseChiselParams -o $outputDir/temp_"$baseName"
+        astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$defaultNumOfCPUs -o $outputDir/temp_"$baseName"
         astfits $outputDir/temp_"$baseName" --copy=1 -o $output
         rm $outputDir/temp_"$baseName"
     done
@@ -942,7 +942,7 @@ computeSkyForFrame(){
                 tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
                 tmpMaskedImage_single=$(echo $base | sed 's/.fits/_masked_ccd.fits/')
                 for h in $(seq 1 $num_ccd); do
-                    astnoisechisel $i -h$h $noisechisel_param -o $noiseskydir/$tmpMask
+                    astnoisechisel $i -h$h $noisechisel_param --numthreads=$defaultNumOfCPUs -o $noiseskydir/$tmpMask
                     astarithmetic $i -h$h $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage_single --quiet
                     astfits $noiseskydir/$tmpMaskedImage_single --copy=1 -o $noiseskydir/$tmpMaskedImage
                     rm -f $noiseskydir/$tmpMaskedImage_single
@@ -999,7 +999,7 @@ computeSkyForFrame(){
                     astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
                     rm -f $ringDir/$tmpRingDefinition
                 else
-                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $BDIR/ring_ccd"$h".txt
+                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/ring_ccd"$h".txt
                 fi
                 astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
                 rm -f $ringDir/$tmpRingFits_single
@@ -1027,7 +1027,7 @@ computeSkyForFrame(){
                 sky=$(echo $base | sed 's/.fits/_sky.fits/')
 
                 # The sky substraction is done by using the --checksky option in noisechisel
-                astnoisechisel $i -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$sky
+                astnoisechisel $i -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$defaultNumOfCPUs -o $noiseskydir/$sky
 
                 mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
                 std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
@@ -1056,7 +1056,7 @@ computeSkyForFrame(){
 
         # This conditional allows us to introduce the images already masked (masked with the mask of the coadd) in the second and next iterations
         if ! [ "$inputImagesAreMasked" = true ]; then
-            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param -o $noiseskydir/$base
+            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$defaultNumOfCPUs -o $noiseskydir/$base
             astarithmetic $i -h1 $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
             python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
         else
@@ -1194,7 +1194,7 @@ getParametersFromHalfMaxRadius() {
     # The output of the commands are redirected to /dev/null because otherwise I cannot return the median and std.
     # Quite uncomfortable the return way of bash. Nevertheless, the error output is not modified so if an instruction fails we still get the error message.
     astconvolve $image --kernel=$kernel --domain=spatial --output=$tmpFolder/convolved.fits 1>/dev/null
-    astnoisechisel $image -h1 -o $tmpFolder/det.fits --convolved=$tmpFolder/convolved.fits --tilesize=20,20 --detgrowquant=0.95 --erode=4 1>/dev/null
+    astnoisechisel $image -h1 -o $tmpFolder/det.fits --convolved=$tmpFolder/convolved.fits --tilesize=20,20 --detgrowquant=0.95 --erode=4 --numthreads=$defaultNumOfCPUs 1>/dev/null
     astsegment $tmpFolder/det.fits -o $tmpFolder/seg.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3 1>/dev/null
     astmkcatalog $tmpFolder/seg.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals.txt --zeropoint=22.5 1>/dev/null
     astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
@@ -2852,7 +2852,7 @@ generateCatalogueFromImage_noisechisel() {
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
     astconvolve $image -h$header --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits 1>/dev/null
-    astnoisechisel $image -h$header -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=$tileSize,$tileSize 1>/dev/null
+    astnoisechisel $image -h$header -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=$tileSize,$tileSize --numthreads=$defaultNumOfCPUs 1>/dev/null
     astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --gthresh=-15 --objbordersn=0 1>/dev/null
     astmkcatalog $outputDir/seg_$a.fits --x --y --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $outputDir/decals_$a.txt --zeropoint=22.5 1>/dev/null
 
