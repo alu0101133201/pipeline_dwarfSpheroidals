@@ -113,9 +113,9 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=35
+tileSize=50
 noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --detgrowmaxholesize=5000 \
+                    --detgrowmaxholesize=1000 \
                     --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
@@ -228,7 +228,13 @@ oneNightPreProcessing() {
             out=$currentINDIR/$unixTimeInSeconds.fits
 
             # HERE A CHECK IF THE DATA IS IN FLOAT32 IS NEEDED
-            eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
+            if [[ "$overscan" == "YES" ]]; then
+              trsec=$(eval "astfits $nameWithEscapedSpaces -h $h --keyvalue=$trimsecKey -q" )
+              trsec=${trsec//[\[\]]/}
+              eval "astcrop $nameWithEscapedSpaces -h$h --mode=img --section=$trsec -o$out"
+            else
+              eval "astfits $nameWithEscapedSpaces --copy=$h -o$out"  # I run this with eval so the escaped spaces are re-parsed by bash and understood by astfits
+            fi
             nameOfOriginalFile="${nameWithEscapedSpaces##*/}"
             eval "astfits --write=OriginalName,$nameOfOriginalFile $out -h0"
           done
@@ -268,11 +274,21 @@ oneNightPreProcessing() {
       if awk "BEGIN {exit !($gnuastro_version > 0.22)}"; then
         eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
                     3 0.2 sigclip-mean -g$h --writeall \
-                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+                    -o $mdadir/temp.fits"
       else
         eval "astarithmetic $escaped_files $(ls -v $currentDARKDIR/* | wc -l) \
                     3 0.2 sigclip-mean -g$h  \
-                    -o $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits"
+                    -o $mdadir/temp.fits"
+      fi
+      #If there is overscan
+      if [[ "$overscan" == "YES" ]]; then
+        first_file=$(echo "$escaped_files" | awk '{print $1}')
+        trsec=$(eval "astfits $first_file -h$h --keyvalue=$trimsecKey -q")
+        trsec=${trsec//[\[\]]/}
+        astcrop $mdadir/temp.fits -h1 --mode=img --section=$trsec -o$mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits
+        rm $mdadir/temp.fits
+      else
+        mv $mdadir/temp.fits $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits
       fi
     fi
     echo done > $mdadone
@@ -292,10 +308,11 @@ oneNightPreProcessing() {
   else
     for i in $(ls -v $currentINDIR/*.fits ); do
       air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
-	    if [[ $air == "n/a" ]]; then
+      if [[ $air == "n/a" ]]; then
  		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
-   	  fi
-    	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+       		    astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+      fi
+    	
       echo $air >> $skydir/airmass.txt
     done
     echo done > $skydone
@@ -862,7 +879,7 @@ echo -e "·Downloading Gaia Catalogue"
 # This is because you don't want to use a field too big in order not to download bricks that you don't need
 # So I expect the "sizeofOurFieldDegrees" value to be quite tight. But since the catalogue is text and it doesn't take
 # long I prefer to add something and be sure that I don't lose any source because of the catalogue
-radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc)
+radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
 catName=$catdir/"$objectName"_Gaia_eDR3.fits
@@ -898,8 +915,7 @@ else
 fi
 
 
-sexcfg=$CDIR/default.sex
-# Solving the images
+sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
 echo -e "·Solving fields"
 
@@ -923,7 +939,7 @@ else
       i=$framesForCommonReductionDir/$base
       frameNames+=("$i")
   done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf
   echo done > $astroimadone
 fi
 
@@ -1016,10 +1032,29 @@ if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tBad astrometrised frames warning already done\n"
 else
   scampXMLFilePath=$scampdir/scamp.xml
-  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile
+  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_fullGrid
   echo done > $badFilesWarningsDone
 fi
-
+#Building a .fits with the scamp contrast parameter
+contrastdir_fullGrid=$BDIR/contrast_xy_maps
+contrastdone_fullGrid=$contrastdir_fullGrid/done.txt
+if ! [ -d $contrastdir_fullGrid ]; then mkdir $contrastdir_fullGrid; fi
+if [ -f $contrastdone_fullGrid ]; then
+    echo -e "\n\tMap of XY contrast parameters already done.\n"
+else
+  for frame in $(ls $entiredir_fullGrid/enti*.fits); do
+    frame_out=$contrastdir_fullGrid/${frame#$entiredir_fullGrid/}
+    xy_param=$(astfits $frame -h1 --keyvalue=XY-contrast -q)
+    astarithmetic $frame -h1 0 x $xy_param +  -o $frame_out
+  done
+  if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+    astarithmetic $(ls $contrastdir_fullGrid/ent*.fits) $(ls $contrastdir_fullGrid/ent*.fits | wc -l) sum -g1 --writeall -o $contrastdir_fullGrid/sum_xycontrasts.fits
+  else
+    astarithmetic $(ls $contrastdir_fullGrid/ent*.fits) $(ls $contrastdir_fullGrid/ent*.fits | wc -l) sum -g1  -o $contrastdir_fullGrid/sum_xycontrasts.fits
+  fi
+  echo done > $contrastdone_fullGrid
+  rm $contrastdir/fullGrid/ent*.fits
+fi
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 
@@ -1261,6 +1296,11 @@ else
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 86a987ef69f567cbdcd6699d158072bd63231840
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
@@ -1450,6 +1490,11 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 86a987ef69f567cbdcd6699d158072bd63231840
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   coaddPlaneDone=$coaddDir/done_plane.txt

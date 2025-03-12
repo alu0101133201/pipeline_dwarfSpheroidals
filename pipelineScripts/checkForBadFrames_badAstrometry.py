@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from astropy.stats import sigma_clipped_stats
 from astropy.stats import sigma_clip
 from matplotlib.ticker import MultipleLocator
-
+import os
 
 def setMatplotlibConf():
     rc_fonts = {
@@ -95,6 +95,7 @@ setMatplotlibConf()
 diagnosisFolder = sys.argv[1]
 xmlFile         = sys.argv[2]
 warningFile     = sys.argv[3]
+pointingsDir    = sys.argv[4]
 
 tree = ET.parse(xmlFile)
 root = tree.getroot()
@@ -107,18 +108,21 @@ headers = [field.get('name') for field in fields]
 # The threshold comes by observing the frames and the documentation. In the docs the say that a threshold of 2 or lower
 # is not trustable; I have defined 2.5 to be conservative
 col1_name = 'XY_Contrast'
+colID_name = 'Catalog_Number'
 threshold = 5
 data = []
+frame = []
 
 for row in rows:
     values = [td.text for td in row.findall('./vo:TD', namespaces=ns)]
     data.append(values)
+
 header_indices = {name: idx for idx, name in enumerate(headers)}
 
 if col1_name in header_indices :
     col1_idx = header_indices[col1_name]
-
-    data = []
+    colID_idx = header_indices[colID_name]
+    data = []; frames=[]
     for row in rows:
         values = [td.text for td in row.findall('./vo:TD', namespaces=ns)]
 
@@ -126,12 +130,17 @@ if col1_name in header_indices :
         # I just store the values with 43 columns which are the proper data rows
         if (len(values) == 43):
             data.append((float(values[col1_idx])))
-    
-    df = pd.DataFrame(data, columns=[col1_name])
+            frames.append('entirecamera_'+values[colID_idx]+'.fits')
+    df = pd.DataFrame({'Frame':frames,'XY_Contrast':data})
     potentiallyBadAstrometrised = identifyBadFrames(df, col1_name, threshold)
     writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, potentiallyBadAstrometrised)
     savePlot(col1_name, df, diagnosisFolder, threshold)
+    ##Write in the header of pointings_fullGrid the contrast parameter because we need it later
+    for row in range(len(df)):
+        frame=pointingsDir+'/'+df.loc[row]['Frame']
+        contrast=df.loc[row]['XY_Contrast']
+        os.system(f'astfits {frame} -h1 --write=XY-contrast,{contrast},"Scamp contrast parameter"')
+    
+
 else:
     print(f"The specified column ('{col1_name}') does not exist in the XML.")
-
-
