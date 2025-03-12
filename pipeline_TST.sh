@@ -1562,7 +1562,7 @@ maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$defaultNumOfCPUs -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
 fi
 
 #astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
@@ -1592,7 +1592,7 @@ else
                      --detgrowquant=0.7 \
                      --detgrowmaxholesize=1000 \
                      --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$defaultNumOfCPUs  -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus  -o $maskName
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
@@ -1918,7 +1918,7 @@ maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$defaultNumOfCPUs -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
