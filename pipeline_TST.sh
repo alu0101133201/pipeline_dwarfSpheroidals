@@ -1265,7 +1265,7 @@ fi
 iteration=1
 coaddprephot_done=$BDIR/coadd_prephot_done.txt
 if [ -f $coaddprephot_done ]; then
-	echo -e "\n Sky for Coadd pre-photometry already done\n"
+	echo -e "\nCoadd pre-photometry already done\n"
 else
   python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noisesky_prephot $DIR $iteration min_rms_prev.txt
   
@@ -1329,7 +1329,7 @@ else
   rm $BDIR/*w*prephot/*.fits
   rm $BDIR/noise-sky_prephot/*.fits
 fi
-
+exit
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
@@ -1562,7 +1562,7 @@ maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$defaultNumOfCPUs -o $maskName
 fi
 
 #astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
@@ -1592,7 +1592,7 @@ else
                      --detgrowquant=0.7 \
                      --detgrowmaxholesize=1000 \
                      --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$defaultNumOfCPUs  -o $maskName
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
@@ -1918,7 +1918,7 @@ maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$defaultNumOfCPUs -o $maskName
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
