@@ -99,7 +99,7 @@ def magnitudeComparisonPlot(magnitudeMatched, outputName, brightLimit, faintLimi
 
 def getOffsetToCorrect(matchedSources, brightLimit, faintLimit):
     diffs = np.array([i[0] - i[1] for i in matchedSources])
-    clippedDiffs = sigma_clip(diffs, sigma=3, masked=False)
+    clippedDiffs = sigma_clip(diffs, sigma=2, masked=False)
     return(np.nanmean(clippedDiffs))
 
 def correctPanstarrsMag(magnitudeMatched, offset):

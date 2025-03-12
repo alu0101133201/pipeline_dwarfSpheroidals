@@ -94,6 +94,7 @@ if [[ $filterCorrectionCoeff == 11 ]]; then
   exit 11
 fi
 
+
 outputConfigurationVariablesInformation
 
 
@@ -812,7 +813,7 @@ oneNightPreProcessing() {
   fi
 
   # # Removing intermediate information to save space
-  r -rf $BDIR/bias-corrected_n$currentNight
+  rm -rf $BDIR/bias-corrected_n$currentNight
   rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/masterdark_n$currentNight
   rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
@@ -1169,9 +1170,7 @@ selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
 
-
 # ****** Decision note *******
-
 # Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
 # we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
 # magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. 
@@ -1181,7 +1180,9 @@ aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final prod
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $calibrationBrightLimit $calibrationFaintLimit
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit
+
+
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1190,6 +1191,7 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
+
 
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1258,7 +1260,6 @@ else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $dirWithReferenceCat \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
-exit 0
 
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
@@ -1314,6 +1315,7 @@ clippingdir=$BDIR/clipping-outliers
 clippingdone=$clippingdir/done.txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
+
 mowdir=$BDIR/weight-dir-no-outliers
 moonwdir=$BDIR/only-weight-dir-no-outliers
 mowdone=$mowdir/done.txt
@@ -1328,7 +1330,6 @@ writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
 
 
 echo -e "\n·Removing bad frames"
-
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 rejectedFramesDir=$BDIR/rejectedFrames
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
@@ -1357,7 +1358,7 @@ coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
+maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
@@ -1408,11 +1409,13 @@ finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
 
 keyWords=("FRAMES_COMBINED" \
           "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS"
-          "MEAN_DATE_OBS"
-          "FINAL_DATE_OBS"
+          "INITIAL_DATE_OBS" \
+          "MEAN_DATE_OBS" \
+          "FINAL_DATE_OBS" \
           "FILTER" \
+          "VIGNETTING_THRESHOLD" \
           "SATURATION_THRESHOLD" \
+          "CALIBRATED_USING" \
           "CALIBRATION_BRIGHTLIMIT" \
           "CALIBRATION_FAINTLIMIT" \
           "RUNNING_FLAT" \
@@ -1421,7 +1424,7 @@ keyWords=("FRAMES_COMBINED" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$vignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
@@ -1615,8 +1618,9 @@ imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
 
+
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
-                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $numberOfFWHMForPhotometry 
+                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
 
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
@@ -1630,6 +1634,7 @@ smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
+
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
@@ -1637,7 +1642,6 @@ computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $s
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
-
 
 wdir=$BDIR/weight-dir_it$iteration
 wdone=$wdir/done_"$k"_ccd"$h".txt
@@ -1693,7 +1697,7 @@ coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
+maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
@@ -1715,19 +1719,22 @@ fi
 echo -e "\nAdding keywords to the coadd"
 keyWords=("FRAMES_COMBINED" \
           "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS"
-          "MEAN_DATE_OBS"
-          "FINAL_DATE_OBS"
+          "INITIAL_DATE_OBS" \
+          "MEAN_DATE_OBS" \
+          "FINAL_DATE_OBS" \
           "FILTER" \
+          "VIGNETTING_THRESHOLD" \
           "SATURATION_THRESHOLD" \
+          "CALIBRATED_USING" \
           "CALIBRATION_BRIGHTLIMIT" \
           "CALIBRATION_FAINTLIMIT" \
           "RUNNING_FLAT" \
           "WINDOW_SIZE" \
           "STD_FOR_BAD_FRAMES" \
           "SURFACE_BRIGHTNESS_LIMIT")
+
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$vignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
@@ -1751,6 +1758,7 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo "done" > $framesWithCoaddSubtractedDone
 fi
+
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then

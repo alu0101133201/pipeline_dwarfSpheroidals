@@ -1,10 +1,9 @@
 # Small Telescopes Pipeline
 ##### Sergio Guerra Arencibia
-###### Date: 16-09-24
 
 This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture and large FOV telescopes. The purpose of the pipeline is to reduce and produce low-surface brightness friendly data.
 
-### Software requirements
+### Software requirements (this has to be updated)
 
 * gnuastro (currently I'm using 0.22)
 * astrometry (using 0.96)
@@ -48,6 +47,9 @@ The pipeline is going to look for the following things:
       · Swarp conf file
       · Sextractor conf files (.conv, .param and .sex)
 
+* filters
+    Must contain the transmittances of the filters needed for the reduction.
+
 
 ### Usage
 
@@ -64,6 +66,8 @@ The structure of the repository is as follows:
 ├── (d) checkScripts <br />
 ├── (d) config_template <br />
 ├── (d) pipelineScripts  <br />
+├── (d) getFilterCorrection  <br />
+├── (d) filters  <br />
 ├ <br />
 ├── (-) pipeline_LuM_parallel_functions.sh <br />
 ├── (-) pipeline_LuM_parallel.sh  <br />
@@ -72,6 +76,11 @@ The structure of the repository is as follows:
 └── (-) flat_ring_template.txt <br />
 
 * **checkScripts**: Contains python scripts which are not used by the pipeline. They are to be used by the user when checking the data that is going to be reduced (e.g. number of frames, exposure time of frames, airmass-Time plot, etc...)
+
+* **filters**: Contains the transmittances of the filters needed for the reduction
+
+* **getFilterCorrection**:  Contains python script to be used directly by the user. They allow you to get the colour correction that you need to provide to the pipeline 
+in order to take into account the difference in the filters' shape.
 
 * **config**: Template for the configuration folder. Contains configuration for software used by the pipeline (SExtractor, scamp and swarp mainly). It also contains the astrometry file is created here during the pipeline run. Usually this has not to be touched. 
 
