@@ -113,18 +113,18 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=50
-noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --detgrowmaxholesize=1000 \
-                    --rawoutput"
+#tileSize=50
+#noisechisel_param="--tilesize=$tileSize,$tileSize \
+#                    --detgrowmaxholesize=1000 \
+#                    --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-# tileSize=90
-# noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                     --detgrowmaxholesize=5000 \
-#                     --rawoutput"
+tileSize=90
+noisechisel_param="--tilesize=$tileSize,$tileSize \
+                     --detgrowmaxholesize=5000 \
+                     --rawoutput"
 
 export noisechisel_param
 
@@ -808,6 +808,7 @@ oneNightPreProcessing() {
       out=$maskedcornerdir/$base
       astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f $vignettingThreshold lt  nan where set-n n f 2. gt nan where -o $out
       propagateKeyword $i $airMassKeyWord $out 
+      propagateKeyword $i $dateHeaderKey $out
     done
     echo done > $maskedcornerdone
   fi
@@ -860,7 +861,6 @@ for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
-
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
@@ -1227,7 +1227,6 @@ writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
 
-
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
@@ -1379,12 +1378,12 @@ removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesD
 removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
 
 rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
 
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
 
 
 echo -e "\n·Building coadd"
@@ -1397,7 +1396,7 @@ maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
 fi
 
 #astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
@@ -1410,7 +1409,7 @@ else
                     --erode=1 \
                     --detgrowmaxholesize=5000 \
                     --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
 fi
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
@@ -1421,7 +1420,7 @@ else
                     --erode=1 \
                     --detgrowmaxholesize=5000 \
                     --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus  -o $maskName
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
@@ -1484,6 +1483,7 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo done > $framesWithCoaddSubtractedDone 
 fi
+
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1652,10 +1652,9 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
-
-
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
+
 
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
@@ -1715,16 +1714,16 @@ removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesD
 removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
 
 rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
 
 rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
 
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
 
 
 coaddDir=$BDIR/coadds_it$iteration 
@@ -1736,7 +1735,7 @@ maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param -o $maskName
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
