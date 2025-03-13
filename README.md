@@ -1,10 +1,9 @@
 # Small Telescopes Pipeline
 ##### Sergio Guerra Arencibia
-###### Date: 16-09-24
 
 This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture and large FOV telescopes. The purpose of the pipeline is to reduce and produce low-surface brightness friendly data.
 
-### Software requirements
+### Software requirements (this has to be updated)
 
 * gnuastro (currently I'm using 0.22)
 * astrometry (using 0.96)
@@ -21,6 +20,7 @@ This repository contains the source code of a pipeline implemented for reducing 
 * Darks (the pipeline creates a masterdark to correct the BIAS and dark)
 * Config directory for software used by the pipeline (template given)
 * Configuration file for the specific reduction to perform (.conf file, template give)
+* "filters" directory containing the transmittances of the filters needed for reduction
 * Files specifing the rings to perform the normalisation (also used in data calibration - template given)
 
 ##### How the pipeline expects the data
@@ -48,6 +48,9 @@ The pipeline is going to look for the following things:
       · Swarp conf file
       · Sextractor conf files (.conv, .param and .sex)
 
+* filters - 
+    Must contain the transmittances of the filters needed for the reduction.
+
 
 ### Usage
 
@@ -64,6 +67,8 @@ The structure of the repository is as follows:
 ├── (d) checkScripts <br />
 ├── (d) config_template <br />
 ├── (d) pipelineScripts  <br />
+├── (d) getFilterCorrection  <br />
+├── (d) filters  <br />
 ├ <br />
 ├── (-) pipeline_LuM_parallel_functions.sh <br />
 ├── (-) pipeline_LuM_parallel.sh  <br />
@@ -73,10 +78,14 @@ The structure of the repository is as follows:
 
 * **checkScripts**: Contains python scripts which are not used by the pipeline. They are to be used by the user when checking the data that is going to be reduced (e.g. number of frames, exposure time of frames, airmass-Time plot, etc...)
 
+* **filters**: Contains the transmittances of the filters needed for the reduction
+
+* **getFilterCorrection**:  Contains python script to be used directly by the user. They allow you to get the colour correction that you need to provide to the pipeline 
+in order to take into account the difference in the filters' shape.
+
 * **config**: Template for the configuration folder. Contains configuration for software used by the pipeline (SExtractor, scamp and swarp mainly). It also contains the astrometry file is created here during the pipeline run. Usually this has not to be touched. 
 
 * **pipelineScripts**: Contains python scripts used by the pipeline. From checking for bad frames to downloading data from decals. This folder is essential.
-
 
 Then we have the pipeline itself (*pipeline_LuM_parallel.sh*) and the functions which are in another script (*pipeline_LuM_parallel_functions.sh*). Additionally *template.conf* contains the a template with the configuration for the pipeline itself. Here is specified the details of the reduction to be performed (coordinates, type of flat to use, how to model the background, normalisation ring(s), details from the instrument used, etc...). Finally, *flat_ring_template.txt* is a template about how to define the normalisation ring(s).
 
@@ -84,8 +93,6 @@ Then we have the pipeline itself (*pipeline_LuM_parallel.sh*) and the functions 
 ##### Notes
 
 Take into account that the configuration file (the one corresponding to *template.conf*) is provided to the pipeline as an argument and the normalisation ring(s) are indicated in the configuration file.
-
-Also, The common normalisation ring (most of the cases will be centered in the image) has to be provided (mandatory) Because it will be used also for selecting what decals bricks are going to be donwloaded for the photometric calibration The 2 rings needed for normalising with them are only requested if the normalisation is going to be done in that way (non mandatory)
 
 ##### IMPORTANT calibration note
 

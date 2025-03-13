@@ -87,7 +87,16 @@ checkIfStringVariablesHaveValidValues
 
 checkTransmittanceFilterAndItsUnits $telescope $surveyForPhotometry $folderWithTransmittances $filter
 
+filterCorrectionCoeff=$( checkIfNeededFilterCorrectionIsGiven $telescope $filter $surveyForPhotometry $ROOTDIR/"$objectName"/config )
+if [[ $filterCorrectionCoeff == 11 ]]; then
+  echo "The filter corrections for the filter $filter, telescope $telescope and survey $survey were not found"
+  echo "Exiting with error code 11"
+  exit 11
+fi
+
+
 outputConfigurationVariablesInformation
+
 
 # The following lines are responsible of the cpu's used for paralellise
 # If it is running in a system with slurm it takes the number of cpu's from the slurm job
@@ -1196,9 +1205,7 @@ selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
 
-
 # ****** Decision note *******
-
 # Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
 # we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
 # magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. 
@@ -1206,8 +1213,9 @@ aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final prod
 # GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. 
 #It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha 
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
+# Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit
 
 
 iteration=1
@@ -1288,8 +1296,6 @@ else
 fi
 
 
-
-
 # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
 halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
@@ -1343,6 +1349,7 @@ clippingdir=$BDIR/clipping-outliers
 clippingdone=$clippingdir/done.txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
+
 mowdir=$BDIR/weight-dir-no-outliers
 moonwdir=$BDIR/only-weight-dir-no-outliers
 mowdone=$mowdir/done.txt
@@ -1357,7 +1364,6 @@ writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
 
 
 echo -e "\n·Removing bad frames"
-
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 rejectedFramesDir=$BDIR/rejectedFrames
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
@@ -1437,11 +1443,13 @@ finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
 
 keyWords=("FRAMES_COMBINED" \
           "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS"
-          "MEAN_DATE_OBS"
-          "FINAL_DATE_OBS"
+          "INITIAL_DATE_OBS" \
+          "MEAN_DATE_OBS" \
+          "FINAL_DATE_OBS" \
           "FILTER" \
+          "VIGNETTING_THRESHOLD" \
           "SATURATION_THRESHOLD" \
+          "CALIBRATED_USING" \
           "CALIBRATION_BRIGHTLIMIT" \
           "CALIBRATION_FAINTLIMIT" \
           "RUNNING_FLAT" \
@@ -1450,7 +1458,7 @@ keyWords=("FRAMES_COMBINED" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$vignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
@@ -1476,7 +1484,6 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-#exit
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1645,9 +1652,9 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
-apertureUnits="Re"
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
-                        $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
+                          $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
+
 
 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
@@ -1661,6 +1668,7 @@ smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
+
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
@@ -1668,7 +1676,6 @@ computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $s
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
-
 
 wdir=$BDIR/weight-dir_it$iteration
 wdone=$wdir/done_"$k"_ccd"$h".txt
@@ -1746,19 +1753,22 @@ fi
 echo -e "\nAdding keywords to the coadd"
 keyWords=("FRAMES_COMBINED" \
           "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS"
-          "MEAN_DATE_OBS"
-          "FINAL_DATE_OBS"
+          "INITIAL_DATE_OBS" \
+          "MEAN_DATE_OBS" \
+          "FINAL_DATE_OBS" \
           "FILTER" \
+          "VIGNETTING_THRESHOLD" \
           "SATURATION_THRESHOLD" \
+          "CALIBRATED_USING" \
           "CALIBRATION_BRIGHTLIMIT" \
           "CALIBRATION_FAINTLIMIT" \
           "RUNNING_FLAT" \
           "WINDOW_SIZE" \
           "STD_FOR_BAD_FRAMES" \
           "SURFACE_BRIGHTNESS_LIMIT")
+
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$vignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
@@ -1782,6 +1792,7 @@ else
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo "done" > $framesWithCoaddSubtractedDone
 fi
+
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then

@@ -64,13 +64,13 @@ def matchSources(ra1, ra2, dec1, dec2, mag1, mag2):
 
     return(matchedSources)
 
-def magnitudeComparisonPlot(magnitudeMatched, outputName, brightLimit, faintLimit, offset=None):
+def magnitudeComparisonPlot(magnitudeMatched, outputName, brightLimit, faintLimit, filt, offset=None):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 10))
 
     if (offset != None ):
-        fig.suptitle(f"Offset computed between " + "{:.1f}".format(brightLimit) + " and " + "{:.1f}".format(faintLimit) + ": " + "{:.4f}".format(offset), fontsize=22)
+        fig.suptitle(f"Offset (filter {filt}) computed between " + "{:.1f}".format(brightLimit) + " and " + "{:.1f}".format(faintLimit) + ": " + "{:.4f}".format(offset), fontsize=22)
     else:
-        fig.suptitle(f"Comparison before correcting", fontsize=22)
+        fig.suptitle(f"Comparison (filter {filt}) before correcting", fontsize=22)
 
     configureAxis(ax1, 'GAIA', 'PANSTARRS', logScale=False)
     ax1.set_xlim(12, 16)
@@ -99,7 +99,7 @@ def magnitudeComparisonPlot(magnitudeMatched, outputName, brightLimit, faintLimi
 
 def getOffsetToCorrect(matchedSources, brightLimit, faintLimit):
     diffs = np.array([i[0] - i[1] for i in matchedSources])
-    clippedDiffs = sigma_clip(diffs, sigma=3, masked=False)
+    clippedDiffs = sigma_clip(diffs, sigma=2, masked=False)
     return(np.nanmean(clippedDiffs))
 
 def correctPanstarrsMag(magnitudeMatched, offset):
@@ -115,6 +115,7 @@ gaiaCatalogueFile       = sys.argv[2]
 brightLimit             = float(sys.argv[3])
 faintLimit              = float(sys.argv[4])
 mosaicDir               = sys.argv[5]
+filt                    = sys.argv[6]
 
 TOLERANCE_DEC = 1.5/3600
 
@@ -124,14 +125,14 @@ panstarrsRA, panstarrsDEC, panstarrsMag = readCoordsAndMagFromCatalogue(panstarr
 
 matchedSources = matchSources(gaiaRA, panstarrsRA, gaiaDEC, panstarrsDEC, gaiaMag, panstarrsMag)
 
-outputName = mosaicDir + "/beforeOffsetCorrection.png"
-magnitudeComparisonPlot(matchedSources, outputName, brightLimit, faintLimit)
+outputName = mosaicDir + f"/beforeOffsetCorrection_{filt}.png"
+magnitudeComparisonPlot(matchedSources, outputName, brightLimit, faintLimit, filt)
 
 offset = getOffsetToCorrect(matchedSources, brightLimit, faintLimit)
 correctedMagnitudes = correctPanstarrsMag(matchedSources, offset)
 
-outputName = mosaicDir + "/afterOffsetCorrection.png"
-magnitudeComparisonPlot(correctedMagnitudes, outputName, brightLimit, faintLimit, offset)
+outputName = mosaicDir + f"/afterOffsetCorrection_{filt}.png"
+magnitudeComparisonPlot(correctedMagnitudes, outputName, brightLimit, faintLimit, filt, offset)
 
 factorToApplyToCounts = 10**(-offset / 2.5)
 print(offset, factorToApplyToCounts)
