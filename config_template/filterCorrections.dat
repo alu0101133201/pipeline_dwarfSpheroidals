@@ -14,3 +14,11 @@ reference survey: panstarrs
 g: 0, 0, 0
 r: 0, 0, 0
 i: 0, 0, 0
+
+telescope: HIPERCAM
+reference survey: panstarrs
+
+g: 0.022, -0.114, -0.00098
+r: -0.0039, 0.0038, -0.001
+i: 0.044, -0.018, 0.0043
+z: 0.016, 0.04, -0.028
