@@ -121,9 +121,9 @@ export num_cpus
 # # These paremeters are oriented to TST data at original resolution. 
 
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-tileSize=90
+#HIPERCAM 
+tileSize=20
 noisechisel_param="--tilesize=$tileSize,$tileSize \
-                     --detgrowmaxholesize=5000 \
                      --rawoutput"
 
 export noisechisel_param
@@ -219,11 +219,16 @@ oneNightPreProcessing() {
             nameWithEscapedSpaces=$(escapeSpacesFromString "$i")
             DATEOBS=$(eval "astfits $nameWithEscapedSpaces -h0 --keyvalue=$dateHeaderKey --quiet")
             checkIfExist_DATEOBS $DATEOBS
-            ## MACOS does not support -d in date, so it is better to use coreutils:gdata
-            if [[ $OSTYPE == 'darwin'* ]]; then
-              unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
+            if [[ $dateHeaderKey =~ ^MJD ]]; then
+              unixTimeInSeconds=$(astarithmetic $DATEOBS 40587 - 86400 x -q)
+              unixTimeInSeconds=$(printf "%.0f" "$unixTimeInSeconds")
             else
-              unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+              ## MACOS does not support -d in date, so it is better to use coreutils:gdata
+              if [[ $OSTYPE == 'darwin'* ]]; then
+                unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
+              else
+                unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+              fi
             fi
             out=$currentINDIR/$unixTimeInSeconds.fits
 
@@ -1644,7 +1649,7 @@ subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 # compute sky with frames masked with global mask
 imagesAreMasked=true
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT noisechisel $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
@@ -1652,6 +1657,7 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
+#tileSize=50
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
 
@@ -1672,7 +1678,7 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true noisechisel -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
@@ -1732,6 +1738,8 @@ coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+noisechisel_param="--tilesize=30,30 --detgrowmaxholesize=5000 --dthresh=0.1 --snminarea=2 --rawoutput"
+export noisechisel_param
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
@@ -1769,7 +1777,7 @@ keyWords=("FRAMES_COMBINED" \
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$vignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "" "" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
