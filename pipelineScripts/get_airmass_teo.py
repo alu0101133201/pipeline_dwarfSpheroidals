@@ -16,7 +16,12 @@ observing_location = EarthLocation(lat='28d18m04s', lon='-16d30m38s', height=239
 
 #Header
 hed = fits.open(img)[1].header
-date_obs = Time(hed[datK][:10]+' '+hed[datK][12:])
+if datK.startswith('DATE'):
+    date_obs = Time(hed[datK],format='isot')
+elif datK.startswith('MJD'):
+    date_obs = Time(hed[datK],format='mjd')
+else:
+    raise Exception("Not supported Date format.") 
  
 aa = AltAz(location=observing_location, obstime=date_obs)
 

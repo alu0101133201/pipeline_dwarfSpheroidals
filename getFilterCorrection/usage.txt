@@ -1,0 +1,7 @@
+The scripts contained in this folder are for getting the filter correction that is applied
+in the photometric calibration of the pipeline. This is needed because your filter and the filter of
+the survey used for the calibration are not exactly equal.
+
+To calculate your filter correction, first you have to download the gaia spectra using the script "donwloadGaia_Spectra.py"
+Then you use the "getFilterCorrection.py" script, that will produce different image and data. The information that has to be introduced in
+the pipeline are the coefficients of the colour correction (coefficients of the polynomial f(g-r))
