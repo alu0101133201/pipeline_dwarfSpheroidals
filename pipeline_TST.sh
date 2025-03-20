@@ -113,18 +113,18 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-#tileSize=50
-#noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                    --detgrowmaxholesize=1000 \
-#                    --rawoutput"
+tileSize=35
+noisechisel_param="--tilesize=$tileSize,$tileSize \
+                    --detgrowmaxholesize=1000 \
+                    --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
 #HIPERCAM 
-tileSize=20
-noisechisel_param="--tilesize=$tileSize,$tileSize \
-                     --rawoutput"
+#tileSize=20
+#noisechisel_param="--tilesize=$tileSize,$tileSize \
+#                     --rawoutput"
 
 export noisechisel_param
 
@@ -315,15 +315,14 @@ oneNightPreProcessing() {
       air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
       if [[ $air == "n/a" ]]; then
  		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
-       		    astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+       	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
       fi
     	
       echo $air >> $skydir/airmass.txt
     done
     echo done > $skydone
   fi
-  
-  
+
   ########## Subtract master bias and dark ##########
   echo -e "\n ${GREEN} Subtracting master bias/dark-bias ${NOCOLOUR}"
 
@@ -1209,7 +1208,7 @@ mosaicDir=$DIR/mosaic
 selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
-
+mosaicDone=$mosaicDir/done_prep.txt
 # ****** Decision note *******
 # Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
 # we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
@@ -1220,7 +1219,7 @@ aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final prod
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 
 iteration=1
@@ -1711,7 +1710,7 @@ echo -e "\nBuilding coadd"
 echo -e "\n·Removing bad frames"
 
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-rejectedFramesDir=$BDIR/rejectedFrames
+rejectedFramesDir=$BDIR/rejectedFrames_it$iteration
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
@@ -1720,8 +1719,8 @@ removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesD
 removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
 
 rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
-#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
-#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
 
 rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
 #removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue

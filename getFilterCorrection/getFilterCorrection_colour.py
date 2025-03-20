@@ -107,8 +107,8 @@ def obtainFluxFromSpectrumAndFilter(wavelengths, spectrumF,  filterT, plot=False
     for i in range(len(spectrumF)):
         convolvedSpec.append(spectrumF[i] * filterT[i])
 
-    total_flux = np.trapezoid(convolvedSpec, wavelengths)
-    dividedFlux = total_flux / np.trapezoid(filterT, wavelengths)
+    total_flux = np.trapz(convolvedSpec, wavelengths)
+    dividedFlux = total_flux / np.trapz(filterT, wavelengths)
     return(-2.5*np.log10(dividedFlux / 3631))
 
 
@@ -205,7 +205,7 @@ else:
     bandToStudy = "g"
 
 filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/tst_{bandToStudy}.dat";       waveUnits2 = "nm"; transmittanceUnits2 = "percentage"
+filterName2 = f"./filters/HIPERCAM_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra

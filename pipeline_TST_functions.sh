@@ -1552,24 +1552,29 @@ prepareCalibrationData() {
     local filterCorrectionCoeff=${16}
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
+    local mosaicDone=${19}
 
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
-
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-        spectraDir=$mosaicDir/spectra
-
-        writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
-        transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
-        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
-
+    if [ -f $mosaicDone ]; then 
+        echo -e "\nSurvey data already prepared for photometric calibration\n"
     else
-        surveyImagesDir=$mosaicDir/surveyImages
-        writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+        if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+            spectraDir=$mosaicDir/spectra
 
-        prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
-                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                            $calibrationBrightLimit $calibrationFaintLimit
+            writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
+            transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
+            prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
+
+        else
+            surveyImagesDir=$mosaicDir/surveyImages
+            writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+
+            prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
+                                                $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
+                                                $calibrationBrightLimit $calibrationFaintLimit
+        fi
+        echo done > $mosaicDone
     fi
 }
 export -f prepareCalibrationData
@@ -2315,7 +2320,7 @@ combineDecalsBricksCataloguesForEachFrame() {
 export -f combineDecalsBricksCataloguesForEachFrame
 
 computeCalibrationFactors() {
-    local surveyForPhotometry=$1
+    local surveyForCalibration=$1
     local iteration=$2
     local imagesForCalibration=$3
     local selectedDecalsStarsDir=$4
@@ -2339,7 +2344,6 @@ computeCalibrationFactors() {
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
-
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
     if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
