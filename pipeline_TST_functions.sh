@@ -3014,3 +3014,39 @@ limitingSurfaceBrightness() {
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }
 export -f limitingSurfaceBrightness
+
+computeFWHMSingleFrame(){
+    local a=$1
+    local framesForFWHMDir=$2
+    local fwhmdir=$3
+    local headerToUse=$4
+    local methodToUse=$5
+    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
+    
+
+
+    i=$framesForFWHMDir/entirecamera_"$a"
+    ##In the case of using it for Decals or Panstarrs, we need the variable survey
+
+
+    if [[ "$methodToUse" == "sextractor" ]]; then
+        outputCatalogue=$( generateCatalogueFromImage_sextractor $i $fwhmdir $a FWHM )
+    elif [[ "$methodToUse" == "noisechisel" ]]; then
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $fwhmdir $a $headerToUse $tileSize FWHM )
+    else
+        errorNumber=9
+        echo "Error, method for selecting stars and the range in the calibration not recognised"
+        echo "Exiting with error number: $erroNumber"
+        exit $erroNumber
+    fi
+
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$fwhmdir/match_"$a"_my_gaia.txt
+
+    # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
+    # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
+    hFWHM=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    FWHM=$(awk "BEGIN {print $hFWHM * 2}")
+    echo $FWHM > $mycatdir/fwhm_"$a".txt
+    rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue
+}
+export -f computeFWHMSingleFrame

@@ -58,7 +58,7 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
 
 
 
-def retrieveFWHMValues(currentFile):
+def retrieveFWHMValues(currentFile,arcsecPerPix):
     with open(currentFile, 'r') as f:
         lines = f.readlines()
         if( len(lines) != 1):
@@ -67,8 +67,8 @@ def retrieveFWHMValues(currentFile):
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
-        if (numberOfFields == 4):
-            return(float(splittedLine[0]))
+        if (numberOfFields == 1):
+            return(float(splittedLine[0])*arcsecPerPix)
         elif (numberOfFields == 0):
             return(float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
@@ -96,7 +96,7 @@ def saveHistogram(allData, median, std, fwhmRejectedIndices, astrometryRejectedI
     myBins = calculateFreedmanBins(values)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    configureAxis(ax, 'FWHM (px)', '', logScale=False)
+    configureAxis(ax, 'FWHM (arcsec)', '', logScale=False)
     ax.set_title(title, fontsize=22, pad=17)
     counts, bins, patches = ax.hist(values, bins=myBins, color="teal")
     max_bin_height = counts.max() + 20
@@ -122,8 +122,8 @@ def saveHistogram(allData, median, std, fwhmRejectedIndices, astrometryRejectedI
 def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backgroundValueRejectedIndices, backgroundStdRejectedIndices, imageName):
     
     fig, ax = plt.subplots(2, 1, figsize=(20,10))
-    configureAxis(ax[0], 'UTC', 'FWHM (pix)',logScale=False)
-    configureAxis(ax[1], 'Airmass', 'FWHM (pix)',logScale=False)
+    configureAxis(ax[0], 'UTC', 'FWHM (arcsec)',logScale=False)
+    configureAxis(ax[1], 'Airmass', 'FWHM (arcsec)',logScale=False)
     fig.suptitle('FWHM evolution',fontsize=22)
     pattern=r"(\d+).fits"
 
@@ -231,15 +231,15 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
     allFiles   = []
     allFWHM     = []
 
-    for currentFile in glob.glob(folderWithFWHM + "/range_*.txt"):
+    for currentFile in glob.glob(folderWithFWHM + "/fwhm_*.txt"):
         if fnmatch.fnmatch(currentFile, '*done*.txt'):
             continue
 
-        fwhmValue = retrieveFWHMValues(currentFile)
+        fwhmValue = retrieveFWHMValues(currentFile,arcsecPerPix)
         if (math.isnan(fwhmValue)):
             continue
         
-        allFiles.append(".".join(currentFile.split("/")[-1].split("_")[2].split(".")[:-1]))
+        allFiles.append(".".join(currentFile.split("/")[-1].split("_")[1].split(".")[:-1]))
         allFWHM.append(fwhmValue)
 
     allFWHM = np.array(allFWHM)
@@ -267,6 +267,7 @@ outputFolder              = sys.argv[2]
 outputFile                = sys.argv[3]
 numberOfStdForRejecting    = float(sys.argv[4])
 folderWithFramesWithAirmasses = sys.argv[5]
+arcsecPerPix=float(sys.argv[6])
 
 setMatplotlibConf()
 
@@ -284,8 +285,8 @@ rejectedBackgroundStdFrames = getRejectedFramesFromFile(rejectedBackgroundStdFil
 
 # 1.- Obtain the FWHM values ------------------------
 fwhmValues = np.array([])
-for currentFile in glob.glob(folderWithFWHM + "/range_*.txt"):
-    fwhmValue = retrieveFWHMValues(currentFile)
+for currentFile in glob.glob(folderWithFWHM + "/fwhm_*.txt"):
+    fwhmValue = retrieveFWHMValues(currentFile,arcsecPerPix)
     if (not math.isnan(fwhmValue)):
         fwhmValues = np.concatenate((fwhmValues, [fwhmValue]))
 

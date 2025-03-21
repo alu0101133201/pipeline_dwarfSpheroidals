@@ -1245,13 +1245,20 @@ else
 fi
 
 # Checking and removing bad frames based on the FWHM value ------
-fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
+fwhmFolder=$BDIR/seeing_values
 badFilesWarningsFile=identifiedBadFrames_fwhm.txt
 badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir
+  if ! [ -d $fwhmFolder ]; then mkdir $fwhmFolder; fi
+  imagesToFWHM=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+    base="$a".fits
+    imagesToFWHM+=("$base")
+  done
+  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse $tileSize 
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir $pixelScale
   echo done > $badFilesWarningsDone
 fi
 
@@ -1284,6 +1291,7 @@ fi
 
 
 # Calibration
+aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
 calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
 if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
@@ -1295,7 +1303,7 @@ else
       dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_it1
     fi
 
-    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $dirWithReferenceCat \
+    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
 
