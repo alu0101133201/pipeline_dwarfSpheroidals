@@ -407,6 +407,7 @@ maskImages() {
 
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out 
         # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
         # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
         if [ "$useCommonRing" = false ]; then
@@ -641,6 +642,7 @@ normaliseImagesWithRing() {
 
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out
     done
 }
 export -f normaliseImagesWithRing
@@ -718,6 +720,7 @@ divideImagesByRunningFlats(){
 
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out
     done
     echo done > $flatDone
 }
@@ -737,6 +740,7 @@ divideImagesByWholeNightFlat(){
         astarithmetic $i -h1 $flatToUse -h1 / -o $out
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out 
     done
     echo done > $flatDone
 }
@@ -1566,24 +1570,29 @@ prepareCalibrationData() {
     local filterCorrectionCoeff=${16}
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
+    local mosaicDone=${19}
 
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
-
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-        spectraDir=$mosaicDir/spectra
-
-        writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
-        transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
-        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
-
+    if [ -f $mosaicDone ]; then 
+        echo -e "\nSurvey data already prepared for photometric calibration\n"
     else
-        surveyImagesDir=$mosaicDir/surveyImages
-        writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+        if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+            spectraDir=$mosaicDir/spectra
 
-        prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
-                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                            $calibrationBrightLimit $calibrationFaintLimit
+            writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
+            transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
+            prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
+
+        else
+            surveyImagesDir=$mosaicDir/surveyImages
+            writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+
+            prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
+                                                $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
+                                                $calibrationBrightLimit $calibrationFaintLimit
+        fi
+        echo done > $mosaicDone
     fi
 }
 export -f prepareCalibrationData
@@ -2342,7 +2351,6 @@ computeCalibrationFactors() {
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
-
     
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
@@ -3015,3 +3023,39 @@ limitingSurfaceBrightness() {
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }
 export -f limitingSurfaceBrightness
+
+computeFWHMSingleFrame(){
+    local a=$1
+    local framesForFWHMDir=$2
+    local fwhmdir=$3
+    local headerToUse=$4
+    local methodToUse=$5
+    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
+    
+
+
+    i=$framesForFWHMDir/entirecamera_"$a"
+    ##In the case of using it for Decals or Panstarrs, we need the variable survey
+
+
+    if [[ "$methodToUse" == "sextractor" ]]; then
+        outputCatalogue=$( generateCatalogueFromImage_sextractor $i $fwhmdir $a FWHM )
+    elif [[ "$methodToUse" == "noisechisel" ]]; then
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $fwhmdir $a $headerToUse $tileSize FWHM )
+    else
+        errorNumber=9
+        echo "Error, method for selecting stars and the range in the calibration not recognised"
+        echo "Exiting with error number: $erroNumber"
+        exit $erroNumber
+    fi
+
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$fwhmdir/match_"$a"_my_gaia.txt
+
+    # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
+    # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
+    hFWHM=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    FWHM=$(awk "BEGIN {print $hFWHM * 2}")
+    echo $FWHM > $mycatdir/fwhm_"$a".txt
+    rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue
+}
+export -f computeFWHMSingleFrame

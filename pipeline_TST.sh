@@ -113,10 +113,10 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=40
+tileSize=35
 noisechisel_param="--tilesize=$tileSize,$tileSize \
-                   --detgrowmaxholesize=1000 \
-                   --rawoutput"
+                    --detgrowmaxholesize=1000 \
+                    --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 
@@ -219,11 +219,16 @@ oneNightPreProcessing() {
             nameWithEscapedSpaces=$(escapeSpacesFromString "$i")
             DATEOBS=$(eval "astfits $nameWithEscapedSpaces -h0 --keyvalue=$dateHeaderKey --quiet")
             checkIfExist_DATEOBS $DATEOBS
-            ## MACOS does not support -d in date, so it is better to use coreutils:gdata
-            if [[ $OSTYPE == 'darwin'* ]]; then
-              unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
+            if [[ $dateHeaderKey =~ ^MJD ]]; then
+              unixTimeInSeconds=$(astarithmetic $DATEOBS 40587 - 86400 x -q)
+              unixTimeInSeconds=$(printf "%.0f" "$unixTimeInSeconds")
             else
-              unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+              ## MACOS does not support -d in date, so it is better to use coreutils:gdata
+              if [[ $OSTYPE == 'darwin'* ]]; then
+                unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
+              else
+                unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+              fi
             fi
             out=$currentINDIR/$unixTimeInSeconds.fits
 
@@ -309,15 +314,14 @@ oneNightPreProcessing() {
       air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
       if [[ $air == "n/a" ]]; then
  		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
-       		    astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
+       	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
       fi
     	
       echo $air >> $skydir/airmass.txt
     done
     echo done > $skydone
   fi
-  
-  
+
   ########## Subtract master bias and dark ##########
   echo -e "\n ${GREEN} Subtracting master bias/dark-bias ${NOCOLOUR}"
 
@@ -828,6 +832,7 @@ oneNightPreProcessing() {
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
       name=$(( $initialValue + $a ))
       cp $maskedcornerdir/$base $framesForCommonReductionDir/$name.fits
+      astfits $framesForCommonReductionDir/$name.fits -h1 --write=ORIGINAL_FILE,$base
     done
     echo "done" > $framesForCommonReductionDone
   fi
@@ -1213,8 +1218,7 @@ mosaicDir=$DIR/mosaic
 selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
-
-
+mosaicDone=$mosaicDir/done_prep.txt
 # ****** Decision note *******
 # Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
 # we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
@@ -1225,7 +1229,7 @@ aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final prod
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 
 iteration=1
@@ -1254,13 +1258,20 @@ fi
 
 # DIAGNOSIS PLOT
 # Checking and removing bad frames based on the FWHM value ------
-fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
+fwhmFolder=$BDIR/seeing_values
 badFilesWarningsFile=identifiedBadFrames_fwhm.txt
 badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $maximumSeeing
+  if ! [ -d $fwhmFolder ]; then mkdir $fwhmFolder; fi
+  imagesToFWHM=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+    base="$a".fits
+    imagesToFWHM+=("$base")
+  done
+  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse $tileSize 
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir $pixelScale
   echo done > $badFilesWarningsDone
 fi
 exit 0
@@ -1295,11 +1306,19 @@ else
 fi
 
 # Calibration
+aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
 calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
 if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
-    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/survey-aperture-photometry_perBrick_it1 \
+
+    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+      dirWithReferenceCat=$mosaicDir/aperturePhotometryCatalogues
+    else
+      dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_it1
+    fi
+
+    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
 
@@ -1647,7 +1666,7 @@ subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter"_ccd"$h".txt
 
 # compute sky with frames masked with global mask
 imagesAreMasked=true
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT noisechisel $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
@@ -1655,6 +1674,7 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
+#tileSize=50
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
 
@@ -1675,7 +1695,7 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true noisechisel -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
@@ -1708,7 +1728,7 @@ echo -e "\nBuilding coadd"
 echo -e "\n·Removing bad frames"
 
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-rejectedFramesDir=$BDIR/rejectedFrames
+rejectedFramesDir=$BDIR/rejectedFrames_it$iteration
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
@@ -1731,6 +1751,8 @@ coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+noisechisel_param="--tilesize=30,30 --detgrowmaxholesize=5000 --dthresh=0.1 --snminarea=2 --rawoutput"
+export noisechisel_param
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else

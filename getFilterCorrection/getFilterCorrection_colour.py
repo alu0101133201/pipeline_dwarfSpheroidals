@@ -107,8 +107,8 @@ def obtainFluxFromSpectrumAndFilter(wavelengths, spectrumF,  filterT, plot=False
     for i in range(len(spectrumF)):
         convolvedSpec.append(spectrumF[i] * filterT[i])
 
-    total_flux = np.trapezoid(convolvedSpec, wavelengths)
-    dividedFlux = total_flux / np.trapezoid(filterT, wavelengths)
+    total_flux = np.trapz(convolvedSpec, wavelengths)
+    dividedFlux = total_flux / np.trapz(filterT, wavelengths)
     return(-2.5*np.log10(dividedFlux / 3631))
 
 
@@ -169,7 +169,7 @@ def colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coe
     ax.set_ylim(-0.15, 0.15)
     ax.scatter(g_r_colour, magnitudes1-magnitudes2, s=80, edgecolors="black", linewidths=1.75, label="Gaia stars")
     ax.scatter(x_fit, y_fit, color="red", lw=1, label="fit")
-
+    
     ax.text(0.1, 0.1, "({:.2}".format(coeffs[0]) + r")$x^2$ +" + "({:.2}".format(coeffs[1]) + r")x + " + "({:.2}".format(coeffs[2]) + ")" , fontsize=22, color="blue")
     ax.legend(fontsize=18)
     plt.savefig(f"./images/{field}_{bandToStudy}_colourDependencePlot.png")
@@ -205,7 +205,7 @@ else:
     bandToStudy = "g"
 
 filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/tst_{bandToStudy}.dat";       waveUnits2 = "nm"; transmittanceUnits2 = "percentage"
+filterName2 = f"./filters/OSIRIS_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra
@@ -235,7 +235,9 @@ ra2, dec2, magnitudes2 = getMagnitudesFromSpectra(spectraFolder, wavelengths2, t
 comparisonPlot(magnitudes1, magnitudes2, g_r_colour, wavelengths1, transmittance1, filterName1, wavelengths2, transmittance2, filterName2, field, f"./images/{field}_{bandToStudy}_initialComparison.png", std=getStd(magnitudes1 - magnitudes2))
 
 # Now we obtain a colour correction and apply it
-coeffs = np.polyfit(g_r_colour, magnitudes1-magnitudes2, 2)
+##x y for fit
+indexes=np.where((g_r_colour>0.2)&(g_r_colour<0.8))
+coeffs = np.polyfit(g_r_colour[indexes], (magnitudes1-magnitudes2)[indexes], 2)
 x_fit = np.linspace(-1, 1, 500)
 y_fit = np.polyval(coeffs, x_fit)
 colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coeffs)
