@@ -830,6 +830,7 @@ oneNightPreProcessing() {
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
       name=$(( $initialValue + $a ))
       cp $maskedcornerdir/$base $framesForCommonReductionDir/$name.fits
+      astfits $framesForCommonReductionDir/$name.fits -h1 --write=ORIGINAL_FILE,$base
     done
     echo "done" > $framesForCommonReductionDone
   fi

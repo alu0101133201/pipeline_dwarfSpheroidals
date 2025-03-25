@@ -399,6 +399,7 @@ maskImages() {
         astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $out -q
 
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out 
         # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
         # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
         if [ "$useCommonRing" = false ]; then
@@ -629,6 +630,7 @@ normaliseImagesWithRing() {
         me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
         astarithmetic $i -h1 $me / -o $out
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out
     done
 }
 export -f normaliseImagesWithRing
@@ -705,6 +707,7 @@ divideImagesByRunningFlats(){
             astfits $i --copy=1 -o$out
 
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out
     done
     echo done > $flatDone
 }
@@ -723,6 +726,7 @@ divideImagesByWholeNightFlat(){
 
         astarithmetic $i -h1 $flatToUse -h1 / -o $out
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i $dateHeaderKey $out 
     done
     echo done > $flatDone
 }
