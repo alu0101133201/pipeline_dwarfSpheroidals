@@ -15,9 +15,9 @@ def chunks(lst, n):
 # ra          = 149.8528
 # dec         = 30.7493
 
-fieldName   = "RCP28"
-ra          = 40.62381
-dec         = -8.38097
+fieldName   = "NGC5308"
+ra          = 206.751817
+dec         = 60.97315
 
 sizeOfField = 1.5
 halfSizeOfFild = sizeOfField / 2
@@ -59,7 +59,8 @@ for inp_dict in datalink_all[1:]:
 
 keys = list(datalink_out.keys())
 print(f'* The merged dictionary contains {len(keys)} elements')  
-
+if not os.path.exists(f'./gaiaSpectra_{fieldName}'):
+    os.system(f"mkdir gaiaSpectra_{fieldName}")
 
 os.system(f"mv ./datalink_output*.zip ./gaiaSpectra_{fieldName}")
 for file in glob.glob(f"./gaiaSpectra_{fieldName}/*.zip"):
