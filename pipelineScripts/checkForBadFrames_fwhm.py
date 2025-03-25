@@ -74,9 +74,6 @@ def retrieveFWHMValues(currentFile):
         else:
             raise Exception("Wrong number of fields in the file of background estimation. Expected 4 (constant estimation of the background), got " + str(numberOfFields))
 
-def computeMedianAndStd(values):
-    mean, median, std = sigma_clipped_stats(values)
-    return(median, std)
 
 def calculateFreedmanBins(data, initialValue = None):
     if (initialValue == None):
@@ -90,9 +87,7 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(allData, median, std, fwhmRejectedIndices, astrometryRejectedIndices, backgroundValueRejectedIndices, backgroundStdRejectedIndices, imageName, numOfStd, title):
-    values = allData["FWHM"]
-
+def saveHistogram(values, fwhmRejectedIndices, astrometryRejectedIndices, imageName, title):
     myBins = calculateFreedmanBins(values)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
@@ -102,24 +97,18 @@ def saveHistogram(allData, median, std, fwhmRejectedIndices, astrometryRejectedI
     max_bin_height = counts.max() + 20
     ax.set_ylim(0, max_bin_height)
 
-    ax.text(0.6, 0.8, "Median: " + "{:.2f}".format(median), transform=ax.transAxes, 
-        fontsize=20, verticalalignment='top', horizontalalignment='left')
-    ax.text(0.6, 0.75, "Std: " + "{:.2f}".format(std), transform=ax.transAxes, 
-        fontsize=20, verticalalignment='top', horizontalalignment='left')
-    ax.text(0.6, 0.7,"Rejected Frames: "+str(len(fwhmRejectedIndices)),transform=ax.transAxes,
+    ax.text(0.6, 0.7,"Rejected Frames by fwhm: "+str(len(fwhmRejectedIndices)),transform=ax.transAxes,
                 fontsize=20,verticalalignment='top',horizontalalignment='left')
 
 
     ax.hist(values[fwhmRejectedIndices], bins=myBins, color='mediumorchid', label='Rejected FWHM')
-    ax.hist(values[backgroundValueRejectedIndices], bins=myBins, color='darkred', label='Rejected background value')
-    ax.hist(values[backgroundStdRejectedIndices], bins=myBins, color='gold', label='Rejected std')
     ax.hist(values[astrometryRejectedIndices], bins=myBins, color='blue', label='Rejected astrometry')
 
     ax.legend(fontsize=15)
     plt.savefig(imageName)
     return()
     
-def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backgroundValueRejectedIndices, backgroundStdRejectedIndices, imageName):
+def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, imageName):
     
     fig, ax = plt.subplots(2, 1, figsize=(20,10))
     configureAxis(ax[0], 'UTC', 'FWHM (pix)',logScale=False)
@@ -127,6 +116,8 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
     fig.suptitle('FWHM evolution',fontsize=22)
     pattern=r"(\d+).fits"
 
+    alldate_ok = []
+    allAir     = []
     for row in range(len(allTable)):
         file=allTable.loc[row]['File']
         match=re.search(pattern,file)
@@ -139,18 +130,15 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
         ax[0].scatter(date_ok,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
         ax[1].scatter(air,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
 
+        alldate_ok.append(date_ok)
+        allAir.append(air)
+
 
     fwhmRejectedFiles  = [x for x in allTable['File'][fwhmRejectedIndices] ]
     fwhmRejectedValues = [x for x in allTable['FWHM'][fwhmRejectedIndices] ]
 
     astrometryRejectedFiles  = [x for x in allTable['File'][astrometryRejectedIndices] ]
     astrometryRejectedValues = [x for x in allTable['FWHM'][astrometryRejectedIndices] ]
-
-    backgroundValueRejectedFiles  = [x for x in allTable['File'][backgroundValueRejectedIndices] ]
-    backgroundValueRejectedValues = [x for x in allTable['FWHM'][backgroundValueRejectedIndices] ]
-
-    backgroundStdRejectedFiles  = [x for x in allTable['File'][backgroundStdRejectedIndices] ]
-    backgroundStdRejectedValues = [x for x in allTable['FWHM'][backgroundStdRejectedIndices] ]
 
     for j in range(len(fwhmRejectedFiles)):
         match=re.search(pattern, fwhmRejectedFiles[j])
@@ -173,33 +161,15 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, backg
 
         ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry'  if (j==0) else "")
-        
-    for j in range(len(backgroundValueRejectedFiles)):
-        match=re.search(pattern, backgroundValueRejectedFiles[j])
-        frame=int(match.group(1))
-        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
 
-        ax[0].scatter(date_ok, backgroundValueRejectedValues[j], marker="X", color='darkred', edgecolor='k', s=120,zorder=6,label='Rejected by Background value' if (j==0) else "")
-        ax[1].scatter(air, backgroundValueRejectedValues[j], marker="X", color='darkred', edgecolor='k', s=120,zorder=6,label='Rejected by Background Value'  if (j==0) else "")
-        
-    for j in range(len(backgroundStdRejectedFiles)):
-        match=re.search(pattern, backgroundStdRejectedFiles[j])
-        frame=int(match.group(1))
-        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+    ax[0].hlines(fwhmThreshold, xmin=np.nanmin(alldate_ok), xmax=np.nanmax(alldate_ok), lw=1.5, ls="--", color="black", label="Rejection threshold")
+    ax[1].hlines(fwhmThreshold, xmin=np.nanmin(allAir), xmax=np.nanmax(allAir), lw=1.5, ls="--", color="black")
 
-        ax[0].scatter(date_ok, backgroundStdRejectedValues[j], marker="D", color='gold', edgecolor='k', s=120,zorder=6,label='Rejected by Background std' if (j==0) else "")
-        ax[1].scatter(air, backgroundStdRejectedValues[j], marker="D", color='gold', edgecolor='k', s=120,zorder=6,label='Rejected by Background std'  if (j==0) else "")
-    
-    ax[0].legend(fontsize=15, loc="upper right")
+    ax[0].legend(fontsize=15)
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
         label.set_horizontalalignment('right')
+
     plt.tight_layout()
     plt.savefig(imageName)
     return()
@@ -226,7 +196,7 @@ def getIndicesOfFiles(allData, filesNames):
     return(indices)
 
 
-def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
+def identifyBadFrames(folderWithFWHM, fwhmThreshold):
     badFiles   = []
     allFiles   = []
     allFWHM     = []
@@ -244,12 +214,16 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
 
     allFWHM = np.array(allFWHM)
 
-    mask = sigma_clip(allFWHM, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
+    badFiles = []
+    badFWHM = []
+    allTogether = []
 
-    allFiles = np.array(allFiles)
+    for i in range(len(allFWHM)):
+        if (allFWHM[i] > fwhmThreshold):
+            badFiles.append(allFiles[i])
+            badFWHM.append(allFWHM[i])
+
     allTogether=pd.DataFrame({'File':allFiles,'FWHM':allFWHM})
-    badFiles = allFiles[mask]
-    badFWHM = allFWHM[mask]
     return(badFiles,badFWHM,allTogether)
    
 def getRejectedFramesFromFile(file):
@@ -265,8 +239,8 @@ HDU_TO_FIND_AIRMASS = 1
 folderWithFWHM            = sys.argv[1]
 outputFolder              = sys.argv[2]
 outputFile                = sys.argv[3]
-numberOfStdForRejecting    = float(sys.argv[4])
-folderWithFramesWithAirmasses = sys.argv[5]
+folderWithFramesWithAirmasses = sys.argv[4]
+fwhmThreshold = float(sys.argv[5])
 
 setMatplotlibConf()
 
@@ -274,13 +248,6 @@ setMatplotlibConf()
 # 0.- Get frames identified as candidates for rejection in previous step (astrometrisation, background value and background std)
 rejectedAtrometryFile = outputFolder + "/identifiedBadFrames_astrometry.txt"
 rejectedAstrometrisedFrames = getRejectedFramesFromFile(rejectedAtrometryFile)
-
-rejectedBackgroundValueFile = outputFolder + "/identifiedBadFrames_backgroundValue.txt"
-rejectedBackgroundValueFrames = getRejectedFramesFromFile(rejectedBackgroundValueFile)
-
-rejectedBackgroundStdFile = outputFolder + "/identifiedBadFrames_backgroundStd.txt"
-rejectedBackgroundStdFrames = getRejectedFramesFromFile(rejectedBackgroundStdFile)
-
 
 # 1.- Obtain the FWHM values ------------------------
 fwhmValues = np.array([])
@@ -292,15 +259,18 @@ for currentFile in glob.glob(folderWithFWHM + "/range_*.txt"):
 
  
 # 2.- Identify what frames are outside the acceptance region -----------------------
-badFilesFWHM, badFWHM, allData = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
-allData.to_csv(outputFolder+"/FileFWHMtable.csv")
+badFilesFWHM, badFWHM, allData = identifyBadFrames(folderWithFWHM, fwhmThreshold)
+
+with open(outputFolder + "/fwhmValues.dat", 'w') as f:
+    for i in range(len(allData)):
+        f.write(str(allData["File"][i]) + " " + str(allData["FWHM"][i]) + ("\n"))
+
+# allData.to_csv(outputFolder+"/FileFWHMtable.csv")
 
 fwhmRejectedIndices            = getIndicesOfFiles(allData, badFilesFWHM)
 astrometryRejectedIndices      = getIndicesOfFiles(allData, rejectedAstrometrisedFrames)
-backgroundValueRejectedIndices = getIndicesOfFiles(allData, rejectedBackgroundValueFrames)
-backgroundStdRejectedIndices   = getIndicesOfFiles(allData, rejectedBackgroundStdFrames)
 
-saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices, backgroundValueRejectedIndices, backgroundStdRejectedIndices, outputFolder+"/fwhmEvol.png")
+saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, outputFolder+"/fwhmEvol.png")
 
 pattern = r"\d+"
 with open(outputFolder + "/" + outputFile, 'w') as file:
@@ -309,6 +279,6 @@ with open(outputFolder + "/" + outputFile, 'w') as file:
         result = match.group(0)
         file.write(result + '\n')
 
+
 # 3.- Obtain the median and std and do teh histogram -------------------------------------
-fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
-saveHistogram(allData, fwhmValueMean, fwhmValueStd, fwhmRejectedIndices, astrometryRejectedIndices, backgroundValueRejectedIndices, backgroundStdRejectedIndices, outputFolder + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")
+saveHistogram(allData["FWHM"], fwhmRejectedIndices, astrometryRejectedIndices, outputFolder + "/fwhmHist.png", "FWHM of frames")

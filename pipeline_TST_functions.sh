@@ -95,7 +95,9 @@ outputConfigurationVariablesInformation() {
         "·Gain:$gain:[e-/ADU]"
         "·Approximately size of the field:$sizeOfOurFieldDegrees:[deg]"
         "·Size of the coadd:$coaddSizePx:[px]"
-        "·Vignetting threshold (mask every px with flat value below this one):$vignettingThreshold "
+        "·Lower Vignetting threshold (mask every px with flat value below this one):$lowerVignettingThreshold "
+        "·Upper Vignetting threshold (mask every px with flat value above this one):$upperVignettingThreshold "
+
         " "
         "·Width of the normalisation ring:$ringWidth:[px]"
         "·Common normalisation ring:$USE_COMMON_RING"
@@ -131,7 +133,10 @@ outputConfigurationVariablesInformation() {
         "·Detector height:$detectorHeight:[px]"
         "·Is there overscan:$overscan"
         "·Keyword for illuminated section:$trimsecKey"
-        "·Vignetting threshold on the flat field:$vignettingThreshold"
+        " "
+        "Parameters for rejecting frames"
+        "·Maxmimum background brightness:$maximumBackgroundBrightness:[mag/arcsec²]"
+        "·Maxmimum seeing:$maximumSeeing:[FWHM]"
         " "
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
@@ -191,7 +196,8 @@ checkIfAllVariablesAreSet() {
                 gain \
                 sizeOfOurFieldDegrees \
                 coaddSizePx \
-                vignettingThreshold \
+                lowerVignettingThreshold \
+                upperVignettingThreshold \
                 calibrationBrightLimit \
                 calibrationFaintLimit \
                 apertureUnits \
@@ -225,7 +231,8 @@ checkIfAllVariablesAreSet() {
                 solve_field_L_Param \
                 solve_field_H_Param \
                 solve_field_u_Param \
-                numberOfStdForBadFrames
+                maximumBackgroundBrightness \
+                maximumSeeing \
                 fractionExpMap\
                 areaSBlimit)
 
@@ -398,6 +405,7 @@ maskImages() {
         out=$outputDirectory/$base
         astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $out -q
 
+        propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
         # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
         # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
@@ -498,6 +506,8 @@ getMedianValueInsideRing() {
 
     if [ "$useCommonRing" = true ]; then
             # Case when we have one common normalisation ring
+
+            tmpName=$( basename $i ) 
             me=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where medianvalue --quiet)
     else
         # Case when we do NOT have one common normalisation ring
@@ -578,7 +588,7 @@ getSkewKurtoValueInsideRing(){
             #astarithmetic $i -h1 $commonRing -h1 0 eq nan where -q -o ring_masked.fits
             skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing)
             kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing)
-            rm ring_masked.fits
+            # rm ring_masked.fits
     else
         # Case when we do NOT have one common normalisation ring
         # All the following logic is to decide which normalisation ring apply
@@ -592,12 +602,12 @@ getSkewKurtoValueInsideRing(){
             #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
             skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first)
             kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first)
-            rm ring_masked.fits
+            # rm ring_masked.fits
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
             #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
             skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second)
             kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second)
-            rm ring_masked.fits
+            # rm ring_masked.fits
         else
             errorNumber=5
             echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
@@ -628,6 +638,8 @@ normaliseImagesWithRing() {
 
         me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
         astarithmetic $i -h1 $me / -o $out
+
+        propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
     done
 }
@@ -704,6 +716,7 @@ divideImagesByRunningFlats(){
             # This step can probably be removed
             astfits $i --copy=1 -o$out
 
+        propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
     done
     echo done > $flatDone
@@ -722,6 +735,7 @@ divideImagesByWholeNightFlat(){
         out=$outputDir/$base
 
         astarithmetic $i -h1 $flatToUse -h1 / -o $out
+        propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
     done
     echo done > $flatDone
@@ -801,14 +815,13 @@ removeBadFramesFromReduction() {
     local badFilesWarningFile=$4
 
     filePath=$badFilesWarningDir/$badFilesWarningFile
-
-
+    echo $badFilesWarningDir
     while IFS= read -r file_name; do
         file_name=$(basename "$file_name")
-        fileName="entirecamera_${file_name%.*}".fits
-        if [ -f $sourceToRemoveFiles/$fileName ]; then
-            mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
-        fi
+    #     fileName="${file_name%.*}".fits
+    #     if [ -f $sourceToRemoveFiles/$fileName ]; then
+    #         mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
+    #     fi
     done < "$filePath"
 }
 export -f removeBadFramesFromReduction
@@ -829,6 +842,7 @@ computeSkyForFrame(){
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
+    local noisechisel_param=${15}
 
     i=$entiredir/$1
 
@@ -857,10 +871,10 @@ computeSkyForFrame(){
                 tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
                 tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
                 astnoisechisel $i $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
-                astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage --quiet
+                astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
                 imageToUse=$noiseskydir/$tmpMaskedImage
                 rm -f $noiseskydir/$tmpMask
-            else
+            else    
                 imageToUse=$i
             fi
 
@@ -876,7 +890,7 @@ computeSkyForFrame(){
             ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
             echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
             astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
-
+           
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             read skew kurto < <(getSkewKurtoValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
@@ -941,7 +955,7 @@ computeSky() {
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
-    
+    local noisechisel_param=${15}
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -952,7 +966,7 @@ computeSky() {
             base=$( basename $a )
             framesToComputeSky+=("$base")
         done
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param"
         echo done > $noiseskydone
     fi
 }
@@ -1818,10 +1832,6 @@ applyColourcorrectionToAllCatalogues() {
         echo -e "\n\tThe magnitude and flux correction based on the flux already applied\n"
     else
         parallel applyColourcorrectionToSingleCatalogue ::: $catDir/*.cat ::: "$filterCorrectionCoeff"
-
-        # for i in $catDir/*.cat; do
-        #     applyColourcorrectionToSingleCatalogue $i "$filterCorrectionCoeff"
-        # done
         echo "done" > $catDir/colourcorrection_done.txt
     fi
 }
@@ -2008,7 +2018,6 @@ selectStarsAndRangeForCalibrateSingleFrame(){
 
     i=$framesForCalibrationDir/$a
     ##In the case of using it for Decals or Panstarrs, we need the variable survey
-
 
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a $apertureUnits )
@@ -2301,12 +2310,6 @@ combineDecalsBricksCataloguesForEachFrame() {
                 brickList+=("$i")
             done
             combineCatalogues $outputDir $decalsCataloguesDir $frame "${brickList[@]}"
-
-            # count=$(( count + 1))
-            # echo $count
-            # if [[ $count -gt 2 ]]; then
-            #     break
-            # fi
         done < "$frameBrickAssociationFile"
         echo "done" > $combinationDone
     fi
@@ -2315,7 +2318,7 @@ combineDecalsBricksCataloguesForEachFrame() {
 export -f combineDecalsBricksCataloguesForEachFrame
 
 computeCalibrationFactors() {
-    local surveyForPhotometry=$1
+    local surveyForCalibration=$1
     local iteration=$2
     local imagesForCalibration=$3
     local selectedDecalsStarsDir=$4
@@ -2340,12 +2343,14 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
 
+    
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
+    prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
+    if ! [ -d $prepareCalibrationCataloguePerFrame ]; then mkdir $prepareCalibrationCataloguePerFrame; fi
     if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-        prepareCalibrationCataloguePerFrame=$mosaicDir/aperturePhotometryCatalogues
+        cp $mosaicDir/aperturePhotometryCatalogues/wholeFieldPhotometricCatalogue.cat $prepareCalibrationCataloguePerFrame
     else
-        prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
     fi
@@ -2632,7 +2637,7 @@ produceCalibrationCheckPlot() {
 
         # In the nominal resolution it takes sooo long for doing this plots. So only a set of frames are used for the
         # calibration check
-        if [ "$frameNumber" -gt 5 ]; then
+        if [ "$frameNumber" -gt 10 ]; then
             :
         else
             if [ $survey == "SPECTRA" ]; then

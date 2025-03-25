@@ -10,9 +10,13 @@ This repository contains the source code of a pipeline implemented for reducing 
 * Scamp (using 2.10)
 * Swarp (using 2.41.4)
 * SExtractor (using 2.25) 
-* funpack (using 1.7.0)
+* funpack (using 1.7.0) - Only used if calibrating with DECaLS
+* astropy (using 5.3.4)
+* astroquery (using 0.4.9.post1)
+* numpy (using 1.26.4)
+* photutils (using 2.0.2)
+* scipy 1.15.2
 
-* Astropy (using 5.3.4)
 
 ### What do you need to run the pipeline
 
@@ -44,9 +48,10 @@ The pipeline is going to look for the following things:
 
 * config file (configuration) - **Location: path specified in ROOTDIR variable**
     Must contain:
-      · Scamp conf file
-      · Swarp conf file
+      · Scamp conf file (.cfg)
+      · Swarp conf file (.cfg)
       · Sextractor conf files (.conv, .param and .sex)
+      · Filter corrections file (.dat)
 
 * filters - 
     Must contain the transmittances of the filters needed for the reduction.
@@ -78,14 +83,14 @@ The structure of the repository is as follows:
 
 * **checkScripts**: Contains python scripts which are not used by the pipeline. They are to be used by the user when checking the data that is going to be reduced (e.g. number of frames, exposure time of frames, airmass-Time plot, etc...)
 
-* **filters**: Contains the transmittances of the filters needed for the reduction
+* **filters**: Contains the transmittances of the filters needed for the reduction (photometric calibration module)
 
 * **getFilterCorrection**:  Contains python script to be used directly by the user. They allow you to get the colour correction that you need to provide to the pipeline 
 in order to take into account the difference in the filters' shape.
 
-* **config**: Template for the configuration folder. Contains configuration for software used by the pipeline (SExtractor, scamp and swarp mainly). It also contains the astrometry file is created here during the pipeline run. Usually this has not to be touched. 
+* **config**: Template for the configuration folder. Contains configuration for software used by the pipeline (SExtractor, scamp and swarp mainly). It also contains the colour corrections for the photometric calibration if a imaging survey is used the astrometry file is created here during the pipeline run. Usually this has not to be touched. 
 
-* **pipelineScripts**: Contains python scripts used by the pipeline. From checking for bad frames to downloading data from decals. This folder is essential.
+* **pipelineScripts**: Contains python scripts used by the pipeline. From checking for bad frames to downloading data from GAIA. This folder basically contains small modules of the pipeline that were more convenient written in python, it's essential.
 
 Then we have the pipeline itself (*pipeline_LuM_parallel.sh*) and the functions which are in another script (*pipeline_LuM_parallel_functions.sh*). Additionally *template.conf* contains the a template with the configuration for the pipeline itself. Here is specified the details of the reduction to be performed (coordinates, type of flat to use, how to model the background, normalisation ring(s), details from the instrument used, etc...). Finally, *flat_ring_template.txt* is a template about how to define the normalisation ring(s).
 
