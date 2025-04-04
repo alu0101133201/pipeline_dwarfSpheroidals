@@ -629,7 +629,7 @@ normaliseImagesWithRing() {
         fi
         for h in $(seq 1 $num_ccd); do
 
-            me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
+            me=$(getMedianValueInsideRing $i $commonRing $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
             astarithmetic $i -h$h $me / -o $outputDir/temp.fits
             astfits $outputDir/temp.fits --copy=1 -o $out
             rm $outputDir/temp.fits
@@ -1045,10 +1045,7 @@ computeSkyForFrame(){
                 echo "$base $me $std $skew $kurto" >> $noiseskydir/$out
             done
             #rm $ringDir/$tmpRingDefinition
-            if [ "$swarped" = "YES" ] && [ "$objectName" = "NGC3486" ]; then
-                mkdir $BDIR/test_rings
-                cp $ringDir/$tmpRingFits $BDIR/test_rings/$tmpRingFits
-            fi
+            
             rm $ringDir/$tmpRingFits
 
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
@@ -1056,19 +1053,71 @@ computeSkyForFrame(){
                 sky=$(echo $base | sed 's/.fits/_sky.fits/')
 
                 # The sky substraction is done by using the --checksky option in noisechisel
-                astnoisechisel $i -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$sky
-
+                astnoisechisel $i -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
                 mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
                 std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
-                echo "$base $mean $std" >> $noiseskydir/$out
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $noiseskydir/$sky SKEWNESS NO $h)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $noiseskydir/$sky KURTOSIS NO $h)
+                echo "$base $mean $std $skew $kurto" >> $noiseskydir/$out
                 rm -f $noiseskydir/$sky
             done
         elif [ "$constantSkyMethod" = "fullImage" ]; then
             for h in $(seq 1 $num_ccd); do
                 mean=$(aststatistics $i -h$h --sigclip-mean -q)
                 std=$(aststatistics $i -h$h --sigclip-std -q)
-                echo "$base $mean $std" >> $noiseskydir/$out
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS NO $h)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS NO $h)
+                echo "$base $mean $std $skew $kurto" >> $noiseskydir/$out
             done
+        elif [ "$constantSkyMethod" = "ringAndDetector" ]; then
+            tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
+            tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
+            imageToUse=$i
+            if [ "$swarped" = "YES" ]; then
+                for h in $(seq 1 $num_ccd); do
+                    x_ring=$( awk ' {print $2}' $ringDir/ring_ccd"$h".txt )
+                    y_ring=$( awk ' {print $3}' $ringDir/ring_ccd"$h".txt )
+                    tmpRingDefinition=$(echo $base | sed 's/.fits/_ring_ccd.txt/')
+                    ringRadius=$( awk '{print $5}' $ringDir/ring_ccd"$h".txt )
+                    ##We first check if a rotation is needed by comparing naxis of the ring (which is already created) and naxis of the frame
+                    naxis1=$(fitsheader $imageToUse -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2=$(fitsheader $imageToUse -e $h | grep "NAXIS2" | awk '{print $3'})
+                    naxis1_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS2" | awk '{print $3'})
+
+                    #If the axis on ring and on image keeps the comparison, we don't need to do anything
+                    if [[ $naxis1 -gt $naxis2 && $naxis1_r -gt $naxis2_r ]] || [[ $naxis1 -lt $naxis2 && $naxis1_r -lt $naxis2_r ]]; then
+                        echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                    else
+                        #If image new is rotated, we look for the astrometrized, not rotated in order to get the correct position
+                        image_astro=${base#entirecamera_}
+                        ringCentre=$( xy2sky $BDIR/astro-ima/$image_astro,$h $x_ring $y_ring )
+                        ringRa=$(echo "$ringCentre" | awk '{print $1}')
+                        ringDec=$(echo "$ringCentre" | awk '{print $2}')
+                        newringCentre=$( sky2xy $imageToUse,$h $ringRa $ringDec )
+                        x_new=$(echo "$newringCentre" | awk '{print $5}')
+                        y_new=$(echo "$newringCentre" | awk '{print $6}')
+                        echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                   
+                        
+                    fi
+             
+                    astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
+                    rm -f $ringDir/$tmpRingDefinition
+                    astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+                    rm -f $ringDir/$tmpRingFits_single
+                done
+            else
+                for h in $(seq 1 $num_ccd); do
+                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/ring_ccd"$h".txt
+                    astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+                    rm -f $ringDir/$tmpRingFits_single
+                done
+            fi
+            
+            python3 $pythonScriptsPath/getSkySTDSkewKurtosis_fullDetector.py $imageToUse $ringDir/$tmpRingFits $noiseskydir $num_ccd
+            rm $ringDir/$tmpRingFits
+
         else
             errorNumber=6
             echo -e "\nAn invalid value for the sky_estimation_method was provided" >&2
@@ -1652,7 +1701,7 @@ performAperturePhotometryToSingleBrick() {
     local automaticallySelectedDir=$3
     local outputCat=$4
     local filter=$5
-    local numberOfFWHMToUse=$6
+    local numberOfApertureForRecuperateGAIA=$6
     local survey=$7
     if [[ "$survey" = "DECaLS" ]]; then
         brickName=decompressed_decal_image_"$brick"_"$filter".fits
@@ -1664,7 +1713,7 @@ performAperturePhotometryToSingleBrick() {
     automaticCatalogue=$automaticallySelectedDir/selected_"$brickName"_automatic.txt
 
     r_decals_pix_=$(awk 'NR==1 {printf $1}' $fileWithAperture)
-    r_decals_pix=$(astarithmetic $r_decals_pix_ $numberOfFWHMToUse. x -q )
+    r_decals_pix=$(astarithmetic $r_decals_pix_ $numberOfApertureForRecuperateGAIA. x -q )
 
     dataHdu=0
 
@@ -1692,8 +1741,8 @@ performAperturePhotometryToBricks() {
     local automaticallySelectedDir=$2
     local outputCat=$3
     local filter=$4
-    local numberOfFWHMToUse=$5
-    local survey=$6
+    local survey=$5
+    local nomberOfApertureForRecuperateGaia=$6
    
     outputDone=$outputCat/done.txt
     if ! [ -d $outputCat ]; then mkdir $outputCat; fi
@@ -1719,7 +1768,7 @@ performAperturePhotometryToBricks() {
         fi
         
         
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfFWHMToUse $survey
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfApertureForRecuperateGAIA $survey
         echo "done" > $outputDone
     fi
 }
@@ -1744,24 +1793,29 @@ prepareCalibrationData() {
     local filterCorrectionCoeff=${16}
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
+    local mosaicDone=${19}
 
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
-
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-        spectraDir=$mosaicDir/spectra
-
-        writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
-        transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
-        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
-
+    if [ -f $mosaicDone ]; then
+        echo -e "\nSurvey data already prepared for photometric calibration\n"
     else
-        surveyImagesDir=$mosaicDir/surveyImages
-        writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+        if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+            spectraDir=$mosaicDir/spectra
 
-        prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
-                                            $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                            $calibrationBrightLimit $calibrationFaintLimit
+            writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
+            transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
+            prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
+
+        else
+            surveyImagesDir=$mosaicDir/surveyImages
+            writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
+
+            prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
+                                                $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
+                                                $calibrationBrightLimit $calibrationFaintLimit
+        fi
+        echo done > $mosaicDone
     fi
 }
 export -f prepareCalibrationData
@@ -2136,8 +2190,8 @@ calibrationToGAIA() {
     local magFromSpectraDir=$8
     local panstarrsCatalogueDir=$9
 
-    brightLimitToCompareGAIAandPANSTARRS=14.5
-    faintLimitToCompareGAIAandPANSTARRS=15.5
+    local brightLimitToCompareGAIAandPANSTARRS=${10}
+    local faintLimitToCompareGAIAandPANSTARRS=${11}
 
 
     if [ -f "$panstarrsCatalogueDir/mergedCatalogue.cat" ]; then
@@ -2153,13 +2207,13 @@ calibrationToGAIA() {
 
     transmittanceCurveFile="$folderWithTransmittances"/PANSTARRS_$filter.dat
     prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $magFromSpectraDir $sizeOfFieldForCalibratingPANSTARRStoGAIA "GAIA" $transmittanceCurveFile
-    offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $magFromSpectraDir/wholeFieldPhotometricCatalogue.cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir )
+    offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $magFromSpectraDir/wholeFieldPhotometricCatalogue.cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir $filter )
     
     offset=$(echo $offsetValues | awk '{print $1}')
     factorToApplyToCounts=$(echo $offsetValues | awk '{print $2}')
     
-    rm $panstarrsCatalogueDir/mergedCatalogue.cat
-    echo $offset $factorToApplyToCounts > $mosaicDir/offsetToCorrectPanstarrs.txt
+    #rm $panstarrsCatalogueDir/mergedCatalogue.cat
+    echo $offset $factorToApplyToCounts > $mosaicDir/offsetToCorrectSurveyToGaia_"$filter".txt
 }
 export -f calibrationToGAIA
     
@@ -2265,7 +2319,7 @@ matchDecalsAndSingleFrame() {
     for h in $(seq 1 $num_ccd); do
         tmpCatalogue=$matchdir/match-$base-tmp_ccd"$h".cat
         out_ccd=$matchdir/match-"$base"_ccd"$h".fits
-        if [ $surveyForCalibration == "SPECTRA" ]; then
+        if [ $surveyForCalibration = "SPECTRA" ]; then
             calibrationCatalogue=$calibrationCatalogues/wholeFieldPhotometricCatalogue.cat
             astmatch $ourDataCatalogue --hdu=$h $calibrationCatalogue --hdu2=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
                 --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
@@ -2298,7 +2352,7 @@ matchDecalsAndOurData() {
     local calibrationCatalogues=$2
     local matchdir=$3
     local surveyForCalibration=$4 
-
+    
     matchdirdone=$matchdir/done_automatic.txt
     if ! [ -d $matchdir ]; then mkdir $matchdir; fi
     if [ -f $matchdirdone ]; then
@@ -2426,10 +2480,16 @@ computeAndStoreFactors() {
                 asttable $f -h$h --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
                 asttable $alphatruet -h1 -c1,2,'arith $6 $8 /' -o$alphatruedir/$alphaFile
 
-                mean=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+                mean=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-mean)
                 std=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+                if [ $mean == "n/a" ]; then
+                    mean=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sigclip-mean)
+                fi
+                ###This dirty if is connected to the following: our sigma clipping params are able to avoid negative values or strange values of alpha, but
+                # for some reason on tables with low rows it gets "nan" (I know, stupid right?). Because of that, we decide to avoid the parameters when we get nan values and this
+                # apparently solves the problem
                 echo "$mean $std" >> $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
-                count=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
+                count=$(asttable $alphatruedir/$alphaFile -c'ARITH_1' | aststatistics --number)
                 echo "Frame number $a ccd $h : $count" >> $numberOfStarsUsedToCalibrateFile
             done
         done
@@ -2523,7 +2583,7 @@ combineDecalsBricksCataloguesForEachFrame() {
 export -f combineDecalsBricksCataloguesForEachFrame
 
 computeCalibrationFactors() {
-    local surveyForPhotometry=$1
+    local surveyForCalibration=$1
     local iteration=$2
     local imagesForCalibration=$3
     local selectedDecalsStarsDir=$4
@@ -2542,11 +2602,11 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
-    
+   
     ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
-    
+   
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
     if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
@@ -2554,12 +2614,12 @@ computeCalibrationFactors() {
     else
         prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
-        combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
+        combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association $mosaicDir/aperturePhotometryCatalogues
     fi
-
+    
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration 
-    
+     
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
     
@@ -2571,6 +2631,7 @@ applyCalibrationFactorsToFrame() {
     local imagesForCalibration=$2
     local alphatruedir=$3
     local photCorrDir=$4
+    local inverseApplication=$5
 
     base=entirecamera_"$a".fits
     f=$imagesForCalibration/"entirecamera_$a.fits"
@@ -2578,7 +2639,11 @@ applyCalibrationFactorsToFrame() {
     for h in $(seq 1 $num_ccd); do
         base_ccd=entirecamera_"$a"_ccd"$h".fits
         alpha=$(awk 'NR=='$h'{print $1}' $alpha_cat)
-        astarithmetic $f -h$h $alpha x float32 -o $photCorrDir/$base_ccd
+        if [[ "$inverseApplication" == "TRUE" ]]; then
+            astarithmetic $f -h$h $alpha / float32 -o $photCorrDir/$base_ccd
+        else
+            astarithmetic $f -h$h $alpha x float32 -o $photCorrDir/$base_ccd
+        fi
         astfits $photCorrDir/$base_ccd --copy=1 -o$photCorrDir/$base
         rm $photCorrDir/$base_ccd
     done
@@ -2589,6 +2654,7 @@ applyCalibrationFactors() {
     local imagesForCalibration=$1
     local alphatruedir=$2
     local photCorrDir=$3
+    local inverseApplication=${4:-false}
 
     muldone=$photCorrDir/done.txt
     if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
@@ -2599,7 +2665,7 @@ applyCalibrationFactors() {
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToApplyFactor+=("$a")
         done
-        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir
+        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir $inverseApplication
         echo done > $muldone
     fi
 }
@@ -2852,12 +2918,15 @@ produceCalibrationCheckPlot() {
     local output=$6
     local calibrationBrighLimit=$7
     local calibrationFaintLimit=$8
-    local numberOfFWHMToUse=$9
+    local numberOfApertureUnitsForCalibration=$9
     local outputDir=${10}
     local survey=${11}
-    
-    tmpDir="./calibrationDiagnosisTmp"
-    if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
+    local BDIR=${12}
+
+    calibratedCataloguesDir=$BDIR/calibratedCatalogues
+    if ! [ -d $calibratedCataloguesDir ]; then mkdir $calibratedCataloguesDir; fi
+    #tmpDir="./calibrationDiagnosisTmp"
+    #if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
 
     for i in $myCatalogue_nonCalibrated/*.cat; do
         myFrame=$i
@@ -2865,14 +2934,18 @@ produceCalibrationCheckPlot() {
 
         # In the nominal resolution it takes sooo long for doing this plots. So only a set of frames are used for the
         # calibration check
-        referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
+        if [ $survey == "SPECTRA" ]; then
+            referenceCatalogue=$referenceCatalogueDir/wholeFieldPhotometricCatalogue.cat
+        else
+            referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.*
+        fi
 
         myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
         myNonCalibratedCatalogue=$myCatalogue_nonCalibrated/entirecamera_$frameNumber.fits*
         fileWithMyApertureData=$aperturesForMyData_dir/range_entirecamera_$frameNumber*
         for h in $(seq 1 $num_ccd); do
                 r_myData_pix_=$(awk 'NR=='$h' {printf $1}' $fileWithMyApertureData)
-                r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfFWHMToUse. x -q )
+                r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfApertureUnitsForCalibration. x -q )
 
             # raColumnName=RA
             # decColumnName=DEC
@@ -2883,22 +2956,23 @@ produceCalibrationCheckPlot() {
                 columnWithYCoordForOutDataPx=2
                 columnWithXCoordForOutDataWCS=3
                 columnWithYCoordForOutDataWCS=4
-                photometryOnImage_photutils -1 $tmpDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $tmpDir/$frameNumber.cat 22.5 $dataHdu \
+                photometryOnImage_photutils -1 $calibratedCataloguesDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $calibratedCataloguesDir/$frameNumber.cat 22.5 $dataHdu \
                                         $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
 
-                astmatch $referenceCatalogue --hdu=$h $tmpDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$tmpDir/"$frameNumber"_temp.fits
-                asttable $tmpDir/"$frameNumber"_temp.fits --colmetadata=1,MAGNITUDE_CALIBRATED --colmetadata=2,MAGNITUDE_NONCALIBRATED -o$tmpDir/"$frameNumber"_matched_ccd"$h".fits
-                astfits $tmpDir/"$frameNumber"_matched_ccd"$h".fits --copy=1 -o$tmpDir/"$frameNumber"_matched.fits
-                rm $tmpDir/"$frameNumber"_matched_ccd"$h".fits $tmpDir/"$frameNumber"_temp.fits
+                astmatch $referenceCatalogue --hdu=$h $calibratedCataloguesDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=1/3600 --outcols=aMAGNITUDE,bMAGNITUDE -o$calibratedCataloguesDir/"$frameNumber"_temp.fits
+                asttable $calibratedCataloguesDir/"$frameNumber"_temp.fits --colmetadata=1,MAGNITUDE_CALIBRATED --colmetadata=2,MAGNITUDE_NONCALIBRATED -o$calibratedCataloguesDir/"$frameNumber"_matched_ccd"$h".fits
+                astfits $calibratedCataloguesDir/"$frameNumber"_matched_ccd"$h".fits --copy=1 -o$calibratedCataloguesDir/"$frameNumber"_matched.fits
+                rm $calibratedCataloguesDir/"$frameNumber"_matched_ccd"$h".fits $calibratedCataloguesDir/"$frameNumber"_temp.fits
         done
-        mv $tmpDir/"$frameNumber"_matched.fits $tmpDir/"$frameNumber"_matched.cat
-        rm $tmpDir/$frameNumber.cat
+        
+        mv $calibratedCataloguesDir/"$frameNumber"_matched.fits $calibratedCataloguesDir/"$frameNumber"_matched.cat
+        rm $calibratedCataloguesDir/$frameNumber.cat
         
     done
     for h in $(seq 1 $num_ccd); do
-        python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $tmpDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey $h
+        python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibratedCataloguesDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey $h
     done
-    rm -rf $tmpDir
+    
 }
 export -f produceCalibrationCheckPlot
 
@@ -3302,9 +3376,259 @@ smallGridtoFullGrid(){
         for frame in $smallGrid/*.fits; do
             framesToGrid+=("$frame")
         done
-        printf "%s\n" "${framesToGrud[@]}" | parallel -j "$num_cpus" smallGridToFullGridSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC 
+        printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_cpus" smallGridToFullGridSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC 
         echo done > $fullGridDone
         
     fi
 }
 export -f smallGridtoFullGrid
+
+computeFWHMSingleFrame(){
+    local a=$1
+    local framesForFWHMDir=$2
+    local fwhmdir=$3
+    local headerToUse=$4
+    local methodToUse=$5
+    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
+    local survey=$7
+    
+    i=$framesForFWHMDir/entirecamera_"$a"
+    ##In the case of using it for Decals or Panstarrs, we need the variable survey
+    
+    if [[ "$methodToUse" == "sextractor" ]]; then
+        outputCatalogue=$( generateCatalogueFromImage_sextractor $i $fwhmdir $a $survey )
+    elif [[ "$methodToUse" == "noisechisel" ]]; then
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $fwhmdir $a $headerToUse $tileSize  )
+    else
+        errorNumber=9
+        echo "Error, method for selecting stars and the range in the calibration not recognised"
+        echo "Exiting with error number: $erroNumber"
+        exit $erroNumber
+    fi
+    
+    if [[ "$survey" == "YES" ]]; then
+        astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aFWHM -o$fwhmdir/match_"$a"_my_gaia.txt
+        hFWHM=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+        FWHM=$(awk "BEGIN {print $hFWHM * 2}")
+        echo $FWHM > $fwhmdir/fwhm_"$a".txt
+        rm $fwhmdir/match_"$a"_my_gaia.txt
+    else
+        for h in $(seq 1 $num_ccd); do
+            tmp_cat=$fwhmdir/match_"$a"_ccd"$h"_my_gaia.fits
+            astmatch $outputCatalogue --hdu=$h $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu2=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,a$apertureUnits -o$tmp_cat
+            astfits $tmp_cat --copy=1 -o $fwhmdir/match_"$a"_my_gaia.fits
+            rm $tmp_cat
+        done
+    
+    
+    # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
+    # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
+        for h in $(seq 1 $num_ccd); do
+            hFWHM=$(asttable $fwhmdir/match_"$a"_my_gaia.fits -h$h -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+            FWHM=$(awk "BEGIN {print $hFWHM * 2}")
+            echo "$FWHM" >> $fwhmdir/fwhm_"$a".txt
+            #mv $mycatdir/selected_"$a"_automatic.fits #$mycatdir/selected_"$a"_automatic.fits.cat
+        done 
+        rm $fwhmdir/match_"$a"_my_gaia.fits
+    fi
+    rm $outputCatalogue
+}
+export -f computeFWHMSingleFrame
+
+computeGainCorrectionSingleFrame(){
+    local image=$1
+    local outputDir=$2
+    local num_ccd=$3
+    local ringDir=$4
+    base=$( basename $image )
+    tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
+    tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
+    out=$(echo $base | sed 's/.fits/.txt/')
+    for h in $(seq 1 $num_ccd); do
+        x_ring=$( awk ' {print $2}' $ringDir/ring_ccd"$h".txt )
+        y_ring=$( awk ' {print $3}' $ringDir/ring_ccd"$h".txt )
+        tmpRingDefinition=$(echo $base | sed 's/.fits/_ring_ccd.txt/')
+        ringRadius=$( awk '{print $5}' $ringDir/ring_ccd"$h".txt )
+        naxis1=$(fitsheader $image -e $h | grep "NAXIS1" | awk '{print $3'})
+        naxis2=$(fitsheader $image -e $h | grep "NAXIS2" | awk '{print $3'})
+        naxis1_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS1" | awk '{print $3'})
+        naxis2_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS2" | awk '{print $3'})
+        if [[ $naxis1 -gt $naxis2 && $naxis1_r -gt $naxis2_r ]] || [[ $naxis1 -lt $naxis2 && $naxis1_r -lt $naxis2_r ]]; then
+            echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+        else
+            #If image new is rotated, we look for the astrometrized, not rotated in order to get the correct position
+            image_astro=${base#entirecamera_}
+            ringCentre=$( xy2sky $BDIR/astro-ima/$image_astro,$h $x_ring $y_ring )
+            ringRa=$(echo "$ringCentre" | awk '{print $1}')
+            ringDec=$(echo "$ringCentre" | awk '{print $2}')
+            newringCentre=$( sky2xy $image,$h $ringRa $ringDec )
+            x_new=$(echo "$newringCentre" | awk '{print $5}')
+            y_new=$(echo "$newringCentre" | awk '{print $6}')
+            echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                   
+                        
+        fi
+        astmkprof --background=$image --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
+        rm -f $ringDir/$tmpRingDefinition
+        astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+    done
+    
+    rm -f $ringDir/$tmpRingFits_single    
+    base=$( basename $image )
+    for h in $(seq 1 $num_ccd); do
+
+        astnoisechisel $image -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --rawoutput --numthreads=$num_cpus -o $outputDir/tmp_$base
+        astarithmetic $image -h$h $outputDir/tmp_$base -h1 0 ne nan where -q -o$outputDir/tmp2_$base
+        astarithmetic $outputDir/tmp2_$base -h1 $ringDir/$tmpRingFits -h$h 0 ne nan where -q -o$outputDir/tmp3_$base
+        mean_g=$(aststatistics $outputDir/tmp3_$base --sigclip-mean -q)
+        echo "$mean_g" >> $outputDir/$out
+        rm $outputDir/tmp*_$base
+    done
+    rm $ringDir/$tmpRingFits
+
+
+}
+export -f computeGainCorrectionSingleFrame
+
+computeGainCorrection(){
+    local inputDir=$1
+    local outputDir=$2
+    local num_ccd=$3
+    local ringDir=$4
+
+    if ! [ -d $outputDir ]; then mkdir $outputDir; fi
+    framesToComputeGain=()
+    for a in $inputDir/*.fits; do
+        framesToComputeGain+=("$a")
+    done
+    printf "%s\n" "${framesToComputeGain[@]}" | parallel -j "$num_cpus" computeGainCorrectionSingleFrame {} $outputDir $num_ccd $ringDir
+    
+}
+export -f computeGainCorrection
+
+normaliseGainSingleFrame(){
+    local a=$1
+    local inputDir=$2
+    local gainDir=$3
+    local outputDir=$4
+    local num_ccd=$5
+    local ccd_ref=$6
+    
+    image=$inputDir/entirecamera_"$a".fits
+    gainFile=$gainDir/entirecamera_"$a".txt
+    me_ref=$(awk 'NR=='$ccd_ref'{print $1}' $gainFile)
+    output=$outputDir/entirecamera_"$a".fits
+    astfits $image --copy=0 --primaryimghdu -o$output
+    for h in $(seq 1 $num_ccd); do
+        if [ "$h" == "$ccd_ref" ]; then
+            astfits $image --copy=$h -o$output
+        else
+            me=$(awk 'NR=='$h'{print $1}' $gainFile)
+            astarithmetic $image -h$h $me_ref x $me / -o$outputDir/tmp_"$a".fits
+            astfits $outputDir/tmp_"$a".fits --copy=1 -o$output
+            gain_h=$(astfits $image -h$ccd_ref --keyvalue=$gain -q)
+            astfits $output -h$h --write=$gain,$gain_h
+            rm $outputDir/tmp_"$a".fits
+        fi
+    done
+}
+export -f normaliseGainSingleFrame
+
+normaliseGainImages(){
+    local smallGrid=$1
+    local fullGrid=$2
+    local num_ccd=$3
+    local ringDir=$4
+    local ccd_ref=$5
+    local outputDir_small=$6
+    local outputDir_full=$7
+
+    outputDir_done=$outputDir_small/done.txt
+    if ! [ -d $outputDir_small ]; then mkdir $outputDir_small; fi
+    if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
+    
+    echo -e "\n·Computing Gain Correction and normalising images"
+    if [ -f $outputDir_done ]; then 
+        echo -e "\n\tImages already normalized from gain"
+    else
+        #computeGainCorrection $smallGrid $outputDir_small $num_ccd $ringDir
+        
+        imagesToNormalise=()
+        for a in $(seq 1 $totalNumberOfFrames); do
+            imagesToNormalise+=("$a")
+        done
+        printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseGainSingleFrame {} $smallGrid $outputDir_small $outputDir_small $num_ccd $ccd_ref
+        printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseGainSingleFrame {} $fullGrid $outputDir_small $outputDir_full $num_ccd $ccd_ref
+        echo done > $outputDir_done
+    fi
+
+}
+export -f normaliseGainImages
+
+subtractStars(){
+    local inputFolder_small=$1
+    local inputFolder_full=$2
+    local starLine=$3
+    local psf=$4
+    local psfProfile=$5
+    
+    starId=$(echo "$starLine" | awk '{print $1}')
+    starRa=$(echo "$starLine" | awk '{print $2}')
+    starDec=$(echo "$starLine" | awk '{print $3}')
+    circleRad=$(echo "$starLine" | awk '{print $7}')
+
+    echo -e "·Locating star in CCDs and computing profiles"
+    profileFolder=$BDIR/profileStar_"$starId"
+    profileDone=$profileFolder/done.txt
+    starLocationFile=$profileFolder/starlocation.txt
+    if ! [ -d $profileFolder ]; then mkdir $profileFolder; fi
+    if [ -f $profileDone ]; then
+        echo -e "Profiles of star {$starId} already computed"
+    else
+        for a in $(seq 1 $totalNumberOfFrames); do
+            image=$inputFolder_small/entirecamera_"$a".fits
+            python3 $pythonScriptsPath/check_starLocation.py $image $starLocationFile $num_ccd $starRa $starDec $circleRad 
+        done
+        while IFS= read -r line; do
+            starAz=$(echo "$starLine" | awk '{print $8}')
+            imageProf=$(echo "$line" | awk '{print $1}')
+            imageProf=$( basename $imageProf )
+            rp_params="$line --mode=wcs --center=$starRa,$starDec --rmax=600 --undersample=5 --measure=sigclip-mean,sigclip-std "
+            if ! [ -z $starAz ]; then
+                rp_params+="--azimuth=$starAz "
+            fi
+            astscript-radial-profile $rp_params --output=$profileFolder/RP_$imageProf
+        done < $starLocationFile
+        echo done > $profileDone
+    fi
+
+    echo -e "·Computing Scale Factor"
+    ###NOTE: the fitting algorithm benefits from paralelization inside python, instead of parallelizing python execution
+    scaleDir=$BDIR/scaleStar_{$starId}
+    scaleDone=$scaleDir/done.txt
+    if ! [ -d $scaleDir ]; then mkdir $scaleDir; done
+    if [ -f $scaleDone ]; then
+        echo -e "Scale factors already computed for Star {$starId}"
+    else
+        ###If there is not star, we put the scale in 0
+        scale_text_base=$scaleDir/scale_entirecamera
+        for a in $(seq 1 $totalNumberOfFrames); do
+            profile=$profileFolder/RP_entirecamera_"$a".fits
+            scale_text="$scale_text_base"_"$a".txt
+            if ! [ -f $profile ]; then
+                echo "0.000" > $scale_text
+            else
+                starMag=$(echo "$starLine" | awk '{print $4}')
+                starRmin=$(echo "$starLine" | awk '{print $5}')
+                starRmax=$(echo "$starLine" | awk '{print $6}')
+                ###First step: measure a rough approach of the background, using CCD2
+                astnoisechisel $inputFolder_small/entirecamera_"$a".fits -h2  --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky --numthreads=$num_cpus -o $scaleDir/sky_$a.fits
+                sky_mean=$(aststatistics $scaleDir/sky_"$a".fits -hSKY --sigclip-mean)
+                ##We will range ±500
+                
+
+    fi
+
+
+}
+export -f subtractStars
