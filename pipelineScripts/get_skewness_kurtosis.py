@@ -8,8 +8,11 @@ ring=sys.argv[3]
 h=int(sys.argv[4])
 
 data=fits.open(image)[h].data
-mask=fits.open(ring)[h].data
-nonan_ring=(np.logical_not(np.isnan(data))) & (mask!=0)
+if ring=="NO":
+    nonan_ring=~np.isnan(data)
+else:
+    mask=fits.open(ring)[h].data
+    nonan_ring=(np.logical_not(np.isnan(data))) & (mask!=0)
 
 if value_to_measure=="SKEWNESS":
     print(skew(data[nonan_ring]))

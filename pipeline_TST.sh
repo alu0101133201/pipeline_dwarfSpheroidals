@@ -112,12 +112,8 @@ export num_cpus
 # ****** Decision note *******
 
 # Rebinned data
-tileSize=50
+tileSize=34
 noisechisel_param="--tilesize=$tileSize,$tileSize \
-                     --minskyfrac=0.9 \
-                     --meanmedqdiff=0.01 \
-                     --snthresh=5.2 \
-                     --detgrowquant=0.7 \
                      --detgrowmaxholesize=1000 \
                      --rawoutput"
 
@@ -1190,7 +1186,35 @@ else
   echo done > $badFilesWarningsDone
 fi
 
+######Normalise by gain
+normalised_smallGrid=$BDIR/normalised_smallGrid
+normalised_fullGrid=$BDIR/normalised_fullGrid
+normaliseGainImages $entiredir_smallGrid $entiredir_fullGrid $num_ccd $BDIR/ring 3 $normalised_smallGrid $normalised_fullGrid
 
+
+######################
+echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
+
+psfFile=$CDIR/PSF_g_crop.fits
+psfRadFile=$CDIR/RP_PSF_g.fits
+starCatalog=$CDIR/stars_to_subtract.txt 
+
+##So far I will do in this way, I will for sure change it
+#Catalog will be: ID RA DEC MAG RMIN RMAX RAFEC AZ
+#We will make the following:
+  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
+  # If AZ exist in the catalog we will measure the profile in azimuth
+  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
+  # Finally, we will subtract from all the frames where the star is, and continue to the next one
+  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
+
+input_subStar_small=$normalised_smallGrid
+input_subStar_full=$normalised_fullGrid
+while IFS= read -r line; do
+  echo $line
+  subtractStars $input_subStar_small $input_subStar_full "$line" $psfFile $psfRadFile
+done < $starCatalog
+exit
 
 
 ######################
@@ -1208,6 +1232,8 @@ subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
 echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
 ringDir=$BDIR/ring
+sky_estimation_method=noisechisel 
+export sky_estimation_method
 
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
@@ -1360,12 +1386,12 @@ mosaicDir=$DIR/mosaic
 selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
 rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues
-
+mosaicDone=$mosaicDir/done_prep.txt
 
 
 writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
@@ -1396,15 +1422,22 @@ else
 fi
 
 # Checking and removing bad frames based on the FWHM value ------
-fwhmFolder=$BDIR/my-catalog-halfmaxradius_it1
+fwhmFolder=$BDIR/seeing_values
 badFilesWarningsFile=identifiedBadFrames_fwhm.txt
 badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
-  for h in $(seq 1 $num_ccd); do
-    
-    python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir $h $airMassKeyWord $dateHeaderKey
+  
+  if ! [ -d $fwhmFolder ]; then mkdir $fwhmFolder; fi
+  imagesToFWHM=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+      base="$a".fits
+      imagesToFWHM+=("$base")
+  done
+  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 sextractor $tileSize NO
+  for h in $(seq 1 $num_ccd); do  
+    python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir $h $airMassKeyWord $dateHeaderKey $pixelScale
   done
   echo done > $badFilesWarningsDone
 fi
@@ -1453,14 +1486,20 @@ else
 fi
 
 # Calibration
+apertureFolder=$BDIR/my-catalog-halfmaxradius_it1
 calibrationPlotName=calibrationPlot.png
 calibrationPlot_done=$diagnosis_and_badFilesDir/done_calibrationPlot.txt
 if [ -f $calibrationPlot_done ]; then
     echo -e "\nCalibration diagnosis plot already done\n"
 else
-    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $fwhmFolder $BDIR/decals-aperture-photometry_perBrick_it1 \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfFWHMForPhotometry $diagnosis_and_badFilesDir $surveyForPhotometry
-    echo done > $calibrationPlot_done
+  if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+    dirWithReferenceCat=$mosaicDir/aperturePhotometryCatalogues
+  else
+    dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_it1
+  fi
+  produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $apertureFolder $dirWithReferenceCat \
+                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR
+  echo done > $calibrationPlot_done
 fi
 
 
@@ -1565,7 +1604,7 @@ coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
+maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
@@ -1675,7 +1714,7 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-
+exit
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   coaddPlaneDone=$coaddDir/done_plane.txt
@@ -1833,12 +1872,53 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
 subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
 
+###EXPERIMENTAL: LBTg OF NGC3938
+# We're gonna do the following now: instead of going detector by detector, we're gonna generate an sky inside the full camera
+# For that, the steps will be the following:
+# Apply it1 calibration factors to pointings smallGrid and pointings full grid
+# Compute sky using the full ring 
+# Subtract sky from those frames with calibration factors applied
+# Recover the sub-sky-smallGrid and sub-sky-fullGrid dividing by the calibration factors
+#photCorrSmallGridDir_masked=$BDIR/photCorrSmallGrid-preSky_masked_it$iteration
+#photCorrSmallGridDir=$BDIR/photCorrSmallGrid-preSky_it$iteration
+#photCorrFullGridDir=$BDIR/photCorrFullGrid-preSky_it$iteration
+#alphatruedir=$BDIR/alpha-stars-true_it1
+#applyCalibrationFactors $smallPointings_maskedDir $alphatruedir $photCorrSmallGridDir_masked
+#applyCalibrationFactors $entiredir_smallGrid $alphatruedir $photCorrSmallGridDir
+#applyCalibrationFactors $entiredir_fullGrid $alphatruedir $photCorrFullGridDir
+
 # compute sky with frames masked with global mask
 imagesAreMasked=true
 sky_estimation_method=fullImage #If we trust the mask, we can use the full image
 computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
+
+
+##Now we generate a calibrated folder with sky subtracted images
+#subskySmallGrid_dir_precal=$BDIR/sub-sky-smallGrid-preCal_it$iteration
+#subskySmallGrid_done_precal=$subskySmallGrid_dir_precal/done.txt
+#subskyFullGrid_dir_precal=$BDIR/sub-sky-fullGrid-preCal_it$iteration
+#subskyFullGrid_done_precal=$subskyFullGrid_dir_precal/done.txt
+
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+
+##Finally we restore to the non-calibrated data
+#inverseApplication=TRUE
+
+#if [ -f $subskySmallGrid_done ]; then
+#  echo -e "\nSky subtracted it$iteration Small Grid frames have been already procesed"
+#else
+#  applyCalibrationFactors $subskySmallGrid_dir_precal $alphatruedir $subskySmallGrid_dir $inverseApplication
+#  echo done > $subskySmallGrid_done
+#fi
+#if [ -f $subskyFullGrid_done ]; then
+#  echo -e "\nSky subtracted it$iteration Full Grid frames have been already procesed"
+#else
+#  applyCalibrationFactors $subskyFullGrid_dir_precal $alphatruedir $subskyFullGrid_dir $inverseApplication
+#  echo done > $subskyFullGrid_done
+#fi
+
+#rm $subskyFullGrid_dir_precal/*.fits $subskySmallGrid_dir_precal/*.fits $photCorrFullGridDir/*.fits $photCorrSmallGridDir/*.fits $photCorrSmallGridDir_masked/*.fits
 
 
 imagesForCalibration=$subskySmallGrid_dir
@@ -1852,8 +1932,20 @@ photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
+#diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles_it$iteration
+#if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
+#for h in $(seq 1 $num_ccd); do
+#  if ! [ -d $diagnosis_and_badFilesDir/CCD"$h" ]; then mkdir $diagnosis_and_badFilesDir/CCD"$h"; fi
+#done
 
-
+#if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+#  tmpDir=$BDIR/noise-sky_it2
+#else
+#  tmpDir=$noiseskyctedir
+#fi
+#for h in $(seq 1 $num_ccd); do
+#  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $h $dateHeaderKey
+#done
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
@@ -1862,7 +1954,7 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true fullImage -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $noiseskydir $DIR $iteration $minRmsFileName
