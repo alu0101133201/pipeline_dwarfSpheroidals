@@ -48,7 +48,7 @@ export pipelinePath
 export pythonScriptsPath
 
 # Load the file with all the needed functions
-source "$pipelinePath/pipeline_TST_functions.sh"
+source "$pipelinePath/pipeline_TST_functions_ttt3.sh"
 
 echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
@@ -118,6 +118,7 @@ noisechisel_param="--tilesize=$tileSize,$tileSize \
                     --detgrowmaxholesize=1000 \
                     --rawoutput"
 
+
 # # These paremeters are oriented to TST data at original resolution. 
 
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
@@ -126,7 +127,7 @@ noisechisel_param="--tilesize=$tileSize,$tileSize \
 #                      --detgrowmaxholesize=5000 \
 #                      --rawoutput"
 
-# export noisechisel_param
+export noisechisel_param
 
 echo -e "\n-Noisechisel parameters used for masking:"
 echo -e "\t" $noisechisel_param
@@ -186,8 +187,8 @@ export framesForCommonReductionDir
 
 # Function which processes a whole night
 oneNightPreProcessing() {
-  currentNight=$1
-  framesForCommonReductionDone=$framesForCommonReductionDir/done_"$filter"_ccd"$h"_n"$currentNight".txt
+  local currentNight=$1
+  local framesForCommonReductionDone=$framesForCommonReductionDir/done_"$filter"_ccd"$h"_n"$currentNight".txt
 
   echo -e "\n\n"
   echo -e "${ORANGE} --- STARTING TO PROCESS NIGHT NUMBER $currentNight --- ${NOCOLOUR}"
@@ -199,7 +200,6 @@ oneNightPreProcessing() {
     echo -e "\n\tScience images for night $currentNight are already processed\n"
     return 0
   fi
-
 
   # ****** Decision note *******
   # In the following, the data from "INDIRo/nightX" is placed in "INDIR/nightX". Additionally they are
@@ -359,6 +359,7 @@ oneNightPreProcessing() {
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
   echo -e "${GREEN} --- Flat iteration 1 --- ${NOCOLOUR}"
 
+  
   ########## Creating the ring mask ##########
   # Since the ring possibilities are quite flexible (using one common ring or two rings depending on the angle) I always clean and rebuild the rings (It doesn't cost almost time so is worth it)
   ringdir=$BDIR/ring
@@ -401,6 +402,7 @@ oneNightPreProcessing() {
     normaliseImagesWithRing $mbiascorrdir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit1done
   fi
+
 
  
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
@@ -490,6 +492,7 @@ oneNightPreProcessing() {
     echo done > $noiseit2WholeNightdone
   fi
 
+  
   # Mask the images (running flat)
   if $RUNNING_FLAT; then
     maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
@@ -502,7 +505,7 @@ oneNightPreProcessing() {
       echo done > $maskedit2done
     fi
   fi
-
+ 
   # Mask the images (whole night flat)
   maskedit2WholeNightdir=$BDIR/masked-it2-WholeNight_n$currentNight
   maskedit2WholeNightdone=$maskedit2WholeNightdir/done_"$filter"_ccd"$h".txt
@@ -564,7 +567,7 @@ oneNightPreProcessing() {
     echo "done" >> $flatit2WholeNightdone
   fi
 
-  
+
   # Dividing the science image by the it2 flat
   if $RUNNING_FLAT; then
     flatit2imadir=$BDIR/flat-it2-Running-ima_n$currentNight
@@ -588,6 +591,7 @@ oneNightPreProcessing() {
     divideImagesByWholeNightFlat $mbiascorrdir $flatit2WholeNightimaDir $wholeNightFlatToUse $flatit2WholeNightimaDone
   fi
   
+
   #  **** Decision note *****
   # We do here the check for bad frames in std and for not including them in the flat
   # This is done because the frames which have moved sections have a really bad impact in the flat
@@ -610,16 +614,16 @@ oneNightPreProcessing() {
   if [ -f $badFilesWarningsDone ]; then
       echo -e "\n\tFrames with strange background value and std values already cleaned\n"
   else
-    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
-    numberOfStdForBadFrames=3
+    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'"
+    numberOfStdForBadFrames=5
     python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames
     echo "done" > $badFilesWarningsDone
   fi
 
-  
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
+  
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
     noiseit3dir=$BDIR/noise-it3-Running_n$currentNight
@@ -656,7 +660,7 @@ oneNightPreProcessing() {
     echo done > $noiseit3WholeNightdone 
   fi
 
-
+ 
   # Mask the images (running flat)
   if $RUNNING_FLAT; then
     maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
@@ -707,7 +711,7 @@ oneNightPreProcessing() {
     echo done > $normit3WholeNightdone
   fi
   
-
+  
   # Remove the identified bad frames ONLY for the flat, they will still be present in following steps, but not used in the flat calculation
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
   badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd.txt
@@ -822,12 +826,15 @@ oneNightPreProcessing() {
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
 
-  # WE SHOULD MANAGE THE RACE CONDITIONS
   if [ -f $framesForCommonReductionDone ]; then
     echo -e "\nFrames already placed in the folder for frames prepared to common reduction"
   else
-    initialValue=$( getHighestNumberFromFilesInFolder $framesForCommonReductionDir )
+   # This lockfile is created in order to handle the race conditions that could happen here
+    lockfile="$framesForCommonReductionDir/lockfile"
+    exec 200>$lockfile
+    flock -x 200
 
+    initialValue=$( getHighestNumberFromFilesInFolder $framesForCommonReductionDir )
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
       name=$(( $initialValue + $a ))
@@ -835,8 +842,14 @@ oneNightPreProcessing() {
       astfits $framesForCommonReductionDir/$name.fits -h1 --write=ORIGINAL_FILE,$base
     done
     echo "done" > $framesForCommonReductionDone
+    
+    flock -u 200 
+    exec 200>&- 
+
   fi
 
+  exit 0
+  
   # # Removing intermediate information to save space
   rm -rf $BDIR/bias-corrected_n$currentNight
   rm -rf $BDIR/masked-corner_n$currentNight
@@ -874,88 +887,90 @@ export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
 
 
-# Up to this point the frame of every night has been corrected of bias-dark and flat.
-# That corrections are perform night by night (because it's necessary for perform that corretions)
-# Now, all the frames are "equal" so we do no distinction between nights.
-# All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
-echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
+# # Up to this point the frame of every night has been corrected of bias-dark and flat.
+# # That corrections are perform night by night (because it's necessary for perform that corretions)
+# # Now, all the frames are "equal" so we do no distinction between nights.
+# # All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
+# echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
 
-writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
-echo -e "·Downloading Gaia Catalogue"
+# writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
+# echo -e "·Downloading Gaia Catalogue"
 
-# Here I add some extra size to the field used to download the gaia catalogue
-# This is because you don't want to use a field too big in order not to download bricks that you don't need
-# So I expect the "sizeofOurFieldDegrees" value to be quite tight. But since the catalogue is text and it doesn't take
-# long I prefer to add something and be sure that I don't lose any source because of the catalogue
-radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
-query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
-catdir=$BDIR/catalogs
-catName=$catdir/"$objectName"_Gaia_eDR3.fits
-catdone=$catdir/done.txt
-if ! [ -d $catdir ]; then mkdir $catdir; fi
-if [ -f $catdone ]; then
-  echo -e "\n\tCatalogue is already downloaded\n"
-else
-  downloadGaiaCatalogue "$query_param" $catdir $catName
-  echo "done" > $catdone
-fi
-
-
-# Making the indexes
-writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
-echo -e "·Downloading Indices for astrometrisation"
-
-indexdir=$BDIR/indexes
-indexdone=$indexdir/done_"$filter".txt
-if ! [ -d $indexdir ]; then mkdir $indexdir; fi
-if [ -f $indexdone ]; then
-  echo -e "\n\tGaia eDR3 indexes are already created\n"
-else
-  # Here we build the indices for different index scales
-  # The index defines the scale on which the stars are selected
-  # It is recommended to build a range of scales
-  indexes=()
-  for re in $(seq $lowestScaleForIndex $highestScaleForIndex); do
-      indexes+=("$re")
-  done
-  printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catdir $objectName $indexdir
-  echo done > $indexdone
-fi
+# # Here I add some extra size to the field used to download the gaia catalogue
+# # This is because you don't want to use a field too big in order not to download bricks that you don't need
+# # So I expect the "sizeofOurFieldDegrees" value to be quite tight. But since the catalogue is text and it doesn't take
+# # long I prefer to add something and be sure that I don't lose any source because of the catalogue
+# radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+# query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
+# catdir=$BDIR/catalogs
+# catName=$catdir/"$objectName"_Gaia_DR3.fits
+# catRegionName=$catdir/"$objectName"_Gaia_DR3_regions.reg
+# catdone=$catdir/done.txt
+# if ! [ -d $catdir ]; then mkdir $catdir; fi
+# if [ -f $catdone ]; then
+#   echo -e "\n\tCatalogue is already downloaded\n"
+# else
+#   downloadGaiaCatalogue "$query_param" $catdir $catName
+#   python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py $catName $catRegionName "fits"
+#   echo "done" > $catdone
+# fi
 
 
+# # Making the indexes
+# writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
+# echo -e "·Downloading Indices for astrometrisation"
 
-sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
-writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
-echo -e "·Solving fields"
+# indexdir=$BDIR/indexes
+# indexdone=$indexdir/done_"$filter".txt
+# if ! [ -d $indexdir ]; then mkdir $indexdir; fi
+# if [ -f $indexdone ]; then
+#   echo -e "\n\tIndexes for astrometrisation are already created\n"
+# else
+#   # Here we build the indices for different index scales
+#   # The index defines the scale on which the stars are selected
+#   # It is recommended to build a range of scales
+#   indexes=()
+#   for re in $(seq $lowestScaleForIndex $highestScaleForIndex); do
+#       indexes+=("$re")
+#   done
+#   printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catName $indexdir
+#   # printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $mosaicDir wholeFieldCatalogue.cat $indexdir
+#   echo done > $indexdone
+# fi
 
-astrocfg=$CDIR/astrometry_$objectName.cfg
 
-rm $astrocfg
-echo inparallel > $astrocfg
-echo cpulimit 300 >> $astrocfg
-echo "add_path $indexdir" >> $astrocfg
-echo autoindex >> $astrocfg
+# sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
+# writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
+# echo -e "·Solving fields"
 
-astroimadir=$BDIR/astro-ima
-astroimadone=$astroimadir/done_"$filter".txt
-if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
-if [ -f $astroimadone ]; then
-  echo -e "\n\tImages are already astrometrized\n"
-else
-  frameNames=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-      base=$a.fits
-      i=$framesForCommonReductionDir/$base
-      frameNames+=("$i")
-  done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf
-  echo done > $astroimadone
-fi
+# astrocfg=$CDIR/astrometry_$objectName.cfg
 
+# rm $astrocfg
+# echo inparallel > $astrocfg
+# echo cpulimit 300 >> $astrocfg
+# echo "add_path $indexdir" >> $astrocfg
+# echo autoindex >> $astrocfg
+
+# astroimadir=$BDIR/astro-ima
+# astroimadone=$astroimadir/done_"$filter".txt
+# if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
+# if [ -f $astroimadone ]; then
+#   echo -e "\n\tImages are already astrometrized\n"
+# else
+#   frameNames=()
+#   for a in $(seq 1 $totalNumberOfFrames); do
+#       base=$a.fits
+#       i=$framesForCommonReductionDir/$base
+#       frameNames+=("$i")
+#   done
+#   printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf
+#   echo done > $astroimadone
+# fi
 
 
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
+
 
 # Making sex catalogs and running scamp
 
@@ -1025,12 +1040,14 @@ else
 
   for a in $(seq 1 $totalNumberOfFrames); do
       base="$a".fits
-      imagesToWarp+=($astroimadir/$base)
+      # imagesToWarp+=($astroimadir/$base)
+      imagesToWarp+=(/home/sguerra/Malin2/build/framesForCommonReduction/$base)
   done
 
   printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
   echo done > $entiredone
 fi
+
 
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1041,9 +1058,14 @@ if [ -f $badFilesWarningsDone ]; then
     echo -e "\n\tBad astrometrised frames warning already done\n"
 else
   scampXMLFilePath=$scampdir/scamp.xml
+  # I create the file because we need it even if empty (for future python scripts). 
+  # If you use frames already astrometrised it won't be created if we do not do that explicitly with the touch commmand
+  touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_fullGrid
   echo done > $badFilesWarningsDone
 fi
+
+
 
 # I COMMENT THIS. THIS IS A TEST FOR ASTROMETRY AND TAKES SOME TIME, SO I'M NOT USING IT RIGHT NOW
 # # Building a .fits with the scamp contrast parameter
@@ -1095,6 +1117,7 @@ if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
 fi
 
+
 # Checking and removing bad frames based on the background value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsBackgroundValueFile=identifiedBadFrames_backgroundValue.txt
@@ -1114,6 +1137,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir $badFilesWarningsBackgroundValueFile $badFilesWarningsBackgroundStdFile 
   echo done > $badFilesWarningsDone
 fi
+
 
 
 echo -e "\n·Subtracting background"
@@ -1169,18 +1193,19 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 #   rejectedFramesDir=$BDIR/rejectedFrames
 #   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 #   echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-
+  
+  # prefixOfTheFilesToRemove="entirecamera_"
 #   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-#   removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-#   removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+#   removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+#   removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
 #   # rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-#   # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-#   # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+#   # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+#   # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 
 #   # rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
-#   # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-#   # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+#   # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+#   # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 
 # 	##Make the coadd
 # 	coaddDir=$BDIR/coadds-prephot
@@ -1197,7 +1222,6 @@ subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noises
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 
-
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
 ### PARAMETERS ###
@@ -1207,7 +1231,7 @@ export toleranceForMatching
 export sigmaForPLRegion
 
 # Parameters for performing the sigma clipping to the different samples in aststatistics
-sigmaForStdSigclip=1
+sigmaForStdSigclip=2
 iterationsForStdSigClip=3
 export sigmaForStdSigclip
 export iterationsForStdSigClip
@@ -1231,16 +1255,15 @@ mosaicDone=$mosaicDir/done_prep.txt
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
-
 iteration=1
 imagesForCalibration=$subskySmallGrid_dir
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 matchdir=$BDIR/match-decals-myData_it$iteration
 
-
 writeTimeOfStepToFile "Computing calibration factors" $fileForTimeStamps
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $rangeUsedCalibrationDir $mosaicDir  \
                           $alphatruedir $calibrationBrightLimit $calibrationFaintLimit $tileSize $apertureUnits $numberOfApertureUnitsForCalibration
+exit 0
 
 
 # Creating histogram with the number of stars used for the calibratino of each frame
@@ -1248,13 +1271,12 @@ diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 
 numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir/numOfStarsUsedForCalibrationHist.png
-numberOfStarsUsedInEachFrameDone=$diagnosis_and_badFilesDir/done_numOfStarsUsedForCalibrate.txt
-if [ -f $numberOfStarsUsedInEachFrameDone ]; then
+if [ -f $numberOfStarsUsedInEachFramePlot ]; then
   echo -e "\nHistogram with the number of stars used for calibrating each plot already done"
 else
   python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot
-  echo done > $numberOfStarsUsedInEachFrameDone
 fi
+
 
 # DIAGNOSIS PLOT
 # Checking and removing bad frames based on the FWHM value ------
@@ -1270,11 +1292,13 @@ else
     base="$a".fits
     imagesToFWHM+=("$base")
   done
-  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse $tileSize 
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir $pixelScale
+
+  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse $tileSize
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
-exit 0
+
+
 
 # Histogram of the background values on magnitudes / arcsec²
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1285,7 +1309,6 @@ fi
 badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
 python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
 
-exit 0
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
@@ -1305,6 +1328,8 @@ else
   produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
 fi
 
+
+
 # Calibration
 aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
 calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot.png
@@ -1322,8 +1347,9 @@ else
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimit $calibrationFaintLimit $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  
 fi
 
+exit 0
 
-# Half-Max-Radius vs magnitude plots of our calibrated data
+# # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
 halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
 if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
@@ -1331,7 +1357,7 @@ if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
     echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
 else
   
-  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits
+  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
@@ -1376,7 +1402,6 @@ clippingdir=$BDIR/clipping-outliers
 clippingdone=$clippingdir/done.txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
 
-
 mowdir=$BDIR/weight-dir-no-outliers
 moonwdir=$BDIR/only-weight-dir-no-outliers
 mowdone=$mowdir/done.txt
@@ -1396,18 +1421,18 @@ rejectedFramesDir=$BDIR/rejectedFrames
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
-
+prefixOfTheFilesToRemove="entirecamera_"
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 
 rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 
 
 echo -e "\n·Building coadd"
@@ -1415,6 +1440,7 @@ coaddDir=$BDIR/coadds
 coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+
 
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1479,12 +1505,11 @@ keyWords=("FRAMES_COMBINED" \
           "CALIBRATION_FAINTLIMIT" \
           "RUNNING_FLAT" \
           "WINDOW_SIZE" \
-          "STD_FOR_BAD_FRAMES" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold"  "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$surfaceBrightnessLimit")
+comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
@@ -1493,8 +1518,9 @@ halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
 if [ -f $halfMaxRadForCoaddName ]; then
   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
 else
-  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1" 100
+  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1" 100
 fi
+
 
 writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
@@ -1505,9 +1531,21 @@ if [ -f $framesWithCoaddSubtractedDone ]; then
 else
   sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub.fits
   subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
+
+  prefixOfTheFilesToRemove="entirecamera_"
+  rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+  rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+  rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+
+  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   echo done > $framesWithCoaddSubtractedDone 
 fi
+
+exit 0
 
 
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
@@ -1564,17 +1602,18 @@ fi
     # if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
     # echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
+  # prefixOfTheFilesToRemove="entirecamera_"
   # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
   # rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 
   # rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
-  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 
 
 #     coaddDir=$BDIR/coadds
@@ -1605,13 +1644,11 @@ fi
     #           "CALIBRATION_FAINTLIMIT" \
     #           "RUNNING_FLAT" \
     #           "WINDOW_SIZE" \
-    #           "STD_FOR_BAD_FRAMES" \
     #           "SURFACE_BRIGHTNESS_LIMIT")
 
     # numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-    # values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-    # comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
-
+  # values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$surfaceBrightnessLimit")
+  # comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
     # astfits $coaddName --write=/,"Pipeline information"
     # addkeywords $coaddName keyWords values comments 
 #   fi
@@ -1732,17 +1769,18 @@ rejectedFramesDir=$BDIR/rejectedFrames_it$iteration
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
+prefixOfTheFilesToRemove="entirecamera_"
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
-rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+# rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+# removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 
-rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+# rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+# removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 
 
 coaddDir=$BDIR/coadds_it$iteration 
@@ -1786,12 +1824,11 @@ keyWords=("FRAMES_COMBINED" \
           "CALIBRATION_FAINTLIMIT" \
           "RUNNING_FLAT" \
           "WINDOW_SIZE" \
-          "STD_FOR_BAD_FRAMES" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$surfaceBrightnessLimit")
+comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
@@ -1799,7 +1836,7 @@ halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it2.png
 if [ -f $halfMaxRadForCoaddName ]; then
   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
 else
-  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2" 100
+  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2" 100
 fi
 
 framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
@@ -1869,17 +1906,19 @@ fi
   # if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
   # echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
+  # prefixOfTheFilesToRemove="entirecamera_"
+
   # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
   # rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 
   # rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
-  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 
 
 #     coaddDir=$BDIR/coadds_it$iteration
@@ -1910,12 +1949,11 @@ fi
     #           "CALIBRATION_FAINTLIMIT" \
     #           "RUNNING_FLAT" \
     #           "WINDOW_SIZE" \
-    #           "STD_FOR_BAD_FRAMES" \
     #           "SURFACE_BRIGHTNESS_LIMIT")
 
     # numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-    # values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-    # comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+  # values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$surfaceBrightnessLimit")
+  # comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
     # astfits $coaddName --write=/,"Pipeline information"
     # addkeywords $coaddName keyWords values comments 
 #   fi

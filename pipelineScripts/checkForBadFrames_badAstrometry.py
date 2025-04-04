@@ -97,6 +97,7 @@ xmlFile         = sys.argv[2]
 warningFile     = sys.argv[3]
 pointingsDir    = sys.argv[4]
 
+
 tree = ET.parse(xmlFile)
 root = tree.getroot()
 ns = {'vo': 'http://www.ivoa.net/xml/VOTable/v1.1'}
@@ -109,7 +110,7 @@ headers = [field.get('name') for field in fields]
 # is not trustable; I have defined 2.5 to be conservative
 col1_name = 'XY_Contrast'
 colID_name = 'Catalog_Number'
-threshold = 5
+threshold = 2
 data = []
 frame = []
 

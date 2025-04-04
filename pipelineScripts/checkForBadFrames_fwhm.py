@@ -241,6 +241,7 @@ outputFolder              = sys.argv[2]
 outputFile                = sys.argv[3]
 folderWithFramesWithAirmasses = sys.argv[4]
 arcsecPerPix=float(sys.argv[5])
+fwhmThreshold=float(sys.argv[6])
 
 setMatplotlibConf()
 
@@ -257,7 +258,6 @@ for currentFile in glob.glob(folderWithFWHM + "/fwhm_*.txt"):
         fwhmValues = np.concatenate((fwhmValues, [fwhmValue]))
 
 
- 
 # 2.- Identify what frames are outside the acceptance region -----------------------
 badFilesFWHM, badFWHM, allData = identifyBadFrames(folderWithFWHM, fwhmThreshold)
 

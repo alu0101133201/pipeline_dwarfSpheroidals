@@ -11,7 +11,7 @@ i: 0.006, -0.004, -0.0005
 telescope: OSIRIS
 reference survey: panstarrs
 
-g: 0.013, 0.0034, -0.0022
+g: 0.027, -0.012, 0.0015
 r: -0.0021, 0.083, -0.0054
 
 telescope: HIPERCAM

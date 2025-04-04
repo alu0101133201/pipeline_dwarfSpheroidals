@@ -254,7 +254,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + ")")
         return(float('nan'), float('nan')) 
 
-    return(backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
+    return(backgroundValue, backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
 
 def saveParameterEvolution(files, values, parameter, imageName, astrometryRejectedIndices):
     fig, ax = plt.subplots(2,1, figsize=(20,10))
@@ -277,9 +277,8 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
 
- 
-    astrometryRejectedValues        = [x for x in values[astrometryRejectedIndices] ]
-    astrometryRejectedFiles         = [x for x in files[astrometryRejectedIndices]]
+    astrometryRejectedValues        = [x for x in values[astrometryRejectedIndices]]  if len(astrometryRejectedIndices) > 0 else []
+    astrometryRejectedFiles         = [x for x in files[astrometryRejectedIndices]]   if len(astrometryRejectedIndices) > 0 else []
 
     for j in range(len(astrometryRejectedFiles)):
         match=re.search(pattern, astrometryRejectedFiles[j])
@@ -325,8 +324,8 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
 #         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
 
 #     # Plot the values of the rejected (by background and by std)
-#     astrometryRejectedFiles         = [x for x in allTable[:]['File'][astrometryRejectedIndices] ]
-#     astrometryRejectedValues        = [x for x in allTable[:]['Background'][astrometryRejectedIndices] ]
+#     astrometryRejectedFiles         = [x for x in allTable[:]['File'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
+#     astrometryRejectedValues        = [x for x in allTable[:]['Background'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
 #     backgroundRejectedFiles  = [x for x in allTable['File'][backgroundRejectedIndices] ]
 #     backgroundRejectedValues = [x for x in allTable['Background'][backgroundRejectedIndices] ]
 #     stdRejectedFiles         = [x for x in allTable[:]['File'][stdRejectedIndices] ]
@@ -397,8 +396,8 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
 #         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
     
 #     # Plot the values of the rejected (by background and by std)
-#     astrometryRejectedFiles  = [x for x in allTable['File'][astrometryRejectedIndices] ]
-#     astrometryRejectedValues = [x for x in allTable['STD'][astrometryRejectedIndices] ]
+#     astrometryRejectedFiles  = [x for x in allTable['File'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
+#     astrometryRejectedValues = [x for x in allTable['STD'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
 #     backgroundRejectedFiles  = [x for x in allTable['File'][backgroundRejectedIndices] ]
 #     backgroundRejectedValues = [x for x in allTable['STD'][backgroundRejectedIndices] ]
 #     stdRejectedFiles         = [x for x in allTable[:]['File'][stdRejectedIndices] ]
@@ -567,6 +566,7 @@ badAstrometrisedFrames = [folderWithSkyEstimations + "/entirecamera_" + x[:-1] +
 
 # 1.- Obtain the normalised background values and std values ------------------
 files = []
+originalBackgroundValues   = []
 normalisedBackgroundValues = []
 backgroundStds             = []
 backgroundSkews            = []
@@ -575,17 +575,19 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
     files.append(currentFile)
-    currentValue, currentStd, currentSkew, currentKurto = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
-    normalisedBackgroundValues.append(currentValue)
+    originalbackground, normalisedBackground, currentStd, currentSkew, currentKurto = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
+    originalBackgroundValues.append(originalbackground)
+    normalisedBackgroundValues.append(normalisedBackground)
     backgroundStds.append(currentStd)
     backgroundSkews.append(currentSkew)
     backgroundKurtos.append(currentKurto)
 
 files = np.array(files)
+originalBackgroundValues   = np.array(originalBackgroundValues)
 normalisedBackgroundValues = np.array(normalisedBackgroundValues)
-backgroundStds = np.array(backgroundStds)
-backgroundSkews = np.array(backgroundSkews)
-backgroundKurtos = np.array(backgroundKurtos)
+backgroundStds             = np.array(backgroundStds)
+backgroundSkews            = np.array(backgroundSkews)
+backgroundKurtos           = np.array(backgroundKurtos)
 print("\n\n")
 
 with open(outputFolder + "/stdValues.dat", 'w') as file:
@@ -602,8 +604,10 @@ with open(outputFolder + "/kurtosisValues.dat", 'w') as file:
 
 badAstrometrisedIndices   = getIndicesOfFiles(files, badAstrometrisedFrames)
 
+
 # Plots of parameters as a function of time
-saveParameterEvolution(files, normalisedBackgroundValues, "Background", outputFolder+"/backgroundEvolution.png", badAstrometrisedIndices)
+saveParameterEvolution(files, originalBackgroundValues, "Background", outputFolder+"/backgroundEvolution_original.png", badAstrometrisedIndices)
+saveParameterEvolution(files, normalisedBackgroundValues, "Background", outputFolder+"/backgroundEvolution_normalised.png", badAstrometrisedIndices)
 saveParameterEvolution(files, backgroundStds, "STD", outputFolder+"/stdEvolution.png", badAstrometrisedIndices)
 saveParameterEvolution(files, backgroundSkews, "Skewness", outputFolder+"/skewnessEvolution.png", badAstrometrisedIndices)
 saveParameterEvolution(files, backgroundKurtos, "Kurtosis", outputFolder+"/kurtosisEvolution.png", badAstrometrisedIndices)

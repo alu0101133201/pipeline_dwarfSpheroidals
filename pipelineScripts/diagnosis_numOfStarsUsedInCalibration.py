@@ -65,7 +65,8 @@ def extractFactorsFromFile(file):
     with open(file, 'r') as f:
         for line in f:
             splittedLine = line.split()
-            starsUsed.append(float(splittedLine[-1]))
+            if (len(splittedLine) == 4): # If the file has been correctly created it has 4 fields
+                starsUsed.append(float(splittedLine[-1]))
     return(np.array(starsUsed))
 
 fileWithFactors = sys.argv[1]

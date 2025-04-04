@@ -19,6 +19,8 @@ fieldName   = "NGC5308"
 ra          = 206.751817
 dec         = 60.97315
 
+
+
 sizeOfField = 1.5
 halfSizeOfFild = sizeOfField / 2
 raMin  = ra - halfSizeOfFild

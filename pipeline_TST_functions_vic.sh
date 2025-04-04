@@ -113,7 +113,7 @@ outputConfigurationVariablesInformation() {
         "  Value of the keyword for using the second ring:$keyWordValueForSecondRing"
         " "
         "·Running flat:$RUNNING_FLAT"
-        "  If so, the window size is:$windowSize:[frames]"
+        "  If so, half of the window size is:$halfWindowSize:[frames]"
         " "
         "·The background is modelled as a constant:$MODEL_SKY_AS_CONSTANT"
         "  If so, the sky estimation method is:$sky_estimation_method"
@@ -217,7 +217,6 @@ checkIfAllVariablesAreSet() {
                 secondRingDefinitionFile
                 keyWordValueForSecondRing
                 RUNNING_FLAT \
-                windowSize \
                 halfWindowSize \
                 MODEL_SKY_AS_CONSTANT \
                 sky_estimation_method \
@@ -674,6 +673,8 @@ calculateRunningFlat() {
     local doneFile=$3
     local iteration=$4
 
+    windowSize=$(( (halfWindowSize * 2) + 1 ))
+
     fileArray=()
     fileArray=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*_ccd"$h".fits) )
     fileArrayLength=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*_ccd"$h".fits | wc -l) )
@@ -817,15 +818,17 @@ removeBadFramesFromReduction() {
     local destinationDir=$2
     local badFilesWarningDir=$3
     local badFilesWarningFile=$4
+    local prefixOfFilesToRemove=$5
 
     filePath=$badFilesWarningDir/$badFilesWarningFile
-    echo $badFilesWarningDir
+
     while IFS= read -r file_name; do
         file_name=$(basename "$file_name")
-    #     fileName="${file_name%.*}".fits
-    #     if [ -f $sourceToRemoveFiles/$fileName ]; then
-    #         mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
-    #     fi
+        fileName=$prefixOfFilesToRemove"${file_name%.*}".fits
+
+        if [ -f $sourceToRemoveFiles/$fileName ]; then
+            mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
+        fi
     done < "$filePath"
 }
 export -f removeBadFramesFromReduction
@@ -870,13 +873,22 @@ computeSkyForFrame(){
         # More logic should be implemented to use the normalisation ring(s) and recover them after the warping and cropping
         if [ "$constantSkyMethod" = "ring" ]; then
 
-            # Mask the image if they are not already masked
             if ! [ "$inputImagesAreMasked" = true ]; then
+                # Here we mask in a two step process. We combine noisechisel and mto. Noisechisel does not detect some corrupted sources (corrupted in the swarp step)
+                # that have positive and negativa values, and MTO has other problems with Nans regions (mto right now is just starting to work), so I combine both masks
                 tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
-                tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
+                tmpMaskedImageOnlyNoise=$(echo $base | sed 's/.fits/_masked_onlyNoise.fits/')
+                tmpMaskedImageNoiseAndMTO=$(echo $base | sed 's/.fits/_masked_noiseAndMTO.fits/')
+
                 astnoisechisel $i $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
-                astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
-                imageToUse=$noiseskydir/$tmpMaskedImage
+                astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImageOnlyNoise -quiet
+                tmpMaskedImageNoiseAndMTO=$tmpMaskedImageOnlyNoise
+
+                # source /home/sguerra/MTO/venvs/mto/bin/activate
+                # python3 /home/sguerra/MTO/mto.py --move_factor 50000 $i 
+                # astarithmetic $noiseskydir/$tmpMaskedImageOnlyNoise -h1 ./MTO-move_factor-50000_0.fits -h0 1 ne nan where float32 -o $noiseskydir/$tmpMaskedImageNoiseAndMTO -quiet
+
+                imageToUse=$noiseskydir/$tmpMaskedImageNoiseAndMTO
                 rm -f $noiseskydir/$tmpMask
             else    
                 imageToUse=$i
@@ -1059,7 +1071,7 @@ getParametersFromHalfMaxRadius() {
     astnoisechisel $image -h1 -o $tmpFolder/det.fits --convolved=$tmpFolder/convolved.fits --tilesize=20,20 --detgrowquant=0.95 --erode=4 --numthreads=$num_cpus 1>/dev/null
     astsegment $tmpFolder/det.fits -o $tmpFolder/seg.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3 1>/dev/null
     astmkcatalog $tmpFolder/seg.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals.txt --zeropoint=22.5 1>/dev/null
-    astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
+    astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
 
     numOfStars=$( cat $tmpFolder/match_decals_gaia.txt | wc -l )
     median=$( asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median )
@@ -1145,8 +1157,8 @@ downloadGaiaCatalogue() {
     local catdir=$2
     local catName=$3
 
-    astquery $query -o $catdir/"$objectName"_Gaia_eDR3_tmp.fits
-    asttable $catdir/"$objectName"_Gaia_eDR3_tmp.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -o$catdir/tmp.txt
+    astquery $query -o $catdir/"$objectName"_Gaia_DR3_tmp.fits
+    asttable $catdir/"$objectName"_Gaia_DR3_tmp.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -o$catdir/tmp.txt
 
     # I have explored 3 different ways of selecting good stars.
     # From the most restrictive to the less restrictive:
@@ -1168,7 +1180,10 @@ downloadGaiaCatalogue() {
     asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
     asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName
 
-    rm $catdir/test1.txt $catdir/tmp.txt $catdir/"$objectName"_Gaia_eDR3_tmp.fits $catdir/test_.txt
+    # # Here we don't demand any condition
+    # asttable $catdir/tmp.txt -o $catName
+    
+    rm $catdir/test1.txt $catdir/tmp.txt $catdir/"$objectName"_Gaia_DR3_tmp.fits $catdir/test_.txt
 }
 export -f downloadGaiaCatalogue
 
@@ -1178,7 +1193,7 @@ downloadIndex() {
     local objectName=$3
     local indexdir=$4
 
-    build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
+    build-astrometry-index -i $catdir/"$objectName"_Gaia_DR3.fits -e1 \
                             -P $re \
                             -S phot_g_mean_mag \
                             -E -A RA -D  DEC\
@@ -2039,7 +2054,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         exit $erroNumber
     fi
 
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
 
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
@@ -2362,7 +2377,7 @@ computeCalibrationFactors() {
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
     fi
-
+    
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration
 
@@ -3031,7 +3046,7 @@ computeFWHMSingleFrame(){
     local headerToUse=$4
     local methodToUse=$5
     local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
-    
+
 
 
     i=$framesForFWHMDir/entirecamera_"$a"
@@ -3049,13 +3064,13 @@ computeFWHMSingleFrame(){
         exit $erroNumber
     fi
 
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$fwhmdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$fwhmdir/match_"$a"_my_gaia.txt
 
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
     hFWHM=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
     FWHM=$(awk "BEGIN {print $hFWHM * 2}")
-    echo $FWHM > $mycatdir/fwhm_"$a".txt
+    echo $FWHM > $fwhmdir/fwhm_"$a".txt
     rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue
 }
 export -f computeFWHMSingleFrame
