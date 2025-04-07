@@ -32,30 +32,30 @@ star_file=sys.argv[1]
 psf_file=sys.argv[2]
 r_min=float(sys.argv[3])
 r_max=float(sys.argv[4])
-star_mag=float(sys.argv[5])
 ##Test will be made with 1000 values between min and max
-back_mean=float(sys.argv[6])
-output_folder=sys.argv[7]
-ncpu=int(sys.argv[8])
+back_mean=float(sys.argv[5])
+output_folder=sys.argv[6]
+ncpu=int(sys.argv[7])
 
-back_min=back_mean-500
-back_max=back_mean+500
+def get_parameterRange(star_file,psf_file,r_min,r_max,back_mean):
+    ###BACKGROUND: an uncertainty of 10%
+    back_min=0.9*back_mean
+    back_max=1.1*back_mean
+    ####ALFA: first we compute a very rough value
+    table_star=fits.open(star_file)[1].data
+    table_psf=fits.open(psf_file)[1].data
+    R_star_all=table_star['RADIUS']
+    I_star_all=table_star['SIGCLIP_MEAN']
+    I_psf_all=table_psf['MEAN']
+    indexes=np.where((R_star_all>=r_min)&(R_star_all<=r_max))
+    alf_mean=np.mean((I_star_all[indexes]-back_mean)/I_psf_all[indexes])
+    #Second: we give an uncertainty of 20%
+    alf_min=0.8*alf_mean
+    alf_max=1.2*alf_mean
 
-#THIS NUMBERS ARE FOR LBT G PSF, WHOSE MEAN IS 77; BE AWARE OF THAT
-if star_mag>=7 and star_mag<8:
-    alfa_min=10000
-    alfa_max=20000
-elif star_mag>=8 and star_mag<9:
-    alfa_min=6000 
-    alfa_max=12000
-elif star_mag>=9 and star_mag<10:
-    alfa_min=2000
-    alfa_max=8000
-elif star_mag>=10 and star_mag<11:
-    alfa_min=500
-    alfa_max=3000
-elif star_mag
+    return(back_min,back_max,alf_min,alf_max)
 
+back_min,back_max,alfa_min,alfa_max=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
 
 def chisqi(Istar,stdstar,Ipsf,alfa,back):
     """
@@ -76,7 +76,10 @@ def chisq(star_file,psf_file,alfa,back,r_min,r_max):
     indexes=np.where((R_star_all>=r_min)&(R_star_all<=r_max))
     chi=0
     for index in indexes[0]:
-        chi_i=chisqi(I_star_all[index],std_star_all[index],I_psf_all[index],alfa,back)
+        if np.isnan(I_star_all[index]):
+            chi_i=0
+        else:
+            chi_i=chisqi(I_star_all[index],std_star_all[index],I_psf_all[index],alfa,back)
         chi+=chi_i
     return chi
 
@@ -114,15 +117,16 @@ aa,bb=np.meshgrid(alfa_test,back_test)
 levels=[0,2.3,6.18,11.83]
 dchi=chi2test-chi2test_min
 base=os.path.basename(star_file)
-frameNumber=base.split('_')[2]
-hNumber=base.split('_')[-1].split('.')[0][1]
+frameNumber=base.split('.')[0].split('_')[2]
 plt.figure(figsize=(10,8))
 plt.contour(aa,bb,dchi,levels,colors='k')
 plt.contourf(aa,bb,dchi,levels)
 plt.plot(alfa_min_test,back_min_test,color='r',marker='X',markersize=5,linewidth=0,label=rf'Min:$\alpha$={alfa_min_test}; Bck.={back_min_test}')
 plt.xlabel(r'$\alpha$')
 plt.ylabel('Background')
-plt.title(fr"$\Delta\chi^{2}$: Frame {frameNumber}, CCD{hNumber}")
+plt.title(fr"$\Delta\chi^{2}$: Frame {frameNumber}")
 plt.legend()
 plt.tight_layout()
 plt.savefig(f'{output_folder}/{base}_fit.pdf')
+
+print(alfa_min_test[0])

@@ -1195,8 +1195,8 @@ normaliseGainImages $entiredir_smallGrid $entiredir_fullGrid $num_ccd $BDIR/ring
 ######################
 echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
 
-psfFile=$CDIR/PSF_g_crop.fits
-psfRadFile=$CDIR/RP_PSF_g.fits
+psfFile=$CDIR/PSF_"$filter"_crop.fits
+psfRadFile=$CDIR/RP_PSF_"$filter".fits
 starCatalog=$CDIR/stars_to_subtract.txt 
 
 ##So far I will do in this way, I will for sure change it
@@ -1211,15 +1211,25 @@ starCatalog=$CDIR/stars_to_subtract.txt
 input_subStar_small=$normalised_smallGrid
 input_subStar_full=$normalised_fullGrid
 while IFS= read -r line; do
-  echo $line
-  subtractStars $input_subStar_small $input_subStar_full "$line" $psfFile $psfRadFile
+  starId=$(echo "$line" | awk '{print $1}')
+  outputDir_small=$BDIR/pointings_smallGrid_sub$starId
+  outputDir_full=$BDIR/pointings_fullGrid_sub$starId
+  subtractStars $input_subStar_small $input_subStar_full "$line" $psfFile $psfRadFile $outputDir_small $outputDir_full
+  if ! (( $(echo "$starId == 1" | bc -l) )); then
+	rm $input_subStar_small/*.fits
+	rm $input_subStar_full/*.fits
+  fi
+  input_subStar_small=$outputDir_small
+  input_subStar_full=$outputDir_full
 done < $starCatalog
-exit
+
 
 
 ######################
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 
+entiredir_smallGrid=$outputDir_small
+entiredir_fullGrid=$outputDir_full
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter".txt
 

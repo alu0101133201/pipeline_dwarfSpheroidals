@@ -3571,6 +3571,8 @@ subtractStars(){
     local starLine=$3
     local psf=$4
     local psfProfile=$5
+    local outputDir_small=$6
+    local outputDir_full=$7
     
     starId=$(echo "$starLine" | awk '{print $1}')
     starRa=$(echo "$starLine" | awk '{print $2}')
@@ -3604,9 +3606,9 @@ subtractStars(){
 
     echo -e "·Computing Scale Factor"
     ###NOTE: the fitting algorithm benefits from paralelization inside python, instead of parallelizing python execution
-    scaleDir=$BDIR/scaleStar_{$starId}
+    scaleDir=$BDIR/scaleStar_$starId
     scaleDone=$scaleDir/done.txt
-    if ! [ -d $scaleDir ]; then mkdir $scaleDir; done
+    if ! [ -d $scaleDir ]; then mkdir $scaleDir; fi
     if [ -f $scaleDone ]; then
         echo -e "Scale factors already computed for Star {$starId}"
     else
@@ -3622,13 +3624,64 @@ subtractStars(){
                 starRmin=$(echo "$starLine" | awk '{print $5}')
                 starRmax=$(echo "$starLine" | awk '{print $6}')
                 ###First step: measure a rough approach of the background, using CCD2
-                astnoisechisel $inputFolder_small/entirecamera_"$a".fits -h2  --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky --numthreads=$num_cpus -o $scaleDir/sky_$a.fits
-                sky_mean=$(aststatistics $scaleDir/sky_"$a".fits -hSKY --sigclip-mean)
+                out_sky=$scaleDir/sky_$a.fits
+                astnoisechisel $inputFolder_small/entirecamera_"$a".fits -h2  --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky --numthreads=$num_cpus -o $out_sky
+                out_sky=${out_sky%.fits}_sky.fits
+                sky_mean=$(aststatistics $out_sky -hSKY --sigclip-mean)
                 ##We will range ±500
-                
-
+                scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starRmin $starRmax $sky_mean $scaleDir $num_cpus)
+                echo "$scale" > $scale_text
+                rm $out_sky
+            fi
+        done
+        echo done > $scaleDone
     fi
 
+    echo -e "·Subtracting star from frames"
+    
+    if ! [ -d $outputDir_small ]; then mkdir $outputDir_small; fi
+    if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
+    subtractionDone=$outputDir_small/done.txt
+    if [ -f $subtractionDone ]; then
+        echo -e "Subtraction of Star $starId already done"
+    else
+        for a in $(seq 1 $totalNumberOfFrames); do
+           subtractStarFromFrame $a $psfFile $scaleDir $inputFolder_small $outputDir_small $starRa $starDec 
+           subtractStarFromFrame $a $psfFile $scaleDir $inputFolder_full $outputDir_full $starRa $starDec
+        done
+        echo done > $subtractionDone
+    fi
 
 }
 export -f subtractStars
+subtractStarFromFrame() {
+    local a=$1
+    local psf=$2
+    local scale_folder=$3
+    local input_folder=$4
+    local output_folder=$5
+    local star_ra=$6
+    local star_dec=$7
+
+    base=entirecamera_"$a"
+    image=$input_folder/"$base".fits
+    scale_text=$scale_folder/scale_"$base".txt
+    output=$output_folder/"$base".fits
+    scale=$(awk 'NR=='1'{print $1}' $scale_text)
+    if (( $(echo "$scale == 0" | bc -l) )); then
+        cp $image $output
+    else
+        astfits $image --copy=0 --primaryimghdu -o$output
+        for h in $(seq 1 4); do
+        
+
+            output_temp=$output_folder/"$base"_temp.fits
+            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp
+            astfits $output_temp --copy=1 -o$output
+            gain=$(astfits $image -h$h --keyvalue=GAIN -q)
+            astfits $output -h$h --write=GAIN,$gain
+            rm $output_temp    
+        done
+    fi
+}
+export -f subtractStarFromFrame
