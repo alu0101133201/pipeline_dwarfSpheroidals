@@ -1186,50 +1186,11 @@ else
   echo done > $badFilesWarningsDone
 fi
 
-######Normalise by gain
-normalised_smallGrid=$BDIR/normalised_smallGrid
-normalised_fullGrid=$BDIR/normalised_fullGrid
-normaliseGainImages $entiredir_smallGrid $entiredir_fullGrid $num_ccd $BDIR/ring 3 $normalised_smallGrid $normalised_fullGrid
 
-
-######################
-echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
-
-psfFile=$CDIR/PSF_"$filter"_crop.fits
-psfRadFile=$CDIR/RP_PSF_"$filter".fits
-starCatalog=$CDIR/stars_to_subtract.txt 
-
-##So far I will do in this way, I will for sure change it
-#Catalog will be: ID RA DEC MAG RMIN RMAX RAFEC AZ
-#We will make the following:
-  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
-  # If AZ exist in the catalog we will measure the profile in azimuth
-  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
-  # Finally, we will subtract from all the frames where the star is, and continue to the next one
-  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
-
-input_subStar_small=$normalised_smallGrid
-input_subStar_full=$normalised_fullGrid
-while IFS= read -r line; do
-  starId=$(echo "$line" | awk '{print $1}')
-  outputDir_small=$BDIR/pointings_smallGrid_sub$starId
-  outputDir_full=$BDIR/pointings_fullGrid_sub$starId
-  subtractStars $input_subStar_small $input_subStar_full "$line" $psfFile $psfRadFile $outputDir_small $outputDir_full
-  if ! (( $(echo "$starId == 1" | bc -l) )); then
-	rm $input_subStar_small/*.fits
-	rm $input_subStar_full/*.fits
-  fi
-  input_subStar_small=$outputDir_small
-  input_subStar_full=$outputDir_full
-done < $starCatalog
-
-
-
-######################
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 
-entiredir_smallGrid=$outputDir_small
-entiredir_fullGrid=$outputDir_full
+#entiredir_smallGrid=$outputDir_small
+#entiredir_fullGrid=$outputDir_full
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter".txt
 
@@ -1653,7 +1614,7 @@ fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+computeExposureMap $mowir $exposuremapDir $exposuremapdone
 
 
 #Compute surface brightness limit
@@ -1724,7 +1685,7 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-exit
+
 # Subtract a plane and build the coadd. Thus we have the constant background coadd and the plane background coadd
 # if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
 #   coaddPlaneDone=$coaddDir/done_plane.txt
@@ -1866,8 +1827,64 @@ find $BDIR/only-w-dir_plane_it1 -type f ! -name 'done*' -exec rm {} \;
 iteration=2
 
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
-entiredir_smallGrid=$BDIR/pointings_smallGrid
-entiredir_fullGrid=$BDIR/pointings_fullGrid
+######Normalise by gain
+normalised_smallGrid=$BDIR/normalised_smallGrid
+normalised_fullGrid=$BDIR/normalised_fullGrid
+normaliseGainImages $entiredir_smallGrid $entiredir_fullGrid $num_ccd $BDIR/ring 3 $normalised_smallGrid $normalised_fullGrid
+
+######################
+echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
+
+psfFile=$CDIR/PSF_"$filter".fits
+psfRadFile=$CDIR/RP_PSF_"$filter".fits
+#starCatalog=$CDIR/stars_to_subtract.txt 
+
+##So far I will do in this way, I will for sure change it
+#Catalog will be: RA DEC MAG
+#We will make the following:
+  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
+  # If AZ exist in the catalog we will measure the profile in azimuth
+  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
+  # Finally, we will subtract from all the frames where the star is, and continue to the next one
+  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
+
+input_subStar_small=$normalised_smallGrid
+input_subStar_full=$normalised_fullGrid
+starsToSubtract=$CDIR/starsToSubtract.txt
+radiusToSearch=$(awk -v r="$sizeOfOurFieldDegrees" 'BEGIN { printf "%.6f", r/2 }')
+query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=$radiusToSearch --column=ra,dec,phot_g_mean_mag"
+if ! [ -f $starsToSubtract ]; then
+  astquery $query_param -o$CDIR/starsToSubtract_temp.fits
+  asttable $CDIR/starsToSubtract_temp.fits --range=3,0:13.5 --sort=3 -o$starsToSubtract
+  rm $CDIR/starsToSubtract_temp.fits
+fi
+
+
+starId=0
+while IFS= read -r line; do
+  #We skip the lines that contain info about the columns
+  [[ $line =~ ^#.*$ ]] && continue
+
+  ((starId++))
+  outputDir_small=$BDIR/pointings_smallGrid_sub$starId
+  outputDir_full=$BDIR/pointings_fullGrid_sub$starId
+  subtractStars $input_subStar_small $input_subStar_full "$line" $psfFile $psfRadFile $outputDir_small $outputDir_full $starId
+  if (( $(echo "$starId == 10" | bc -l) )); then exit; fi
+  if ! (( $(echo "$starId == 1" | bc -l) )); then
+    if ! (( $(echo "$starId == 2" | bc -l) )); then
+	    rm $input_subStar_small/*.fits
+	    rm $input_subStar_full/*.fits
+    fi
+  fi
+  input_subStar_small=$outputDir_small
+  input_subStar_full=$outputDir_full
+done < $starsToSubtract
+
+exit
+
+######################
+entiredir_smallGrid=$outputDir_small
+entiredir_fullGrid=$outputDir_full
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 
@@ -2024,7 +2041,7 @@ coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
 buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
 
-maskName=$coaddir/"$objectName"_coadd_"$filter"_mask.fits
+maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
@@ -2033,7 +2050,7 @@ fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $framesDir $exposuremapDir $exposuremapdone
+computeExposureMap $mowdir $exposuremapDir $exposuremapdone
 
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits

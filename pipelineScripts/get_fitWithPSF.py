@@ -30,12 +30,50 @@ plot_params()
 
 star_file=sys.argv[1]
 psf_file=sys.argv[2]
-r_min=float(sys.argv[3])
-r_max=float(sys.argv[4])
+star_mag=float(sys.argv[3])
 ##Test will be made with 1000 values between min and max
-back_mean=float(sys.argv[5])
-output_folder=sys.argv[6]
-ncpu=int(sys.argv[7])
+back_mean=float(sys.argv[4])
+output_folder=sys.argv[5]
+ncpu=int(sys.argv[6])
+pixScale=float(sys.argv[7])
+
+def get_profileRange(star_file,star_mag,psf_file,pixScale):
+    """
+    Notes about Rmax: I'm gonna check where the PSF at star_mag reaches 25 mag / arcsec^2
+    If R_max with that is lower than R_min+20 (to have at least 20 points), I will add +0.2 mag/arcsec^2 and re-check
+    Since R min is computed where I_star is not nan, this also avoids a central part not present on the frame
+    I also put a maximum limit of R=1200Pix
+    """
+    psf=fits.open(psf_file)[1].data
+    I_psf=psf['MEAN']
+    A_psf=psf['AREA']
+    R_psf=psf['RADIUS']
+    I_psf_norm=I_psf/np.sum(I_psf*A_psf)
+    mag_psf=-2.5*np.log10(I_psf_norm*10**(-0.4*star_mag))+5*np.log10(pixScale)
+    with fits.open(star_file) as hdul:
+        I_star=hdul[1].data['SIGCLIP_MEAN']
+        R_star=hdul[1].data['RADIUS']
+        ##First: check where I<6000ADU to avoid saturation
+        ind_min=np.where((I_star<6e3)&(~np.isnan(I_star)))
+        R_min=R_star[ind_min[0][0]]
+        mag_lim=25
+        ind_max=np.where(mag_psf>=mag_lim)
+        R_max=R_psf[ind_max[0][0]]
+        while R_max<=R_min+20:
+            #print(f"{R_max}<={R_min}+20")
+            if R_max>=1200:
+                R_max=1200
+                break
+            mag_lim+=0.2
+            ind_max=np.where(mag_psf>=mag_lim)
+            R_max=R_psf[ind_max[0][0]]
+        
+        return(R_min,R_max)
+
+r_min,r_max=get_profileRange(star_file,star_mag,psf_file,pixScale)
+
+
+
 
 def get_parameterRange(star_file,psf_file,r_min,r_max,back_mean):
     ###BACKGROUND: an uncertainty of 10%
@@ -47,12 +85,15 @@ def get_parameterRange(star_file,psf_file,r_min,r_max,back_mean):
     R_star_all=table_star['RADIUS']
     I_star_all=table_star['SIGCLIP_MEAN']
     I_psf_all=table_psf['MEAN']
-    indexes=np.where((R_star_all>=r_min)&(R_star_all<=r_max))
+    indexes=np.where((R_star_all>=r_min)&(R_star_all<=r_max)&(~np.isnan(I_star_all)))
     alf_mean=np.mean((I_star_all[indexes]-back_mean)/I_psf_all[indexes])
     #Second: we give an uncertainty of 20%
-    alf_min=0.8*alf_mean
-    alf_max=1.2*alf_mean
-
+    alf_min=0.7*alf_mean
+    alf_max=1.3*alf_mean
+    if alf_mean<200 and alf_mean>1:
+        alf_min=1
+        alf_max=200
+    
     return(back_min,back_max,alf_min,alf_max)
 
 back_min,back_max,alfa_min,alfa_max=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
@@ -124,7 +165,7 @@ plt.contourf(aa,bb,dchi,levels)
 plt.plot(alfa_min_test,back_min_test,color='r',marker='X',markersize=5,linewidth=0,label=rf'Min:$\alpha$={alfa_min_test}; Bck.={back_min_test}')
 plt.xlabel(r'$\alpha$')
 plt.ylabel('Background')
-plt.title(fr"$\Delta\chi^{2}$: Frame {frameNumber}")
+plt.title(fr"$\Delta\chi^{2}$: Frame {frameNumber} R: {r_min} - {r_max} ")
 plt.legend()
 plt.tight_layout()
 plt.savefig(f'{output_folder}/{base}_fit.pdf')

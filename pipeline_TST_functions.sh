@@ -3551,7 +3551,7 @@ normaliseGainImages(){
     if [ -f $outputDir_done ]; then 
         echo -e "\n\tImages already normalized from gain"
     else
-        #computeGainCorrection $smallGrid $outputDir_small $num_ccd $ringDir
+        computeGainCorrection $smallGrid $outputDir_small $num_ccd $ringDir
         
         imagesToNormalise=()
         for a in $(seq 1 $totalNumberOfFrames); do
@@ -3573,12 +3573,12 @@ subtractStars(){
     local psfProfile=$5
     local outputDir_small=$6
     local outputDir_full=$7
+    local starId=$8
     
-    starId=$(echo "$starLine" | awk '{print $1}')
-    starRa=$(echo "$starLine" | awk '{print $2}')
-    starDec=$(echo "$starLine" | awk '{print $3}')
-    circleRad=$(echo "$starLine" | awk '{print $7}')
-
+    starRa=$(echo "$starLine" | awk '{print $1}')
+    starDec=$(echo "$starLine" | awk '{print $2}')
+    starMag=$(echo "$starLine" | awk '{print $3}')
+    echo -e "Star $starId: RA=$starRa DEC=$starDec MAG=$starMag "
     echo -e "·Locating star in CCDs and computing profiles"
     profileFolder=$BDIR/profileStar_"$starId"
     profileDone=$profileFolder/done.txt
@@ -3589,14 +3589,21 @@ subtractStars(){
     else
         for a in $(seq 1 $totalNumberOfFrames); do
             image=$inputFolder_small/entirecamera_"$a".fits
+            #We are gonna do the following: we generate circles where PSF reaches 26.3 mag arcsec^-2, ie, ~50 times lower than typical
+            # sky background (THis is literally by eye)
+            circleRad=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile 26.3 $pixelScale) 
             python3 $pythonScriptsPath/check_starLocation.py $image $starLocationFile $num_ccd $starRa $starDec $circleRad 
         done
         while IFS= read -r line; do
-            starAz=$(echo "$starLine" | awk '{print $8}')
+            #On the config file I'm gonna add some TXT where I will put if an star needs azimuth or not
+            #It is true that is not the best solution, but I don't think we will need it to much
+            
             imageProf=$(echo "$line" | awk '{print $1}')
             imageProf=$( basename $imageProf )
-            rp_params="$line --mode=wcs --center=$starRa,$starDec --rmax=600 --undersample=5 --measure=sigclip-mean,sigclip-std "
-            if ! [ -z $starAz ]; then
+            rp_params="$line --mode=wcs --center=$starRa,$starDec --rmax=1200 --undersample=5 --measure=sigclip-mean,sigclip-std "
+            starAz_file=$CDIR/star"$starId"_az.txt
+            if [ -f $starAz_file ]; then
+                starAz=$(awk 'NR=='1'{print $1}' $starAz_file)
                 rp_params+="--azimuth=$starAz "
             fi
             astscript-radial-profile $rp_params --output=$profileFolder/RP_$imageProf
@@ -3620,35 +3627,50 @@ subtractStars(){
             if ! [ -f $profile ]; then
                 echo "0.000" > $scale_text
             else
-                starMag=$(echo "$starLine" | awk '{print $4}')
-                starRmin=$(echo "$starLine" | awk '{print $5}')
-                starRmax=$(echo "$starLine" | awk '{print $6}')
+                
                 ###First step: measure a rough approach of the background, using CCD2
                 out_sky=$scaleDir/sky_$a.fits
                 astnoisechisel $inputFolder_small/entirecamera_"$a".fits -h2  --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky --numthreads=$num_cpus -o $out_sky
                 out_sky=${out_sky%.fits}_sky.fits
                 sky_mean=$(aststatistics $out_sky -hSKY --sigclip-mean)
                 ##We will range ±500
-                scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starRmin $starRmax $sky_mean $scaleDir $num_cpus)
+                scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $scaleDir $num_cpus $pixelScale)
                 echo "$scale" > $scale_text
                 rm $out_sky
             fi
         done
+    
         echo done > $scaleDone
     fi
 
     echo -e "·Subtracting star from frames"
-    
+    limMag=31
+
     if ! [ -d $outputDir_small ]; then mkdir $outputDir_small; fi
     if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
     subtractionDone=$outputDir_small/done.txt
     if [ -f $subtractionDone ]; then
         echo -e "Subtraction of Star $starId already done"
     else
+        ##First step: create the PSFfile
+        psfCrop=$outputDir_small/PSF.fits
+        rCrop=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile $limMag $pixelScale )
+        if (( $(echo "$rCrop == 0" | bc -l) )); then
+            cp $psfFile $psfCrop
+        else
+            rWidth=$((2*rCrop))
+            astcrop $psfFile --mode=img --center=8001,8001 --width=$rWidth,$rWidth --zeroisnotblank -o$outputDir_small/temp.fits
+            echo "1 $rCrop $rCrop 5 $rCrop 0.0 0 1 1 1" | astmkprof --background=$outputDir_small/temp.fits --mforflatpix --clearcanvas -o$outputDir_small/mask.fits
+            astarithmetic $outputDir_small/temp.fits $outputDir_small/mask.fits -g1 0 eq nan where -q -o$psfCrop
+            rm $outputDir_small/temp.fits $outputDir_small/mask.fits
+        fi
+        
+        
         for a in $(seq 1 $totalNumberOfFrames); do
-           subtractStarFromFrame $a $psfFile $scaleDir $inputFolder_small $outputDir_small $starRa $starDec 
-           subtractStarFromFrame $a $psfFile $scaleDir $inputFolder_full $outputDir_full $starRa $starDec
+           subtractStarFromFrame $a $psfCrop $scaleDir $inputFolder_small $outputDir_small $starRa $starDec 
+           subtractStarFromFrame $a $psfCrop $scaleDir $inputFolder_full $outputDir_full $starRa $starDec
         done
+        rm $psfCrop
         echo done > $subtractionDone
     fi
 
