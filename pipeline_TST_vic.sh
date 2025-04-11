@@ -228,9 +228,9 @@ oneNightPreProcessing() {
             else
               ## MACOS does not support -d in date, so it is better to use coreutils:gdata
               if [[ $OSTYPE == 'darwin'* ]]; then
-                unixTimeInSeconds=$(gdate -d "$DATEOBS" +"%s")
+                unixTimeInSeconds=$(TZ=UTC gdate -d "$DATEOBS" +"%s")
               else
-                unixTimeInSeconds=$(date -d "$DATEOBS" +"%s")
+                unixTimeInSeconds=$(TZ=UTC date -d "$DATEOBS" +"%s")
               fi
             fi
             out=$currentINDIR/$unixTimeInSeconds.fits
@@ -1473,9 +1473,9 @@ else
 fi
 
 times=($(getInitialMidAndFinalFrameTimes $INDIR))
-initialTime=$( date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
-meanTime=$( date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
-finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+initialTime=$( TZ=UTC date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+meanTime=$( TZ=UTC date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+finalTime=$( TZ=UTC date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
 
 keyWords=("FRAMES_COMBINED" \
           "NUMBER_OF_DIFFERENT_NIGHTS" \
@@ -1943,5 +1943,5 @@ fi
 #   fi
 # fi
 
-endTime=$(date +%D%T)
+endTime=$( TZ=UTC date +%D%T)
 echo "Pipeline ended at : ${endTime}"

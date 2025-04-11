@@ -72,6 +72,8 @@ framesDataHdu           = int(sys.argv[2])
 brickIdentificationFile = sys.argv[3]
 outputFile              = sys.argv[4]
 survey                  = sys.argv[5]
+
+
 if survey=="DECaLS":
     DECALS_BRICK_WIDTH_DEG = 15.5 / 60
 elif survey=="PANSTARRS":

@@ -198,17 +198,15 @@ def downloadBrickDecals(brickName, filters, destinationFolder, overWrite=True):
             success = False
             for base_url in base_urls:
                 url = f"{base_url}/{block}/{brickName}/legacysurvey-{brickName}-image-{i}.fits.fz"
-                result=os.system(f"wget -O {destinationFolder}/decal_image_{brickName}_{i}.fits '{url}'")
+                result=os.system(f"wget -O {destinationFolder}/decal_image_{brickName}.{i}.fits '{url}'")
                 if result==0:
                     success = True
                     break
             if not success:
-                raise Exception(f"Error in 'downloadBrick': Brick {brickName} not present in Decals DR9 or DR10.")	
-
-       
-                
-                    
+                raise Exception(f"Error in 'downloadBrick': Brick {brickName} not present in Decals DR9 or DR10.")	       
     return()
+
+    
 # This function obtains the name of the block from the name of the brick
 # For what I have seen the block is formed with the first three numbers of the brick name - I have not seen this in documentation, just empirical
 # Arguments:

@@ -80,8 +80,11 @@ outputConfigurationVariablesInformation() {
         "·Root directory to perform the reduction:$ROOTDIR"
         ""
         "·Calibration range"
-        "  Bright limit:$calibrationBrightLimit:[mag]"
-        "  Faint limit:$calibrationFaintLimit:[mag]"
+        "  Bright limit individual frames:$calibrationBrightLimitIndividualFrames:[mag]"
+        "  Faint limit individual frames:$calibrationFaintLimitIndividualFrames:[mag]"
+        "  Bright limit coadd prephot:$calibrationBrightLimitCoaddPrephot:[mag]"
+        "  Faint limit coadd prephot:$calibrationFaintLimitCoaddPrephot:[mag]"
+
         "·The aperture photometry for calibrating our data is in units of:$apertureUnits"
         "·The aperture photometry will be done with an aperture of:$numberOfApertureUnitsForCalibration:[$apertureUnits]"
         "·The calibration will be done using data from survey:$surveyForPhotometry"
@@ -198,8 +201,10 @@ checkIfAllVariablesAreSet() {
                 coaddSizePx \
                 lowerVignettingThreshold \
                 upperVignettingThreshold \
-                calibrationBrightLimit \
-                calibrationFaintLimit \
+                calibrationBrightLimitIndividualFrames \
+                calibrationFaintLimitIndividualFrames \
+                calibrationBrightLimitCoaddPrephot \
+                calibrationFaintLimitCoaddPrephot \
                 apertureUnits \
                 numberOfApertureUnitsForCalibration \
                 surveyForPhotometry \
@@ -423,9 +428,8 @@ getInitialMidAndFinalFrameTimes() {
 
   while IFS= read -r -d '' file; do
     currentDateObs=$( gethead $file DATE-OBS)
-
     if [[ -n "$currentDateObs" ]]; then
-        unixTime=$( date -d "$currentDateObs" +"%s" )
+        unixTime=$( TZ=UTC date -d "$currentDateObs" +"%s" )
         date_obs_array+=("$unixTime")
     fi
   done < <(find "$directoryWithNights" -type f -name "*.fits" -print0)
@@ -885,7 +889,8 @@ computeSkyForFrame(){
                 imageToUse=$i
             fi
             
-            # python3 $pythonScriptsPath/TMP_maskRegionFromWCSArea.py $imageToUse 159.9677132 20.8469063 110
+            valueToPut=nan
+            python3 $pythonScriptsPath/TMP_maskRegionFromWCSArea.py $imageToUse 159.9694023 20.8467568 120 $valueToPut
 
             # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
             tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
@@ -1103,6 +1108,7 @@ downloadSurveyData() {
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions
         echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
         python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey
+
         echo "done" > $donwloadMosaicDone
     fi
 }
@@ -1488,11 +1494,13 @@ performAperturePhotometryToSingleBrick() {
     local numberOfApertureForRecuperateGAIA=$6
     local survey=$7
 
+
     if [[ "$survey" = "DECaLS" ]]; then
-        brickName=decompressed_decal_image_"$brick"_"$filter".fits
+        brickName=decompressed_decal_image_"$brick".fits
     elif [[ "$survey" = "PANSTARRS" ]]; then
         brickName=cal_"$brick".fits
     fi
+
     brickImage=$brickDir/$brickName
     fileWithAperture=$automaticallySelectedDir/range_$brickName.txt
     automaticCatalogue=$automaticallySelectedDir/selected_"$brickName"_automatic.txt
@@ -1542,7 +1550,7 @@ performAperturePhotometryToBricks() {
 
         if [[ "$survey" = "DECaLS" ]]; then
             for a in $( ls $brickDir/decompressed*.fits); do
-                brickName=$(echo "$a" | awk -F'_image_' '{print $2}' | awk -F'_' '{print $1}')
+                brickName=$(echo "$a" | awk -F'_image_' '{print $2}' | awk -F'.fits' '{print $1}')
                 brickList+=("$brickName")
             done
         elif [[ "$survey" = "PANSTARRS" ]]; then
@@ -1555,7 +1563,7 @@ performAperturePhotometryToBricks() {
             exit 1
         fi
 
-
+    
         printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfApertureForRecuperateGAIA $survey
         echo "done" > $outputDone
     fi
@@ -1593,8 +1601,7 @@ prepareCalibrationData() {
 
             writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
             transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
-            prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $aperturePhotDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
-
+            prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
         else
             surveyImagesDir=$mosaicDir/surveyImages
             writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
@@ -1614,21 +1621,19 @@ prepareSpectraDataForPhotometricCalibration() {
     local ra=$3
     local dec=$4
     local mosaicDir=$5
-    local aperturePhotDir=$6
-    local sizeOfOurFieldDegrees=$7
-    local surveyForSpectra=$8
-    local transmittanceCurveFile=$9
+    local sizeOfOurFieldDegrees=$6
+    local surveyForSpectra=$7
+    local transmittanceCurveFile=$8
 
     if ! [ -d $spectraDir ]; then mkdir $spectraDir; fi
     downloadSpectra $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
 
-    aperturePhotDone=$aperturePhotDir/done.txt
-    if ! [ -d $aperturePhotDir ]; then mkdir $aperturePhotDir; fi
+    aperturePhotDone=$mosaicDir/done_"$filter".txt
     if [ -f $aperturePhotDone ]; then
         echo -e "\n\tThe catalogue with the magnitudes of the spectra already built\n"
     else
-        output_tmpCat=$aperturePhotDir/wholeFieldPhotometricCatalogue_tmp.cat
-        outputCat=$aperturePhotDir/wholeFieldPhotometricCatalogue.cat
+        output_tmpCat=$mosaicDir/wholeFieldPhotometricCatalogue_tmp.cat
+        outputCat=$mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat
         transmittanceWavelengthUnits=A # At the beginning of the pipeline everything was transformed to A. Nevertheless the python scripts handles transmittances in nm
         python3 $pythonScriptsPath/getMagnitudFromSpectra.py $spectraDir $transmittanceCurveFile $transmittanceWavelengthUnits $output_tmpCat $surveyForSpectra
 
@@ -1689,11 +1694,13 @@ prepareSurveyDataForPhotometricCalibration() {
     bricksIdentificationFile_r=$surveyImagesDir_r/brickIdentification.txt
     bricksIdentificationFileForGaiaCalibration_r=$surveyImagesDirForGaiaCalibration_r/brickIdentification.txt
 
-    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
+    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey    
     downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
     downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
     downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
 
+
+   
     if [ "$filter" = "lum" ]; then
         # This was used at the beginning as a sort of proxy to lum. This is not used anymore (we calibrate lum with spectra) but we prefer not to
         # remove the code. Anyway this is not well tested because a lot of things have changed and should need some checks.
@@ -1721,7 +1728,6 @@ prepareSurveyDataForPhotometricCalibration() {
             downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filter $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
         fi
     fi
-
 
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration.
     # This was implemented due to the LBT origin of the pipeline, but for doing it at original resolution takes time and memory so
@@ -1763,6 +1769,7 @@ prepareSurveyDataForPhotometricCalibration() {
         selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $methodToUse $survey $apertureUnits
     fi
 
+    
     # halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     # if [ $survey == "DECaLS" ]; then
     #     produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
@@ -1782,6 +1789,7 @@ prepareSurveyDataForPhotometricCalibration() {
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
 
+    
     performAperturePhotometryToBricks $surveyImagesDir_g "$selectedSurveyStarsDir"_g "$aperturePhotDir"_g "g" $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration_g $selectedSurveyStarsDir"ForGAIACalibration_g" $aperturePhotDir"ForGAIACalibration_g" "g" $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDir_r "$selectedSurveyStarsDir"_r "$aperturePhotDir"_r "r" $survey $numberOfApertureForRecuperateGAIA
@@ -1793,8 +1801,7 @@ prepareSurveyDataForPhotometricCalibration() {
         performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
         performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
     fi
-
-    
+  
     # # --- Decision note ---
     # # Now two corrections are applied. First a colour correction to match the survey filter to the filter of our telescope, and
     # # Secondly an offset to match the survey photometry to GAIA. Thus, our photometry is referenced to GAIA spectra and to our filter
@@ -1809,7 +1816,8 @@ prepareSurveyDataForPhotometricCalibration() {
     # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
     calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5
     calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15
-
+   
+    
     read offset_g factorToApplyToCounts_g < "$mosaicDir/offsetToCorrectSurveyToGaia_g.txt"
     read offset_r factorToApplyToCounts_r < "$mosaicDir/offsetToCorrectSurveyToGaia_r.txt"
 
@@ -1818,6 +1826,7 @@ prepareSurveyDataForPhotometricCalibration() {
     correctOffsetFromCatalogues $aperturePhotDir"_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
     correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
 
+    
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         : # Since the correct offset happens in the aperturePhotDir, this soft link has already been done
     else
@@ -1828,7 +1837,8 @@ prepareSurveyDataForPhotometricCalibration() {
         correctOffsetFromCatalogues $aperturePhotDir $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
         correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration" $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
     fi
-
+    
+    
     computeColoursAndAddThemToCatalogues $aperturePhotDir $aperturePhotDir"_g" $aperturePhotDir"_r" $filter
     applyColourcorrectionToAllCatalogues $aperturePhotDir "$filterCorrectionCoeff"
 
@@ -1837,7 +1847,6 @@ prepareSurveyDataForPhotometricCalibration() {
     if [[ -f $brickDecalsAssociationFile ]]; then
         rm $brickDecalsAssociationFile
     fi
-    
     python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
 
     # Create a catalogue of the whole field
@@ -1846,7 +1855,7 @@ prepareSurveyDataForPhotometricCalibration() {
         tmpName=$( basename $i )
         listOfCatalogues+=("${tmpName%.cat}")
     done
-    combineCatalogues $mosaicDir $aperturePhotDir "wholeFieldCatalogue.cat" "${listOfCatalogues[@]}"
+    combineCatalogues $mosaicDir $aperturePhotDir "wholeFieldPhotometricCatalogue.cat" "${listOfCatalogues[@]}"
 }
 export -f prepareSurveyDataForPhotometricCalibration
 
@@ -1931,9 +1940,11 @@ computeColoursAndAddThemToCatalogues() {
     if [ -f "$cataloguesToUseDir/colourAdded_done.txt" ]; then
         echo -e "\n\tThe g-r colour has been already added to the catalogues\n"
     else
+
         for i in "$cataloguesDir_g"/*.g.cat; do
             fileName=$( basename "$i" .g.cat )
 
+   
             if [ ! -f "$cataloguesToUseDir/$fileName.$filt.cat" ] || [ ! -f "$cataloguesDir_r/$fileName.r.cat" ]; then
                 errorCode=999
                 echo "ERROR - Catalogues in the different filters for calibration are not equal (missing a catalogue in some filter). We should never get there. Exiting with errorCode $errorCode"
@@ -2004,10 +2015,10 @@ calibrationToGAIA() {
 
     echo -e "\n·Computing offset between PANSTARRS data and GAIA (panstarrs catalogues used for the calculation $panstarrsCatalogueDir)"
 
+    
     if [ -f $mosaicDir"/offsetToCorrectSurveyToGaia_"$filter".txt" ]; then
             echo -e "\n\tOffset for calibrating survey to GAIA already computed\n"
     else
-
         if [ -f "$panstarrsCatalogueDir/mergedCatalogue.cat" ]; then
                 echo -e "\n\tSurvey catalogues already merged for calibration with GAIA\n"
         else
@@ -2019,15 +2030,16 @@ calibrationToGAIA() {
             combineCatalogues $panstarrsCatalogueDir $panstarrsCatalogueDir "mergedCatalogue.cat" "${listOfCatalogues[@]}"
         fi
 
+
         transmittanceCurveFile="$folderWithTransmittances"/PANSTARRS_$filter.dat
-        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $magFromSpectraDir $sizeOfFieldForCalibratingPANSTARRStoGAIA "GAIA" $transmittanceCurveFile
-        offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $magFromSpectraDir/wholeFieldPhotometricCatalogue.cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir $filter )
+        prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA "GAIA" $transmittanceCurveFile
+        offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir $filter )
 
         offset=$(echo $offsetValues | awk '{print $1}')
         factorToApplyToCounts=$(echo $offsetValues | awk '{print $2}')
-
-        # rm $panstarrsCatalogueDir/mergedCatalogue.cat
         echo $offset $factorToApplyToCounts > $mosaicDir/offsetToCorrectSurveyToGaia_"$filter".txt
+        rm $mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat # I delete it because later this file has to contain the catalogue of the whole field from panstarrs
+
     fi
 }
 export -f calibrationToGAIA
@@ -2088,8 +2100,9 @@ selectStarsAndSelectionRangeOurData() {
             echo -e "\n\tSources for photometric calibration are already extracted for my image\n"
     else
         framesToUse=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            framesToUse+=("entirecamera_$a.fits")
+        for a in $( ls $framesForCalibrationDir/*.fits ); do
+            framename=$( basename $a )
+            framesToUse+=("$framename")
         done
 
         headerWithData=1
@@ -2101,23 +2114,28 @@ export -f selectStarsAndSelectionRangeOurData
 
 
 matchDecalsAndSingleFrame() {
-    local a=$1
+    local base=$1
     local myCatalogues=$2
     local calibrationCatalogues=$3
     local matchdir=$4
     local surveyForCalibration=$5
+    local calibratingMosaic=$6
 
-    base="entirecamera_$a.fits"
     out=$matchdir/matched_"$base".cat
-    ourDataCatalogue=$myCatalogues/entirecamera_$a.fits.cat
+    ourDataCatalogue=$myCatalogues/$base
 
     tmpCatalogue=$matchdir/match-$base-tmp.cat
     out=$matchdir/match-"$base".cat
 
-    # Choose between the whole field catalogue (spectra calibration) or the specific catalogue (imaging calibration)
+    # Choose between the whole field catalogue (spectra calibration or calibrating coadd prephot) or the specific catalogue (imaging calibration)
     # I have to do this independently because if it is spectra data I want to preserve the spectrograph and the objectype
-    if [ $surveyForCalibration == "SPECTRA" ]; then
+    if [[ ($surveyForCalibration == "SPECTRA") || ("$calibratingMosaic" == true) ]]; then
         calibrationCat=$calibrationCatalogues/wholeFieldPhotometricCatalogue.cat
+    else
+        calibrationCat=$calibrationCatalogues/"${base%%.*}".cat
+    fi
+
+    if [ $surveyForCalibration == "SPECTRA" ]; then
         astmatch $ourDataCatalogue --hdu=1 $calibrationCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
                 --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
 
@@ -2130,7 +2148,6 @@ matchDecalsAndSingleFrame() {
             --colmetadata=7,MAGNITUDE_NONCALIBRATED,none,"Magnitude in data being reduced" \
             --colmetadata=8,SUM,none,"Sum in in data being reduced"
     else
-        calibrationCat=$calibrationCatalogues/entirecamera_$a.cat
         astmatch $ourDataCatalogue --hdu=1 $calibrationCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
                 --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
 
@@ -2153,6 +2170,7 @@ matchDecalsAndOurData() {
     local calibrationCatalogues=$2
     local matchdir=$3
     local surveyForCalibration=$4
+    local calibratingMosaic=$5
 
     matchdirdone=$matchdir/done_automatic.txt
     if ! [ -d $matchdir ]; then mkdir $matchdir; fi
@@ -2160,24 +2178,23 @@ matchDecalsAndOurData() {
         echo -e "\n\tMatch between decals (aperture) catalog and my (aperture) catalogs already done\n"
     else
         frameNumber=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            frameNumber+=("$a")
+        for a in $( ls $myCatalogues/*.cat ); do
+            frameName=$( basename $a )
+            frameNumber+=("$frameName")
         done
-        printf "%s\n" "${frameNumber[@]}" | parallel -j "$num_cpus" matchDecalsAndSingleFrame {} $myCatalogues $calibrationCatalogues $matchdir $surveyForCalibration
+        printf "%s\n" "${frameNumber[@]}" | parallel -j "$num_cpus" matchDecalsAndSingleFrame {} $myCatalogues $calibrationCatalogues $matchdir $surveyForCalibration $calibratingMosaic
         echo done > $matchdirdone
     fi
 }
 export -f matchDecalsAndOurData
 
 buildOurCatalogueOfMatchedSourcesForFrame() {
-    local a=$1
+    local base=$1
     local ourDatadir=$2
     local framesForCalibrationDir=$3
     local mycatdir=$4
     local numberOfApertureUnitsForCalibration=$5
 
-
-    base="entirecamera_$a.fits"
     i=$framesForCalibrationDir/$base
     automaticCatalogue=$mycatdir/selected_"$base"_automatic.txt
 
@@ -2195,7 +2212,7 @@ buildOurCatalogueOfMatchedSourcesForFrame() {
     columnWithYCoordForOutDataPx=1
     columnWithXCoordForOutDataWCS=2
     columnWithYCoordForOutDataWCS=3
-    photometryOnImage_photutils $a $ourDatadir $automaticCatalogue $i $r_myData_pix $ourDatadir/$base.cat 22.5 $dataHdu \
+    photometryOnImage_photutils $base $ourDatadir $automaticCatalogue $i $r_myData_pix $ourDatadir/$base.cat 22.5 $dataHdu \
                                 $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
 }
 export -f buildOurCatalogueOfMatchedSourcesForFrame
@@ -2212,8 +2229,9 @@ buildOurCatalogueOfMatchedSources() {
         echo -e "\n\tAperture catalogs in our data done\n"
     else
         framesToUse=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            framesToUse+=("$a")
+        for a in $( ls $framesForCalibrationDir/*.fits); do
+            frameName=$( basename $a )
+            framesToUse+=("$frameName")
         done
 
         printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
@@ -2262,6 +2280,7 @@ computeAndStoreFactors() {
     local brightLimit=$3
     local faintLimit=$4
 
+
     alphatruedone=$alphatruedir/done.txt
     numberOfStarsUsedToCalibrateFile=$alphatruedir/numberOfStarsUsedForCalibrate.txt
 
@@ -2269,9 +2288,12 @@ computeAndStoreFactors() {
     if [ -f $alphatruedone ]; then
         echo -e "\n\tTrustable alphas computed for extension $h\n"
     else
-        for a in $(seq 1 $totalNumberOfFrames); do
+        for a in $( ls $matchdir/*.cat ); do                       
+            baseName=$( basename $a )
+            a=$( echo $baseName | awk -F'[_.]' '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $(i+1)=="fits") print $i}')
+
             alphaFile=alpha_$a.txt
-            f=$matchdir/match-entirecamera_$a.fits.cat
+            f=$matchdir/$baseName
 
             alphatruet=$alphatruedir/"$objectName"_"$filter"_"$a".txt
             asttable $f -h1 --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
@@ -2348,42 +2370,43 @@ computeCalibrationFactors() {
     local imagesForCalibration=$3
     local selectedDecalsStarsDir=$4
     local matchdir=$5
-    local rangeUsedDecalsDir=$6
-    local mosaicDir=$7
-    local alphatruedir=$8
-    local brightLimit=$9
-    local faintLimit=${10}
-    local tileSize=${11}
-    local apertureUnits=${12}
-    local numberOfApertureUnitsForCalibration=${13}
+    local ourDataCatalogueDir=$6
+    local prepareCalibrationCataloguePerFrame=$7
+    local mycatdir=$8
+    local rangeUsedDecalsDir=$9
+    local mosaicDir=${10}
+    local alphatruedir=${11}
+    local brightLimit=${12}
+    local faintLimit=${13}
+    local tileSize=${14}
+    local apertureUnits=${15}
+    local numberOfApertureUnitsForCalibration=${16}
+    local calibratingMosaic=${17}
 
-
-    mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
     
-    exit 0
     
-    ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
     
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
-    prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
     if ! [ -d $prepareCalibrationCataloguePerFrame ]; then mkdir $prepareCalibrationCataloguePerFrame; fi
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-        cp $mosaicDir/aperturePhotometryCatalogues/wholeFieldPhotometricCatalogue.cat $prepareCalibrationCataloguePerFrame
+    if [[ ("$surveyForCalibration" == "SPECTRA") || ( "$calibratingMosaic" == true) ]]; then
+        cp $mosaicDir/wholeFieldPhotometricCatalogue.cat $prepareCalibrationCataloguePerFrame
     else
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
     fi
+
     
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
-    matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration
-   
+    matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic
+
+    
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
 }
@@ -2395,11 +2418,10 @@ applyCalibrationFactorsToFrame() {
     local alphatruedir=$3
     local photCorrDir=$4
 
-    base=entirecamera_"$a".fits
-    f=$imagesForCalibration/"entirecamera_$a.fits"
+    f=$imagesForCalibration/entirecamera_"$a".fits
     alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
     alpha=$(awk 'NR=='1'{print $1}' $alpha_cat)
-    astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/$base
+    astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/entirecamera_"$a".fits
 }
 export -f applyCalibrationFactorsToFrame
 
@@ -2408,15 +2430,19 @@ applyCalibrationFactors() {
     local alphatruedir=$2
     local photCorrDir=$3
 
-    muldone=$photCorrDir/done.txt
+    muldone=$photCorrDir/done_calibration.txt
     if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
     if [ -f $muldone ]; then
             echo -e "\n\tMultiplication for alpha in the pointings (huge grid) is done for extension $h\n"
     else
         framesToApplyFactor=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            framesToApplyFactor+=("$a")
+
+        for a in $(ls $imagesForCalibration/*.fits); do
+            frameName=$( basename $a )
+            frameNumber=$( echo $frameName | grep -oP '(?<=_)\d+(?=\.fits)' )
+            framesToApplyFactor+=("$frameNumber")
         done
+
         printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir
         echo done > $muldone
     fi
@@ -2653,6 +2679,7 @@ produceCalibrationCheckPlot() {
     local outputDir=${10}
     local survey=${11}
     local BDIR=${12}
+    local mosaicPlot=${13}
 
     calibratedCataloguesDir=$BDIR/calibratedCatalogues
     if ! [ -d $calibratedCataloguesDir ]; then mkdir $calibratedCataloguesDir; fi
@@ -2666,10 +2693,10 @@ produceCalibrationCheckPlot() {
         if [ "$frameNumber" -gt 10 ]; then
             :
         else
-            if [ $survey == "SPECTRA" ]; then
+            if [[ ($survey == "SPECTRA") || ("$mosaicPlot" == true) ]]; then
                 referenceCatalogue=$referenceCatalogueDir/wholeFieldPhotometricCatalogue.cat
             else
-                referenceCatalogue=$referenceCatalogueDir/*_$frameNumber.cat
+                referenceCatalogue=$referenceCatalogueDir/entirecamera_$frameNumber.cat
             fi
 
             myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
@@ -2695,13 +2722,12 @@ produceCalibrationCheckPlot() {
             rm $calibratedCataloguesDir/$frameNumber.cat
         fi
     done
-
     python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibratedCataloguesDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey
+    rm $calibratedCataloguesDir/*.cat 
 }
 export -f produceCalibrationCheckPlot
 
 produceHalfMaxRadVsMagForSingleImage() {
-
     local image=$1
     local outputDir=$2
     local gaiaCat=$3
@@ -3020,6 +3046,7 @@ limitingSurfaceBrightness() {
     local fracExpMap=$6
     local pixelScale=$7
     local outFile=$8
+
 
     numOfSigmasForMetric=3
 

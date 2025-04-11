@@ -85,7 +85,7 @@ def extractNumberFromName(filename):
     else:
         raise Exception("Something went wrong with the fileNames")
 
-def retrieveBackgroundValues(currentFile):
+def retrieveBackgroundValues(currentFile):   
     with open(currentFile, 'r') as f:
         lines = f.readlines()
         if( len(lines) != 1):
@@ -237,13 +237,14 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
+
         if (numberOfFields == 5):
             backgroundValue = float(splittedLine[1])
             backgroundStd   = float(splittedLine[2])
             backgroundSkew = float(splittedLine[3])
             backgroundKurto = float(splittedLine[4])
         elif (numberOfFields == 1):
-            return(float('nan'), float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
+            return(float('nan'), float('nan'), float('nan'), float('nan'), float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
         else:
             raise Exception("Wrong number of fields in the file of background estimation. Expected 5 (constant estimation of the background), got " + str(numberOfFields))
 
@@ -252,7 +253,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
     except:
         print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + ")")
-        return(float('nan'), float('nan')) 
+        return(float('nan'), float('nan'), float('nan'), float('nan'), float('nan')) 
 
     return(backgroundValue, backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
 
@@ -552,8 +553,7 @@ folderWithSkyEstimations      = sys.argv[1]
 folderWithFramesWithAirmasses = sys.argv[2] # The airmasses are in the header of the fits files that are in this folder
 airMassKeyWord                = sys.argv[3]
 outputFolder                  = sys.argv[4]
-outputFileBackgroundValue     = sys.argv[5]
-outputFileBackgroundStd       = sys.argv[6]
+
 
 
 setMatplotlibConf()
@@ -616,36 +616,3 @@ saveValuesVSStats(normalisedBackgroundValues, backgroundStds, backgroundSkews, b
 
 saveHistogram(normalisedBackgroundValues, badAstrometrisedIndices,   outputFolder + "/backgroundHist.png",  "Background values normalised by the airmass", "Background counts (ADU)")
 saveHistogram(backgroundStds, badAstrometrisedIndices,   outputFolder + "/backgroundStdHist.png",  "Background std values", "Background STD (ADU)")
-
-
-### THIS WAS DONE BEFORE WHEN THE REJECTION WAS DONE IN BASE ON THE STD. NOW WE USE ABSOLUTE VALUES SO WE DO NOT NEED THIS
-
-# # 2.- Identify what frames are outside the acceptance region ------------------
-# numberOfStdForRejecting = 3
-# badFiles, badValues, badStd, allData, badFilesBCK, badFilesSTD = identifyBadFrames(folderWithSkyEstimations, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting)
-
-
-
-# backgroundRejectedIndices = getIndicesOfFiles(allData, badFilesBCK)
-# stdRejectedIndices        = getIndicesOfFiles(allData, badFilesSTD)
-
-# saveBACKevol(allData, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, outputFolder+"/backgroundEvolution.png")
-# saveSTDevol(allData, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, outputFolder+"/stdEvolution.png")
-# saveValuesVSStats(normalisedBackgroundValues, backgroundStds, backgroundSkews, backgroundKurtos, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, outputFolder + "/backgroundStats.png")
-
-# with open(outputFolder + "/" + outputFileBackgroundValue, 'w') as file:
-#     for fileName in badFilesBCK:
-#         file.write(fileName.split('/')[-1].split("_")[-1].split('.')[0] + '\n')
-
-# with open(outputFolder + "/" + outputFileBackgroundStd, 'w') as file:
-#     for fileName in badFilesSTD:
-#         file.write(fileName.split('/')[-1].split("_")[-1].split('.')[0] + '\n')
-
-# # 3.- Obtain the median and std and do the histograms ------------------
-# backgroundValueMedian, backgroundValueStd = computeMedianAndStd(normalisedBackgroundValues)
-# saveHistogram(normalisedBackgroundValues, backgroundValueMedian, backgroundValueStd, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, \
-#                 outputFolder + "/backgroundHist.png", numberOfStdForRejecting, "Background values normalised by the airmass", "Background counts (ADU)")
-
-# backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
-# saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, \
-#                 outputFolder + "/backgroundStdHist.png", numberOfStdForRejecting, "Background std values", "Background STD (ADU)")

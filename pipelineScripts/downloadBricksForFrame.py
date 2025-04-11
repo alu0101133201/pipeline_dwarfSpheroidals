@@ -175,6 +175,12 @@ if survey=='DECaLS':
         i.start()
     for i in threadList:
         i.join()
+
+    # This is to keep the format that we are using, so the code is compatible with panstarrs too
+    bricksNames = [ i + f".{filters[0]}" for i in bricksNames]
+
+
+
 elif survey=='PANSTARRS':
     bricks_fullNames,bricksRA,bricksDec,bricksNames = getPanstarrsBricksFromRegionDefinedByTwoPoints(cornersWCSCoords[0],cornersWCSCoords[1],filters)
     threadList = []

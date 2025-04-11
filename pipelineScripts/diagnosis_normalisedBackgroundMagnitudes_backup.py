@@ -165,9 +165,9 @@ def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, reject
     configureAxis(ax, 'Background (mag/arcsec^2)', '', logScale=False)
     counts, bins, patches = ax.hist(values, bins=myBins, color="teal")
 
-    ax.hist(values[rejectedBackgroundIndices - 1], bins=myBins, color="red", label="Rejected by background brightness")
-    ax.hist(values[rejectedFWHMIndices - 1], bins=myBins, color="mediumorchid", label="Rejected by fwhm")
-    ax.hist(values[rejectedAstrometryIndices - 1], bins=myBins, color="blue", label="Rejected by astrometry")
+    ax.hist(values[rejectedBackgroundIndices], bins=myBins, color="red", label="Rejected by background brightness")
+    ax.hist(values[rejectedFWHMIndices], bins=myBins, color="mediumorchid", label="Rejected by fwhm")
+    ax.hist(values[rejectedAstrometryIndices], bins=myBins, color="blue", label="Rejected by astrometry")
 
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
@@ -180,34 +180,25 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
     time     = []
     cfactors = []
 
-
     for i in factors:
-        if (not pd.isna(i[0])): 
-            match=re.search(r"_(\d+).",i[0])
-            frame = match.group(1)
-            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-            date=obtainKeyWordFromFits(file,'DATE-OBS')
-            air=obtainKeyWordFromFits(file,'AIRMASS')
-            date_ok=datetime.fromisoformat(date)
-            cfactors.append(i[1])
-            airMass.append(air)
-            time.append(date_ok)
-        else:
-            airMass.append(np.nan)
-            time.append(np.nan)
-            cfactors.append(np.nan)
+        match=re.search(r"_(\d+).",i[0])
+        frame = match.group(1)
+        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
+        cfactors.append(i[1])
+        airMass.append(air)
+        time.append(date_ok)
 
-
-    airMass=np.array(airMass,dtype='float')
     cfactors=np.array(cfactors,dtype='float')
+    airMass=np.array(airMass,dtype='float')
     time = np.array(time)
 
 
     with open(destinationFolder + "/cfactors.txt", "w") as file:
         for a, b, c in zip(time, airMass, cfactors):
             file.write(f"{a}\t{b}\t{c}\n")  # Tab-separated columns
-
-
 
 
     fig, ax = plt.subplots(2, 1, figsize=(20,10))
@@ -217,22 +208,17 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
 
     pattern=r"(\d+).fits"
 
-    timeMask = ~pd.isna(time) & ~pd.isna(cfactors)
-    ax[0].scatter(time[timeMask],cfactors[timeMask],marker='o',s=50,edgecolor='black',color='teal',zorder=0)
+    ax[0].scatter(time,cfactors,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
     ax[1].scatter(airMass,cfactors,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
 
-    timeMask = ~pd.isna(time[rejectedAstrometryIndices - 1]) & ~pd.isna(cfactors[rejectedAstrometryIndices - 1])
-    ax[0].scatter(time[rejectedAstrometryIndices - 1][timeMask], cfactors[rejectedAstrometryIndices - 1][timeMask], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
-    
-    timeMask = ~pd.isna(time[rejectedFWHMIndices - 1]) & ~pd.isna(cfactors[rejectedFWHMIndices - 1])
-    ax[0].scatter(time[rejectedFWHMIndices - 1][timeMask], cfactors[rejectedFWHMIndices - 1][timeMask], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-   
-    timeMask = ~pd.isna(time[rejectedBackgroundIndices - 1]) & ~pd.isna(cfactors[rejectedBackgroundIndices - 1])
-    ax[0].scatter(time[rejectedBackgroundIndices - 1][timeMask], cfactors[rejectedBackgroundIndices - 1][timeMask], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
 
-    ax[1].scatter(airMass[rejectedAstrometryIndices - 1], cfactors[rejectedAstrometryIndices - 1], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
-    ax[1].scatter(airMass[rejectedFWHMIndices - 1], cfactors[rejectedFWHMIndices - 1], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-    ax[1].scatter(airMass[rejectedBackgroundIndices - 1], cfactors[rejectedBackgroundIndices - 1], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
+    # ax[0].scatter(time[rejectedAstrometryIndices], cfactors[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    # ax[0].scatter(time[rejectedFWHMIndices], cfactors[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
+    # ax[0].scatter(time[rejectedBackgroundIndices], cfactors[rejectedBackgroundIndices], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
+
+    # ax[1].scatter(airMass[rejectedAstrometryIndices], cfactors[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    # ax[1].scatter(airMass[rejectedFWHMIndices], cfactors[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
+    # ax[1].scatter(airMass[rejectedBackgroundIndices], cfactors[rejectedBackgroundIndices], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
 
 
     ax[0].legend(loc="upper right", fontsize=20)
@@ -250,19 +236,15 @@ def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejected
     
 
     for i in normalisedBackgroundValues:
-        if (not pd.isna(i[0])): 
-            match=re.search(r"_(\d+).",i[0])
-            frame = match.group(1)
-            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-            date=obtainKeyWordFromFits(file,'DATE-OBS')
-            air=obtainKeyWordFromFits(file,'AIRMASS')
-            date_ok=datetime.fromisoformat(date)
-            
-            airMass.append(air)
-            time.append(date_ok)
-        else:
-            airMass.append(np.nan)
-            time.append(np.nan)
+        match=re.search(r"_(\d+).",i[0])
+        frame = match.group(1)
+        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        air=obtainKeyWordFromFits(file,'AIRMASS')
+        date_ok=datetime.fromisoformat(date)
+        
+        airMass.append(air)
+        time.append(date_ok)
 
     airMass=np.array(airMass,dtype='float')
     time = np.array(time)
@@ -273,25 +255,17 @@ def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejected
     fig.suptitle(title,fontsize=22)
     pattern=r"(\d+).fits"
 
-    timeMask = ~pd.isna(time) & ~pd.isna(magnitudesPerArcSecSq)
-    ax[0].scatter(time[timeMask],magnitudesPerArcSecSq[timeMask],marker='o',s=50,edgecolor='black',color='teal',zorder=0)
+    ax[0].scatter(time,magnitudesPerArcSecSq,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
     ax[1].scatter(airMass,magnitudesPerArcSecSq,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
 
-    timeMask = ~pd.isna(time[rejectedAstrometryIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedAstrometryIndices - 1])
-    ax[0].scatter(time[rejectedAstrometryIndices - 1][timeMask], magnitudesPerArcSecSq[rejectedAstrometryIndices - 1][timeMask], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
-    
-    timeMask = ~pd.isna(time[rejectedFWHMIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedFWHMIndices - 1])
-    ax[0].scatter(time[rejectedFWHMIndices - 1][timeMask], magnitudesPerArcSecSq[rejectedFWHMIndices - 1][timeMask], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-    
-    timeMask = ~pd.isna(time[rejectedBackgroundIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedBackgroundIndices - 1])
-    ax[0].scatter(time[rejectedBackgroundIndices - 1][timeMask], magnitudesPerArcSecSq[rejectedBackgroundIndices - 1][timeMask], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
+    ax[0].scatter(time[rejectedAstrometryIndices], magnitudesPerArcSecSq[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    ax[0].scatter(time[rejectedFWHMIndices], magnitudesPerArcSecSq[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
+    ax[0].scatter(time[rejectedBackgroundIndices], magnitudesPerArcSecSq[rejectedBackgroundIndices], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
 
-    ax[1].scatter(airMass[rejectedAstrometryIndices - 1], magnitudesPerArcSecSq[rejectedAstrometryIndices - 1], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
-    ax[1].scatter(airMass[rejectedFWHMIndices - 1], magnitudesPerArcSecSq[rejectedFWHMIndices - 1], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-    ax[1].scatter(airMass[rejectedBackgroundIndices - 1], magnitudesPerArcSecSq[rejectedBackgroundIndices - 1], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
+    ax[1].scatter(airMass[rejectedAstrometryIndices], magnitudesPerArcSecSq[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    ax[1].scatter(airMass[rejectedFWHMIndices], magnitudesPerArcSecSq[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
+    ax[1].scatter(airMass[rejectedBackgroundIndices], magnitudesPerArcSecSq[rejectedBackgroundIndices], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
 
-
-    time = time[~pd.isna(time)]
     ax[0].hlines(maxmimumBackgroundBrightness, xmin=np.nanmin(time), xmax=np.nanmax(time), color="black", ls="--", lw=2)
     ax[1].hlines(maxmimumBackgroundBrightness, xmin=np.nanmin(airMass), xmax=np.nanmax(airMass), color="black", ls="--", lw=2)
 
@@ -328,12 +302,10 @@ def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFacto
         for i in calibrationFactors:
             calibrationFile = i[0]
             
-            if ((not pd.isna(calibrationFile)) and (not pd.isna(backgroundFile))):
-                if (filesMatch(calibrationFile, backgroundFile)):
-                    calibratedValues.append(i[1] * j[1])
-                    found=True
-                    break
-
+            if (filesMatch(calibrationFile, backgroundFile)):
+                calibratedValues.append(i[1] * j[1])
+                found=True
+                break
         if (not found):
             calibratedValues.append(np.nan)
                 
@@ -374,11 +346,16 @@ def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, rejec
     plt.savefig(fileName)
 
 def getIndicesOfRejectedFrames(normalisedBackgroundValuesArray, rejectedFrames):
-    rejectedFrames = []
+    indices = []
     pattern = r"\d+"
 
     for j in rejectedFrames:
-        rejectedFrames
+        for i in range(len(normalisedBackgroundValuesArray)):
+            currentFrameName = normalisedBackgroundValuesArray[i][0]
+            match = re.search(pattern, currentFrameName)
+            result = match.group(0)
+            if (result == j):
+                indices.append(i)
     return(indices)
 
 
@@ -422,55 +399,41 @@ totalNumberOfFrames = len(glob.glob(pattern))
 rejectedFrames_astrometry = []
 with open(destinationFolder + "/identifiedBadFrames_astrometry.txt", 'r') as f:
     for line in f:
-        rejectedFrames_astrometry.append(int(line.strip()))
-rejectedFrames_astrometry = np.array(rejectedFrames_astrometry)
-
+        rejectedFrames_astrometry.append(line.strip())
 
 rejectedFrames_FWHM = []
 with open(destinationFolder + "/identifiedBadFrames_fwhm.txt", 'r') as f:
     for line in f:
-        rejectedFrames_FWHM.append(int(line.strip()))
-rejectedFrames_FWHM = np.array(rejectedFrames_FWHM)
+        rejectedFrames_FWHM.append(line.strip())
+
 
 # 1.- Obtain the normalised background values ------------------
-originalBackgroundValues =  np.array([[np.nan, np.nan] for _ in range(totalNumberOfFrames)], dtype=object)
-normalisedBackgroundValues =  np.array([[np.nan, np.nan] for _ in range(totalNumberOfFrames)], dtype=object)
-files = np.full(totalNumberOfFrames, np.nan, dtype=object)
- 
+originalBackgroundValues = []
+normalisedBackgroundValues = []
+files = []
+
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
-
-    match = re.search(r'_(\d+)\.', currentFile)
-    if match:
-        number = int(match.group(1))  # or leave as string if needed
-    else:
-        raise Exception(f"Number not found in the file name ({currentFile}). Something went wrong here")
-
     originalBackground, normalisedBackground = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
-
-    files[number-1] = currentFile
-    normalisedBackgroundValues[number-1] = [currentFile.split('/')[-1], normalisedBackground]
-    originalBackgroundValues[number-1] = [currentFile.split('/')[-1], originalBackground]
+    files.append(currentFile)
+    normalisedBackgroundValues.append([currentFile.split('/')[-1], normalisedBackground])
+    originalBackgroundValues.append([currentFile.split('/')[-1], originalBackground])
 
 files = np.array(files)
 
-
 # 2.- Obtain the calibration factors
-totalCalibrationFactors = np.array([[np.nan, np.nan] for _ in range(totalNumberOfFrames)], dtype=object)
-
+totalCalibrationFactors = []
 for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt"):
-    match = re.search(r'_(\d+)\.', currentFile)
-    if match:
-        number = int(match.group(1))  # or leave as string if needed
-    else:
-        raise Exception(f"Number not found in the file name ({currentFile}). Something went wrong here")
-
     calibrationFactor = retrieveCalibrationFactors(currentFile)
-    totalCalibrationFactors[number-1] = [currentFile.split('/')[-1], calibrationFactor]
+    totalCalibrationFactors.append([currentFile.split('/')[-1], calibrationFactor])
 
+
+rejectedAstrometryIndices      = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_astrometry)
+rejectedFWHMIndices            = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_FWHM)
 
 valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
+
 magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
 
 with open(destinationFolder + "/backgroundMagnitudes.dat", 'w') as f:
@@ -486,17 +449,15 @@ with open(destinationFolder + "/" + outputFile, 'w') as file:
         result = match.group(0)
         file.write(result + '\n')
 
+rejectedBackgroundIndices = getIndicesOfRejectedFrames(normalisedBackgroundValues, badFilesBackground)
 
-rejectedFrames_Background = np.array(badFilesBackground).astype(int)
 
-
-saveHistogram(np.array(magnitudesPerArcSecSq), rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, \
+saveHistogram(np.array(magnitudesPerArcSecSq), rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, \
                 "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
 
 
-saveScatterFactors(totalCalibrationFactors, rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, \
+saveScatterFactors(totalCalibrationFactors, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, \
                 "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses, destinationFolder)
-
 
 
 originalValuesCalibrated = applyCalibrationFactorsToBackgroundValues(originalBackgroundValues, totalCalibrationFactors)
@@ -505,13 +466,12 @@ valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroun
 originalMagnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(originalValuesCalibrated, arcsecPerPx)
 normMagnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
 
-
-saveBackEvolution(originalMagnitudesPerArcSecSq,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background,\
+saveBackEvolution(originalMagnitudesPerArcSecSq,rejectedAstrometryIndices,rejectedFWHMIndices, rejectedBackgroundIndices,\
     "Evolution of background magnitudes",destinationFolder+"/backgroundEvolution_originalMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
 
-saveBackEvolution(normMagnitudesPerArcSecSq,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background,\
+saveBackEvolution(normMagnitudesPerArcSecSq,rejectedAstrometryIndices,rejectedFWHMIndices, rejectedBackgroundIndices,\
     "Evolution of NORMALISED background magnitudes",destinationFolder+"/backgroundEvolution_normMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
 
-# x = [float(i) for i in valuesCalibrated]
-# scatterPlotCountsVsMagnitudes(x, normMagnitudesPerArcSecSq, rejectedFrames_astrometry, rejectedFrames_FWHM, \
-#                             destinationFolder + "/countsVsMagnitudes.png")
+x = [float(i) for i in valuesCalibrated]
+scatterPlotCountsVsMagnitudes(x, normMagnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedFWHMIndices, \
+                            destinationFolder + "/countsVsMagnitudes.png")

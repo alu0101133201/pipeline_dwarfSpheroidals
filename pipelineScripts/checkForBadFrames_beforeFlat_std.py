@@ -166,6 +166,8 @@ folderWithSkyEstimations      = sys.argv[1]
 outputFolder                  = sys.argv[2]
 outputFile                    = sys.argv[3]
 numberOfStdForRejecting       = int(sys.argv[4])
+nightNumber                   = int(sys.argv[5])
+
 setMatplotlibConf()
 
 allFiles, backgroundStds, badFiles, badStd = identifyBadFrames(folderWithSkyEstimations, numberOfStdForRejecting)
@@ -176,4 +178,4 @@ with open(outputFolder + "/" + outputFile, 'w') as file:
 
 backgroundStdMedian, BackgroundStdStd = computeMedianAndStd(backgroundStds)
 saveHistogram(backgroundStds, backgroundStdMedian, BackgroundStdStd, badStd,\
-                outputFolder + "/backgroundStdHist_beforeFlat.png", numberOfStdForRejecting, "Excluding frames in flat construction", "Background STD (ADU)")
+                outputFolder + f"/backgroundStdHist_beforeFlat_n{nightNumber}.png", numberOfStdForRejecting, "Excluding frames in flat construction", "Background STD (ADU)")

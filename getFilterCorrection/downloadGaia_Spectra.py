@@ -15,9 +15,9 @@ def chunks(lst, n):
 # ra          = 149.8528
 # dec         = 30.7493
 
-fieldName   = "NGC5308"
-ra          = 206.751817
-dec         = 60.97315
+fieldName   = "Malin2"
+ra          = 159.9688
+dec         = 20.8473
 
 
 
