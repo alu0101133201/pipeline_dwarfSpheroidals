@@ -3698,7 +3698,7 @@ subtractStarFromFrame() {
         
 
             output_temp=$output_folder/"$base"_temp.fits
-            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp
+            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp --numthreads=$num_cpus
             astfits $output_temp --copy=1 -o$output
             gain=$(astfits $image -h$h --keyvalue=GAIN -q)
             astfits $output -h$h --write=GAIN,$gain

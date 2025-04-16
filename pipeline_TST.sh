@@ -1869,7 +1869,7 @@ while IFS= read -r line; do
   outputDir_small=$BDIR/pointings_smallGrid_sub$starId
   outputDir_full=$BDIR/pointings_fullGrid_sub$starId
   subtractStars $input_subStar_small $input_subStar_full "$line" $psfFile $psfRadFile $outputDir_small $outputDir_full $starId
-  if (( $(echo "$starId == 10" | bc -l) )); then exit; fi
+  #if (( $(echo "$starId == 13" | bc -l) )); then exit; fi
   if ! (( $(echo "$starId == 1" | bc -l) )); then
     if ! (( $(echo "$starId == 2" | bc -l) )); then
 	    rm $input_subStar_small/*.fits
@@ -1880,15 +1880,16 @@ while IFS= read -r line; do
   input_subStar_full=$outputDir_full
 done < $starsToSubtract
 
-exit
+
 
 ######################
 entiredir_smallGrid=$outputDir_small
 entiredir_fullGrid=$outputDir_full
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
+dirForCrop=$BDIR/pointings_fullGrid
 
-maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
+maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $dirForCrop
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter".txt
@@ -1976,7 +1977,7 @@ applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
-maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
+maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $dirForCrop
 
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
