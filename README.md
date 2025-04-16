@@ -1,5 +1,4 @@
 # Small Telescopes Pipeline
-##### Sergio Guerra Arencibia
 
 This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture and large FOV telescopes. The purpose of the pipeline is to reduce and produce low-surface brightness friendly data.
 
