@@ -574,6 +574,7 @@ backgroundKurtos           = []
 for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     if fnmatch.fnmatch(currentFile, '*done*.txt'):
         continue
+    
     files.append(currentFile)
     originalbackground, normalisedBackground, currentStd, currentSkew, currentKurto = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
     originalBackgroundValues.append(originalbackground)
@@ -581,6 +582,7 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     backgroundStds.append(currentStd)
     backgroundSkews.append(currentSkew)
     backgroundKurtos.append(currentKurto)
+
 
 files = np.array(files)
 originalBackgroundValues   = np.array(originalBackgroundValues)

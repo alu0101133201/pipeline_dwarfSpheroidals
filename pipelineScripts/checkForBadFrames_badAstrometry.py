@@ -136,12 +136,15 @@ if col1_name in header_indices :
     potentiallyBadAstrometrised = identifyBadFrames(df, col1_name, threshold)
     writeBadAstrometrisedFramesToFile(diagnosisFolder, warningFile, potentiallyBadAstrometrised)
     savePlot(col1_name, df, diagnosisFolder, threshold)
-    ##Write in the header of pointings_fullGrid the contrast parameter because we need it later
-    for row in range(len(df)):
-        frame=pointingsDir+'/'+df.loc[row]['Frame']
-        contrast=df.loc[row]['XY_Contrast']
-        os.system(f'astfits {frame} -h1 --write=XY-contrast,{contrast},"Scamp contrast parameter"')
-    
 
+    ##Write in the header of pointings_fullGrid the contrast parameter because we need it later
+    with open(diagnosisFolder + "/scampValues.dat", 'w') as outputFile:
+        for row in range(len(df)):
+            frame=pointingsDir+'/'+df.loc[row]['Frame']
+            contrast=df.loc[row]['XY_Contrast']
+            os.system(f'astfits {frame} -h1 --write=XY-contrast,{contrast},"Scamp contrast parameter"')
+
+            outputFile.write(str(df.loc[row]['Frame']) + " " + str(contrast) + "\n")
+            outputFile.flush()
 else:
     print(f"The specified column ('{col1_name}') does not exist in the XML.")

@@ -48,7 +48,7 @@ export pipelinePath
 export pythonScriptsPath
 
 # Load the file with all the needed functions
-source "$pipelinePath/pipeline_TST_functions_ttt3.sh"
+source "$pipelinePath/pipeline_functions.sh"
 
 echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
@@ -356,19 +356,18 @@ oneNightPreProcessing() {
 
   
   ########## Creating the ring mask ##########
-  # Since the ring possibilities are quite flexible (using one common ring or two rings depending on the angle) I always clean and rebuild the rings (It doesn't cost almost time so is worth it)
-  ringdir=$BDIR/ring
-  rm -rf $ringdir
-  mkdir $ringdir
-
   # We always need the common ring  definition always stored for photometric calibration (selection of decals bricks to download)
-  cp $commonRingDefinitionFile $ringdir/ring.txt 
+  ringdir=$BDIR/ring
+  if ! [ -d $ringdir ]; then mkdir $ringdir; fi
   # We create the .fits ring image based on how the normalisation is going to be done
-  if [ "$USE_COMMON_RING" = true ]; then
+  if [[ "$USE_COMMON_RING" = true && ! -f "$ringdir/ring.fits"  ]]; then
+    cp $commonRingDefinitionFile $ringdir/ring.txt 
     astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
   else
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
+    if [[ ! -f "$ringdir/ring_2.fits" || ! -f "$ringdir/ring_1.fits" ]]; then
+      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
+      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
+    fi
   fi
 
   ########## Creating the it1 master flat image ##########
@@ -881,7 +880,6 @@ export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
 
 
-
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
@@ -898,7 +896,13 @@ echo -e "·Downloading Gaia Catalogue"
 
 # 2.- This gaia catalogue is used to match the survey data for calibration to gaia, calibrating thus the survey to our photometric framework
 # of gaia. It has to be large enough to be to perform this calibration process
-radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+
+if (( sizeOfOurFieldDegrees > 1 )); then
+  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+else
+  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+fi
+
 query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
 catName=$catdir/"$objectName"_Gaia_DR3.fits
@@ -1051,6 +1055,7 @@ else
   echo done > $entiredone
 fi
 
+exit 0
 
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1109,8 +1114,16 @@ ringDir=$BDIR/ring
 
 
 
+# ringdir=$BDIR/ring
+# if ! [ -d $ringdir ]; then mkdir $ringdir; fi
+# # We create the .fits ring image based on how the normalisation is going to be done
+# cp $commonRingDefinitionFile $ringdir/ring.txt 
+# astmkprof --background=/home/sguerra/Sextans/build/pointings_fullGrid/entirecamera_1.fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
+
+
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'"
+
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
@@ -1138,7 +1151,6 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir
   echo done > $badFilesWarningsDone
 fi
-
 
 echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
@@ -1249,6 +1261,8 @@ else
   computeExposureMap $exposuremapDir $exposuremapdone
 fi
 
+
+
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
@@ -1271,8 +1285,9 @@ mosaicDone=$mosaicDir/done_prep.txt
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 
-prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
+# prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
+#                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
+
 
 
 # Calibration of coadd prephot
@@ -1337,7 +1352,6 @@ else
 fi
 badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
 python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
-
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 
@@ -1676,14 +1690,15 @@ fi
 
 
 
-mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
-astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
-python3 $pythonScriptsPath/TMP_maskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 159.9694023 20.8467568 120 1
+# This code is used for manually masking a region (generally the galaxy)
 
+# mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
+# astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
+# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 159.9694023 20.8467568 120 1
 
-mv $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
-astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
-python3 $pythonScriptsPath/TMP_maskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 159.9694023 20.8467568 120 1
+# mv $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
+# astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
+# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 159.9694023 20.8467568 120 1
 
 
 
@@ -1757,9 +1772,7 @@ if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
 if [ -f $coaddDone ]; then
 	echo -e "\n Coadd pre-photometry already done\n"
 else
-
-  coaddDir=$BDIR/coadds-prephot_it$iteration
-  maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+  maskName=$BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits
   subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
   subSkyPointings_maskedDir=$BDIR/sub-sky-smallGrid_maskPrephot_masked_it$iteration
   maskedPointingsDone=$subSkyPointings_maskedDir/done_.txt
@@ -1833,7 +1846,6 @@ else
   exposuremapdone=$coaddDir/done_exposureMap.txt
   computeExposureMap $exposuremapDir $exposuremapdone
 fi
-
 
 
 # Calibration of coadd prephot
@@ -1996,6 +2008,7 @@ addkeywords $coaddPrephotCalibratedName keyWords values comments
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
+maskName=$BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
 
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
