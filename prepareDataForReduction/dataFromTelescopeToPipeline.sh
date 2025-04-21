@@ -30,6 +30,10 @@ if [ -z $filter ]; then
     filter=""
 else
     filter=${filter}"*"
+    # The following command goes through all the folders of $destination/$filter (if exists) in order to
+    # take out all the files. This is simply not to compute again a frame already rebinned
+    find $destination/$filter -mindepth 1 -type f -exec mv {} $destination \; 
+    rm -rf $destination/$filter
 fi
 
 

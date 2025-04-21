@@ -1055,7 +1055,6 @@ else
   echo done > $entiredone
 fi
 
-exit 0
 
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1285,8 +1284,8 @@ mosaicDone=$mosaicDir/done_prep.txt
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 
-# prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-#                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
+prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 
 
@@ -2033,6 +2032,7 @@ computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskyd
 clippingdir=$BDIR/clipping-outliers_it$iteration
 clippingdone=$clippingdir/done_"$k".txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
+
 
 
 mowdir=$BDIR/weight-dir-no-outliers_it$iteration

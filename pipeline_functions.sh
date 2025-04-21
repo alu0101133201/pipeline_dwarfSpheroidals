@@ -1634,7 +1634,7 @@ prepareSpectraDataForPhotometricCalibration() {
         echo -e "\n\tThe catalogue with the magnitudes of the spectra already built\n"
     else
         output_tmpCat=$mosaicDir/wholeFieldPhotometricCatalogue_tmp.cat
-        outputCat=$mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat
+        outputCat=$mosaicDir/wholeFieldPhotometricCatalogue.cat
         transmittanceWavelengthUnits=A # At the beginning of the pipeline everything was transformed to A. Nevertheless the python scripts handles transmittances in nm
         python3 $pythonScriptsPath/getMagnitudFromSpectra.py $spectraDir $transmittanceCurveFile $transmittanceWavelengthUnits $output_tmpCat $surveyForSpectra
 
