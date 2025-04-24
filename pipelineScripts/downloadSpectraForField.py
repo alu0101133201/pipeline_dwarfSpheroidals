@@ -71,6 +71,7 @@ def downloadAllGaiaSpectra(mosaicDir, raMin, raMax, decMin, decMax):
     job     = Gaia.launch_job_async(query)
     results = job.get_results()
 
+
     createRegionFileFromTable(mosaicDir + "/spectraInField.reg", results)
 
     chunk_size   = 500

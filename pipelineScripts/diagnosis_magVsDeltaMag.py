@@ -60,12 +60,13 @@ def read_columns_from_file(file_path):
 def getMagnitudeDiffScatterInMagnitudeRange(mag, magDiff, faintLimit, brightLimit):
     diffMagInRange = []
 
+
     for i in range(len(mag)):
-        if ( (mag[i] > brightLimit) and (mag[i] < faintLimit) ):
+        if ( (not np.isnan(magDiff[i])) and (mag[i] > brightLimit) and (mag[i] < faintLimit) ):
             diffMagInRange.append(magDiff[i])
-        
+
     clippedMangitudes, _, _ = sigmaclip(diffMagInRange, low=5.0, high=5.0)
-    return(np.sqrt(np.mean(np.array(clippedMangitudes)**2)))
+    return(np.sqrt(np.nanmean(np.array(clippedMangitudes)**2)))
 
 def plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalRMS, rmsInRange, imageName, survey):
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -137,7 +138,7 @@ for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
 rmsInRange = getMagnitudeDiffScatterInMagnitudeRange(mag1Total, magDiffAbs, calibrationFaintLimit, calibrationBrightLimit)
 magDiffAbs, _, _ = sigmaclip(magDiffAbs[~np.isnan(magDiffAbs)], low=5.0, high=5.0)
 
-totalRMS = np.sqrt(np.mean(magDiffAbs**2))
+totalRMS = np.sqrt(np.nanmean(magDiffAbs**2))
 plotWithAllFrames(calibrationFaintLimit, calibrationBrightLimit, mag1Total, magDiff, frameNumber, totalRMS, rmsInRange, outputName, survey)
 
 

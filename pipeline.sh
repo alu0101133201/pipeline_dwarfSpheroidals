@@ -58,9 +58,10 @@ load_module $gnuastroModuleName
 astrometryModuleName="astrometry.net/0.94"
 load_module $astrometryModuleName
 
-# Needed if using the SIE software
+# # Needed if using the SIE software
 # pythonModuleName="python"
 # load_module $pythonModuleName
+
 
 ########## Handling options and arguments ##########
 OPTSTRING=":h"
@@ -1055,7 +1056,6 @@ else
   echo done > $entiredone
 fi
 
-exit 0
 
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1072,6 +1072,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_fullGrid
   echo done > $badFilesWarningsDone
 fi
+
 
 
 # I COMMENT THIS. THIS IS A TEST FOR ASTROMETRY AND TAKES SOME TIME, SO I'M NOT USING IT RIGHT NOW
@@ -1152,6 +1153,7 @@ else
   echo done > $badFilesWarningsDone
 fi
 
+
 echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
@@ -1187,7 +1189,6 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
-
 
 
 ### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
@@ -1267,6 +1268,7 @@ fi
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
+
 ### PREPARING DATA FOR CALIBRATION ###
 referenceImagesForMosaic=$entiredir_smallGrid
 mosaicDir=$DIR/mosaic
@@ -1285,9 +1287,8 @@ mosaicDone=$mosaicDir/done_prep.txt
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 
-# prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-#                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
-
+prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 
 # Calibration of coadd prephot
@@ -1303,12 +1304,14 @@ rm $BDIR/coaddForCalibration/entirecamera_1_tmp.fits
 
 
 
+
 iteration=1
 alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
 matchdir=$BDIR/match-decals-myData_coaddPrephot_it$iteration
 ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration
 prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
 mycatdir=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
+
 
 calibratingMosaic=true
 imagesForCalibration=$BDIR/coaddForCalibration
@@ -1329,6 +1332,8 @@ imagesForCalibration=$subskySmallGrid_dir
 calibratingMosaic=false
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
+
+
 
 
 # Creating histogram with the number of stars used for the calibration of each frame
@@ -1391,6 +1396,7 @@ else
 fi
 
 
+
 # Calibration
 aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it1
 calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot.png
@@ -1406,6 +1412,7 @@ else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_coaddPrephot_it1 $photCorrPrePhotDir $aperturesFolder $dirWithReferenceCat \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot
 fi
+
 
 
 # # Half-Max-Radius vs magnitude plots of our calibrated data
@@ -2091,7 +2098,7 @@ if [ -f  $sblimitFile ]; then
   surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
 
 else
-    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+    surfaceBrightnessLimit=$( limitingS+14:19:49.15urfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
 echo -e "\nAdding keywords to the coadd"

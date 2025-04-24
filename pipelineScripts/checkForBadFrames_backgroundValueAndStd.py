@@ -65,8 +65,8 @@ def getBadAstrometrisedFrames(file):
 
 
 def getFilenameWithPattern(folderPath, n):
-    pattern1 = re.compile(rf"\bf{n}\b")  # Match "f<number>" as a whole word
-    pattern2 = re.compile(rf"\b{n}\b")  # Match "<number>" as a whole word
+    pattern1 = re.compile(rf"\bf{n}\b.*\.fits\b", re.IGNORECASE)  # Match "f<number>" as a whole word
+    pattern2 = re.compile(rf"\b{n}\b.*\.fits\b", re.IGNORECASE)  # Match "<number>" as a whole word
 
     for filename in os.listdir(folderPath):
         if pattern1.search(filename):
@@ -582,6 +582,7 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     backgroundStds.append(currentStd)
     backgroundSkews.append(currentSkew)
     backgroundKurtos.append(currentKurto)
+
 
 
 files = np.array(files)
