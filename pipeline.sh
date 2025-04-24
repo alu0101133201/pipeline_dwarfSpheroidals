@@ -1359,6 +1359,7 @@ fi
 badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
 python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
 
+
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1666,12 +1667,17 @@ else
   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
   rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
   rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+  rejectedFramesDir=$BDIR/rejectedFramesResiduals
+  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+
 
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
-
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
+
+  computeMetricOfResiduals $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
+  python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
   echo done > $framesWithCoaddSubtractedDone 
 fi
 

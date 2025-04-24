@@ -2812,6 +2812,24 @@ subtractCoaddToFrames() {
 }
 export -f subtractCoaddToFrames
 
+
+computeMetricOfResiduals() {
+    local dirWithFrames=$1
+    local coadd=$2
+    local destinationDir=$3
+
+    fileWithMetricName="pixelsAdded.txt"
+    if [ -f $destinationDir/$fileWithMetricName ]; then
+        rm $destinationDir/$fileWithMetricName
+    fi
+
+    for i in $dirWithFrames/*.fits; do
+        sumOfCurrentFrame=$( astarithmetic $destinationDir/$( basename $i ) -h1 sumvalue -q )
+        echo $( basename $i) $sumOfCurrentFrame >> $destinationDir/$fileWithMetricName
+    done
+}
+export -f subtractCoaddToFrames
+
 changeNonNansOfFrameToOnes() {
   local a=$1
   local framesDir=$2
