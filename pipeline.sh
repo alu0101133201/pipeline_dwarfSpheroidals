@@ -1291,6 +1291,7 @@ prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $apertureP
                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 
+
 # Calibration of coadd prephot
 writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
 if ! [ -d "$BDIR/coaddForCalibration" ]; then mkdir "$BDIR/coaddForCalibration"; fi
@@ -2040,6 +2041,7 @@ computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskyd
 clippingdir=$BDIR/clipping-outliers_it$iteration
 clippingdone=$clippingdir/done_"$k".txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
+
 
 
 mowdir=$BDIR/weight-dir-no-outliers_it$iteration
