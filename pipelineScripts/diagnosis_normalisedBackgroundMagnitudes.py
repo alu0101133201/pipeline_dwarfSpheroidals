@@ -220,7 +220,6 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
 
     pattern=r"(\d+).fits"
 
-
     timeMask = ~pd.isna(time) & ~pd.isna(cfactors)
     ax[0].scatter(time[timeMask],cfactors[timeMask],marker='o',s=50,edgecolor='black',color='teal',zorder=0)
     ax[1].scatter(airMass,cfactors,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
@@ -479,7 +478,9 @@ for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt
     totalCalibrationFactors[number-1] = [currentFile.split('/')[-1], calibrationFactor]
 
 
+
 valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
+
 magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
 
 with open(destinationFolder + "/backgroundMagnitudes.dat", 'w') as f:

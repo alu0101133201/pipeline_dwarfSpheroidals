@@ -686,15 +686,23 @@ calculateRunningFlat() {
     lefFlatFiles=("${fileArray[@]:0:$windowSize}")
     echo "Computing left flat - iteration $iteration"
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits" "${lefFlatFiles[@]}"
+    propagateKeyword "${lefFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits"
+
+
     rightFlatFiles=("${fileArray[@]:(fileArrayLength-$windowSize):fileArrayLength}")
     echo "Computing right flat - iteration $iteration"
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits" "${rightFlatFiles[@]}"
+    propagateKeyword "${rightFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits"
+
 
     echo "Computing non-common flats - iteration $iteration"
     for a in $(seq 1 $n_exp); do
         if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($n_exp - $halfWindowSize))" ]; then
             leftLimit=$(( a - $halfWindowSize - 1))
             calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits" "${fileArray[@]:$leftLimit:$windowSize}"
+
+            tmpIndex=$(( a - 1 ))
+            propagateKeyword "${fileArray[$tmpIndex]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits"
         fi
     done
     echo done > $doneFile
@@ -711,6 +719,11 @@ divideImagesByRunningFlats(){
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         i=$imageDir/$base
         out=$outputDir/$base
+       
+        # -- NOTE ---
+        # At the beginning we were using the first commented block. Each image with its flat
+        # The thing is that we use the onOff strategy sometimes the matching between the frames and the 
+        # flats is not that perfect... That's why I relax the checks and if something has no counterpart the right running flat is used
 
         if [ "$a" -le "$((halfWindowSize + 1))" ]; then
             flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left_ccd"$h".fits
@@ -719,13 +732,10 @@ divideImagesByRunningFlats(){
         else
             flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         fi
-            astarithmetic $i -h1 $flatToUse -h1 / -o $out
-            # This step can probably be removed
-            astfits $i --copy=1 -o$out
+        astarithmetic $i -h1 $flatToUse -h1 / -o $out
 
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $dateHeaderKey $out
     done
     echo done > $flatDone
 }
@@ -1598,6 +1608,10 @@ prepareCalibrationData() {
             writeTimeOfStepToFile "Spectra data processing" $fileForTimeStamps
             transmittanceCurveFile=$folderWithTransmittances/"$telescope"_"$filter".dat
             prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $sizeOfOurFieldDegrees $surveyForSpectra $transmittanceCurveFile
+            mv $mosaicDir/wholeFieldPhotometricCatalogue_$filter.cat $mosaicDir/wholeFieldPhotometricCatalogue.cat # This is not the best solution. We need here the catalogue without the filter
+                                                                                                                    # but if we calibrate with pansatarrs we need the function "prepareSpectraDataForPhotometricCalibration"
+                                                                                                                    # to create the wholefieldphotometricCatlaogues with the filter in the name, so I changed it here when needed
+
         else
             surveyImagesDir=$mosaicDir/surveyImages
             writeTimeOfStepToFile "Survey data processing" $fileForTimeStamps
@@ -1629,7 +1643,7 @@ prepareSpectraDataForPhotometricCalibration() {
         echo -e "\n\tThe catalogue with the magnitudes of the spectra already built\n"
     else
         output_tmpCat=$mosaicDir/wholeFieldPhotometricCatalogue_tmp.cat
-        outputCat=$mosaicDir/wholeFieldPhotometricCatalogue.cat
+        outputCat=$mosaicDir/wholeFieldPhotometricCatalogue_$filter.cat
         transmittanceWavelengthUnits=A # At the beginning of the pipeline everything was transformed to A. Nevertheless the python scripts handles transmittances in nm
         python3 $pythonScriptsPath/getMagnitudFromSpectra.py $spectraDir $transmittanceCurveFile $transmittanceWavelengthUnits $output_tmpCat $surveyForSpectra
 
@@ -1766,6 +1780,7 @@ prepareSurveyDataForPhotometricCalibration() {
     fi
 
     
+    
     # halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     # if [ $survey == "DECaLS" ]; then
     #     produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
@@ -1798,6 +1813,7 @@ prepareSurveyDataForPhotometricCalibration() {
         performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
     fi
   
+    
     # # --- Decision note ---
     # # Now two corrections are applied. First a colour correction to match the survey filter to the filter of our telescope, and
     # # Secondly an offset to match the survey photometry to GAIA. Thus, our photometry is referenced to GAIA spectra and to our filter
@@ -1812,7 +1828,7 @@ prepareSurveyDataForPhotometricCalibration() {
     # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
     calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5
     calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15
-   
+
     
     read offset_g factorToApplyToCounts_g < "$mosaicDir/offsetToCorrectSurveyToGaia_g.txt"
     read offset_r factorToApplyToCounts_r < "$mosaicDir/offsetToCorrectSurveyToGaia_r.txt"
@@ -2027,6 +2043,7 @@ calibrationToGAIA() {
         fi
 
 
+
         transmittanceCurveFile="$folderWithTransmittances"/PANSTARRS_$filter.dat
         prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA "GAIA" $transmittanceCurveFile
         offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir $filter )
@@ -2035,7 +2052,6 @@ calibrationToGAIA() {
         factorToApplyToCounts=$(echo $offsetValues | awk '{print $2}')
         echo $offset $factorToApplyToCounts > $mosaicDir/offsetToCorrectSurveyToGaia_"$filter".txt
         rm $mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat # I delete it because later this file has to contain the catalogue of the whole field from panstarrs
-
     fi
 }
 export -f calibrationToGAIA
@@ -2695,12 +2711,16 @@ produceCalibrationCheckPlot() {
                 referenceCatalogue=$referenceCatalogueDir/entirecamera_$frameNumber.cat
             fi
 
+
+
             myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
             myNonCalibratedCatalogue=$myCatalogue_nonCalibrated/entirecamera_$frameNumber.fits*
             fileWithMyApertureData=$aperturesForMyData_dir/range_entirecamera_$frameNumber*
 
             r_myData_pix_=$(awk 'NR==1 {printf $1}' $fileWithMyApertureData)
             r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfApertureUnitsForCalibration. x -q )
+
+     
 
             # raColumnName=RA
             # decColumnName=DEC
@@ -2711,8 +2731,11 @@ produceCalibrationCheckPlot() {
             columnWithYCoordForOutDataPx=2
             columnWithXCoordForOutDataWCS=3
             columnWithYCoordForOutDataWCS=4
+
+
             photometryOnImage_photutils -1 $calibratedCataloguesDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $calibratedCataloguesDir/$frameNumber.cat 22.5 $dataHdu \
                                         $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
+
 
             astmatch $referenceCatalogue --hdu=1 $calibratedCataloguesDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=3/3600 --outcols=aRA,aDEC,aMAGNITUDE,bMAGNITUDE -o$calibratedCataloguesDir/"$frameNumber"_matched.cat
             rm $calibratedCataloguesDir/$frameNumber.cat

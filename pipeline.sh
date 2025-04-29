@@ -352,6 +352,8 @@ oneNightPreProcessing() {
     echo done > $mbiascorrdone
   fi
 
+
+
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
   echo -e "${GREEN} --- Flat iteration 1 --- ${NOCOLOUR}"
 
@@ -371,6 +373,7 @@ oneNightPreProcessing() {
     fi
   fi
 
+  
   ########## Creating the it1 master flat image ##########
 
   # ****** Decision note *******
@@ -399,7 +402,7 @@ oneNightPreProcessing() {
   fi
 
 
- 
+  
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
   if $RUNNING_FLAT; then
@@ -414,6 +417,7 @@ oneNightPreProcessing() {
     fi
   fi
 
+
   # We compute the flat using all the frames of the night
   flatit1WholeNightdir=$BDIR/flat-it1-WholeNight_n$currentNight
   flatit1WholeNightdone=$flatit1WholeNightdir/done_"$filter"_ccd"$h".txt
@@ -425,6 +429,7 @@ oneNightPreProcessing() {
     calculateFlat $flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits $normit1dir/*.fits
     echo "done" >> $flatit1WholeNightdone
   fi
+
 
 
   # Dividing the science images for the running it1 flat
@@ -487,7 +492,7 @@ oneNightPreProcessing() {
     echo done > $noiseit2WholeNightdone
   fi
 
-  
+
   # Mask the images (running flat)
   if $RUNNING_FLAT; then
     maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
@@ -500,7 +505,7 @@ oneNightPreProcessing() {
       echo done > $maskedit2done
     fi
   fi
- 
+
   # Mask the images (whole night flat)
   maskedit2WholeNightdir=$BDIR/masked-it2-WholeNight_n$currentNight
   maskedit2WholeNightdone=$maskedit2WholeNightdir/done_"$filter"_ccd"$h".txt
@@ -512,7 +517,7 @@ oneNightPreProcessing() {
     echo done > $maskedit2WholeNightdone
   fi
 
-  
+
   # Normalising masked images (running flat)
   if $RUNNING_FLAT; then
     normit2dir=$BDIR/norm-it2-Running-images_n$currentNight
@@ -599,7 +604,7 @@ oneNightPreProcessing() {
   # This is a simplified version of the more thorough check that is done in the future (with normalised background, std, skewness and kurtosis)
   # but since the data here is not much processed and I'm not sure how reliable is the background for that detailed study, we use a simplified version
   # using only the std in order to remove the frames with moved sections
-  tmpNoiseDir=$BDIR/noisesky_forCleaningBadFramesBeforeFlat_n$currentNight.txt
+  tmpNoiseDir=$BDIR/noisesky_forCleaningBadFramesBeforeFlat_n$currentNight
   tmpNoiseDone=$tmpNoiseDir/done_n$currentNight.txt
   if ! [ -d $tmpNoiseDir ]; then mkdir $tmpNoiseDir; fi
 
@@ -716,10 +721,12 @@ oneNightPreProcessing() {
   removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
   removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
+
+  
   # Combining masked normalized images to make it3 flat
   if $RUNNING_FLAT; then
     flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
-    flatit3BeforeCorrectiondone=$flatit3BeforeCorrectiondir/done_"$k"_ccd"$h".txt
+    flatit3BeforeCorrectiondone=$flatit3BeforeCorrectiondir/done_"$filter"_ccd"$h".txt
     iteration=3
     if ! [ -d $flatit3BeforeCorrectiondir ]; then mkdir $flatit3BeforeCorrectiondir; fi
     if [ -f $flatit3BeforeCorrectiondone ]; then
@@ -730,6 +737,7 @@ oneNightPreProcessing() {
   fi
 
 
+  
   # We also compute the flat using all the frames of the night.
   flatit3WholeNightdir=$BDIR/flat-it3-WholeNight_n$currentNight
   flatit3WholeNightdone=$flatit3WholeNightdir/done_"$filter"_ccd"$h".txt
@@ -741,6 +749,7 @@ oneNightPreProcessing() {
     calculateFlat $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits $normit3WholeNightdir/*.fits
     echo "done" >> $flatit3WholeNightdone
   fi
+
 
   # Correct the running flats using the whole night flat
   if $RUNNING_FLAT; then
@@ -760,12 +769,16 @@ oneNightPreProcessing() {
         # So choosing 0.85, which seems a reasonable value.
         # Chose this value based on the standard deviation of your ratios, how these vary through the night and how aggresive u want to apply the correction
         astarithmetic $i -h1 set-m  $tmpRatio -h1 set-f m f 0.85 lt nan where -o $flatit3dir/$(basename "$i")
+        propagateKeyword $i $dateHeaderKey $flatit3dir/$(basename "$i")
+
         rm $tmpRatio
       done
       echo done > $flatit3done
     fi
   fi
 
+
+  
   # Dividing the science image by the it3 flat
   # If running flat selected, we use it to produce the final flatted images
   # If not selcted, we applyt the whole night flat
@@ -783,7 +796,7 @@ oneNightPreProcessing() {
       divideImagesByWholeNightFlat $mbiascorrdir $flatit3imadir $wholeNightFlatToUse $flatit3imadone
   fi
 
-
+  
   ########## Masking the vignetting zones ##########
   # Enmascarando las esquinas
   echo -e "${GREEN} --- Masking vignetting zones --- ${NOCOLOUR}"
@@ -817,6 +830,7 @@ oneNightPreProcessing() {
     done
     echo done > $maskedcornerdone
   fi
+
     
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
@@ -843,8 +857,8 @@ oneNightPreProcessing() {
   fi
   
   # # Removing intermediate information to save space - We maintain the final flats for checking them
+  # rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/bias-corrected_n$currentNight
-  rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/masterdark_n$currentNight
   rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
   rm -rf $BDIR/flat-it3-ima_n$currentNight
@@ -903,6 +917,7 @@ if (( sizeOfOurFieldDegrees > 1 )); then
 else
   radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 fi
+
 
 query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
@@ -1020,7 +1035,6 @@ else
 fi
 
 
-
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1072,6 +1086,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_fullGrid
   echo done > $badFilesWarningsDone
 fi
+
 
 
 
@@ -1291,7 +1306,6 @@ prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $apertureP
                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 
-
 # Calibration of coadd prephot
 writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
 if ! [ -d "$BDIR/coaddForCalibration" ]; then mkdir "$BDIR/coaddForCalibration"; fi
@@ -1348,7 +1362,6 @@ else
 fi
 
 
-
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1358,6 +1371,7 @@ else
 fi
 badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
 python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
+
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
@@ -1398,10 +1412,10 @@ else
 fi
 
 
-
 # Calibration
 aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it1
 calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot.png
+photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
 if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot for coadd prephot already done\n"
 else
@@ -1416,7 +1430,6 @@ else
 fi
 
 
-
 # # Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
 halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
@@ -1428,6 +1441,7 @@ else
   produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
+
 
 
 # Getting depth, mask and adding keywords to the calibrated coadd prephot
@@ -1659,7 +1673,7 @@ if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtracted
 if [ -f $framesWithCoaddSubtractedDone ]; then
     echo -e "\n\tFrames with coadd subtracted already generated\n"
 else
-  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub.fits
+  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_$filter.fits
   subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
 
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1669,7 +1683,6 @@ else
   rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
   rejectedFramesDir=$BDIR/rejectedFramesResiduals
   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-
 
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -2106,7 +2119,7 @@ if [ -f  $sblimitFile ]; then
   surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
 
 else
-    surfaceBrightnessLimit=$( limitingS+14:19:49.15urfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
 echo -e "\nAdding keywords to the coadd"
@@ -2149,22 +2162,24 @@ if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtracted
 if [ -f $framesWithCoaddSubtractedDone ]; then
     echo -e "\nFrames with coadd subtracted already generated\n"
 else
-  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_it$iteration.fits
+  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_$filter_it$iteration.fits
   subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
 
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-
   prefixOfTheFilesToRemove="entirecamera_"
   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
   rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
   rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+  rejectedFramesDir=$BDIR/rejectedFramesResiduals
+  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
-
-
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
+  
+  computeMetricOfResiduals $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
+  python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
   echo "done" > $framesWithCoaddSubtractedDone
 fi
 
