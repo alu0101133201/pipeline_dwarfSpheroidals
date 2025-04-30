@@ -48,17 +48,21 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
     if(logScale): ax.set_yscale('log')
 
 def readMetric(fileName):
+    fileNames = []
     data = []
+
     with open(fileName, 'r') as file:
         for line in file:
             parts = line.strip().split()
             if len(parts) >= 2:
                 try:
+                    file  = parts[0]
                     value = float(parts[1])
+                    fileNames.append(file)
                     data.append(value)
                 except ValueError:
                     continue   
-    return(data)
+    return(np.array(fileNames), np.array(data))
 
 def calculateFreedmanBins(data, initialValue = None):
     if (initialValue == None):
@@ -74,14 +78,32 @@ def calculateFreedmanBins(data, initialValue = None):
 
 setMatplotlibConf()
 
-
 folderWithResiduals = sys.argv[1]
 diagnosisFolder     = sys.argv[2]
 
 fileWithMetric = folderWithResiduals + "/pixelsAdded.txt"
-values = readMetric(fileWithMetric)
+fileNames, values = readMetric(fileWithMetric)
 
+# Detection of outliers (> 3sigma)
+meanOfDistribution = np.nanmean(values)
+stdOfDistribution  = np.nanstd(values)
+
+outliers1 = np.array(np.where(values < (meanOfDistribution - 3*stdOfDistribution)))
+outliers2 = np.array(np.where(values > (meanOfDistribution + 3*stdOfDistribution)))
+outliersFileNames = np.concatenate((fileNames[outliers1[0]], fileNames[outliers2[0]]))
+outliersValues    = np.concatenate((values[outliers1[0]], values[outliers2[0]]))
+
+with open(diagnosisFolder + "/residualMetricOutliers.txt", 'w') as f:
+    for i in range(len(outliersFileNames)):
+        f.write(str(outliersFileNames[i]) + " " + str(outliersValues[i]) + "\n")
+
+# Distribution plot
+binsToUse = calculateFreedmanBins(values)
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 configureAxis(ax, 'Metric (sum of px)', '', logScale=False)
-ax.hist(values, bins=calculateFreedmanBins(values), color="teal")
+n, bins, patches = ax.hist(values, bins=binsToUse, color="teal")
+ax.hist(outliersValues, bins=binsToUse, color="crimson")
+ax.vlines(x=meanOfDistribution + 3*stdOfDistribution, ymin=0, ymax=n.max(), color="black", lw=2, ls="--")
+ax.vlines(x=meanOfDistribution - 3*stdOfDistribution, ymin=0, ymax=n.max(), color="black", lw=2, ls="--")
+
 plt.savefig(diagnosisFolder + "/residualsMetricDistribution.png")
