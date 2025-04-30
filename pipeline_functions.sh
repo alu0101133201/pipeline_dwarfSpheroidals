@@ -736,6 +736,8 @@ divideImagesByRunningFlats(){
 
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
+        propagateKeyword $i "POINTRA" $out
+        propagateKeyword $i "POINTDEC" $out
     done
     echo done > $flatDone
 }
@@ -1225,7 +1227,13 @@ solveField() {
     local confFile=$7
     local astroimadir=$8
     local sexcfg_sf=$9
+    local sizeOfOurFieldDegrees=${10}
     base=$( basename $i)
+
+
+    pointRA_hours=$( astfits $i -h1 | grep POINTRA | awk -F= '{print $2}' | xargs )
+    pointRA=$( echo "$pointRA_hours * 15" | bc -l)
+    pointDec=$( astfits $i -h1 | grep POINTDEC | awk -F= '{print $2}' | xargs )
 
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
@@ -1235,7 +1243,7 @@ solveField() {
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
-        solve-field $i --no-plots \
+        solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees\
         -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
         --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \

@@ -249,6 +249,7 @@ oneNightPreProcessing() {
       echo done > $renamedone
   fi
 
+
   # -------------------------------------------------------
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
@@ -342,6 +343,8 @@ oneNightPreProcessing() {
 
       propagateKeyword $i $dateHeaderKey $out
       propagateKeyword $i $airMassKeyWord $out
+      propagateKeyword $i "POINTRA" $out
+      propagateKeyword $i "POINTDEC" $out
       # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
       # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
       # This is also done in the function maskImages()
@@ -455,6 +458,7 @@ oneNightPreProcessing() {
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone
   fi
 
+  
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
   # Obtain a mask using noisechisel on the running flat images
@@ -591,7 +595,6 @@ oneNightPreProcessing() {
     divideImagesByWholeNightFlat $mbiascorrdir $flatit2WholeNightimaDir $wholeNightFlatToUse $flatit2WholeNightimaDone
   fi
   
-
   
   #  **** Decision note *****
   # We do here the check for bad frames in std and for not including them in the flat
@@ -769,8 +772,6 @@ oneNightPreProcessing() {
         # So choosing 0.85, which seems a reasonable value.
         # Chose this value based on the standard deviation of your ratios, how these vary through the night and how aggresive u want to apply the correction
         astarithmetic $i -h1 set-m  $tmpRatio -h1 set-f m f 0.85 lt nan where -o $flatit3dir/$(basename "$i")
-        propagateKeyword $i $dateHeaderKey $flatit3dir/$(basename "$i")
-
         rm $tmpRatio
       done
       echo done > $flatit3done
@@ -827,11 +828,13 @@ oneNightPreProcessing() {
       astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f $lowerVignettingThreshold lt nan where set-n n f $upperVignettingThreshold gt nan where -o $out
       propagateKeyword $i $airMassKeyWord $out 
       propagateKeyword $i $dateHeaderKey $out
+      propagateKeyword $i "POINTRA" $out
+      propagateKeyword $i "POINTDEC" $out
     done
     echo done > $maskedcornerdone
   fi
 
-    
+
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
   if [ -f $framesForCommonReductionDone ]; then
@@ -853,9 +856,9 @@ oneNightPreProcessing() {
     
     flock -u 200 
     exec 200>&- 
-
   fi
   
+
   # # Removing intermediate information to save space - We maintain the final flats for checking them
   # rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/bias-corrected_n$currentNight
@@ -956,6 +959,7 @@ else
 fi
 
 
+
 sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
 echo -e "·Solving fields"
@@ -979,10 +983,13 @@ else
       base=$a.fits
       i=$framesForCommonReductionDir/$base
       frameNames+=("$i")
+    break
   done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf
+
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
   echo done > $astroimadone
 fi
+
 
 
 # ########## Distorsion correction ##########
