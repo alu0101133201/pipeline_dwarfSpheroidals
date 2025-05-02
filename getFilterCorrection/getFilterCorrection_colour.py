@@ -204,8 +204,13 @@ else:
     field="Malin2"
     bandToStudy = "i"
 
+<<<<<<< HEAD
 filterName1 = f"./filters/DECaLS_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
 filterName2 = f"./filters/tst_{bandToStudy}.dat";       waveUnits2 = "nm"; transmittanceUnits2 = "percentage"
+=======
+filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
+filterName2 = f"./filters/WHT_TWFC_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
+>>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
 
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra

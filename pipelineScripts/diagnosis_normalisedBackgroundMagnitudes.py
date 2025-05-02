@@ -108,7 +108,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
-        if (numberOfFields == 5):
+        if (numberOfFields == 5) or (numberOfFields == 3):
             backgroundValue = float(splittedLine[1])
         elif (numberOfFields == 1):
             return(float('nan'), float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
@@ -156,7 +156,11 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
+<<<<<<< HEAD
 def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, title, imageName):
+=======
+def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, title, imageName):
+>>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
     myBins = calculateFreedmanBins(values[~np.isnan(values)])
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
@@ -165,12 +169,18 @@ def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, reject
     configureAxis(ax, 'Background (mag/arcsec^2)', '', logScale=False)
     counts, bins, patches = ax.hist(values, bins=myBins, color="teal")
 
+<<<<<<< HEAD
     if (len(rejectedBackgroundIndices) > 0):
         ax.hist(values[rejectedBackgroundIndices - 1], bins=myBins, color="red", label="Rejected by background brightness")
     if (len(rejectedFWHMIndices)):
         ax.hist(values[rejectedFWHMIndices - 1], bins=myBins, color="mediumorchid", label="Rejected by fwhm")
     if (len(rejectedAstrometryIndices)):
         ax.hist(values[rejectedAstrometryIndices - 1], bins=myBins, color="blue", label="Rejected by astrometry")
+=======
+    ax.hist(values[rejectedBackgroundValueIndices], bins=myBins, color="darkred", label="Rejected by background value")
+    ax.hist(values[rejectedBackgroundStdIndices], bins=myBins, color="gold", label="Rejected by background std")
+    ax.hist(values[rejectedAstrometryIndices], bins=myBins, color="blue", label="Rejected by astrometry")
+>>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
 
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
@@ -178,7 +188,11 @@ def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, reject
     plt.savefig(imageName)
     return()
 
+<<<<<<< HEAD
 def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder):
+=======
+def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder):
+>>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
     airMass  = []
     time     = []
     cfactors = []
@@ -243,10 +257,13 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
 
     ax[0].legend(loc="upper right", fontsize=20)
     
+    ax[0].legend(loc="upper right", fontsize=20)
+    fig.suptitle(title,fontsize=22)
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
         label.set_horizontalalignment('right')
     plt.tight_layout()
+    
     plt.savefig(imageName)
     return()
 
@@ -329,7 +346,7 @@ def filesMatch(file1, file2):
 
 def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFactors):
     calibratedValues = []
-
+    
     for j in backgroundValues:
         backgroundFile = j[0]
         found=False
@@ -389,6 +406,28 @@ def getIndicesOfRejectedFrames(normalisedBackgroundValuesArray, rejectedFrames):
         rejectedFrames
     return(indices)
 
+def identifyBadFrames(folderWithFrames,folderWithAirmasses,airMassKeyWord,folderWithCalibrationFactors):
+    
+    allFiles=[]
+    allBackValues=[]
+    for currentFile in glob.glob(folderWithFrames + "/*.txt"):
+        if fnmatch.fnmatch(currentFile,'*done*.txt'):
+            continue
+        currentValue = obtainNormalisedBackground(currentFile, folderWithAirmasses, airMassKeyWord)
+        matchID=re.search(r'_(\d+).',currentFile).group(1)
+        calFactorFile=glob.glob(f"{folderWithCalibrationFactors}/alpha*Decals*{matchID}.txt")[0]
+        calFactor=retrieveCalibrationFactors(calFactorFile)
+        valueCalibrated = currentValue*calFactor
+
+        magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valueCalibrated, arcsecPerPx)
+        allFiles.append(currentFile)
+        allBackValues.append(magnitudesPerArcSecSq)
+    allFiles=np.array(allFiles)
+    allBackValues=np.array(allBackValues)
+    values_mask=allBackValues<20.5
+    badFiles=allFiles[values_mask]
+    badValues=allBackValues[values_mask]
+    return(badFiles,badValues)
 
 def identifyBadFrames(files, data, threshold):
     badFiles   = []
@@ -476,7 +515,6 @@ for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt
 
     calibrationFactor = retrieveCalibrationFactors(currentFile)
     totalCalibrationFactors[number-1] = [currentFile.split('/')[-1], calibrationFactor]
-
 
 
 valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)

@@ -483,10 +483,10 @@ def saveValuesVSStats(values, STD, Skew, kurto, backgroundRejectedIndices, stdRe
         ax[2].legend(fontsize=20)
     
 
-    if (len(backgroundRejectedIndices) != 0):
-        ax[0].scatter(np.sqrt(values)[backgroundRejectedIndices], STD[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred')
-        ax[1].scatter(values[backgroundRejectedIndices], np.abs(Skew[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred', label="Rejected by background value")
-        ax[2].scatter(values[backgroundRejectedIndices], np.abs(kurto[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred')
+    #if (len(backgroundRejectedIndices) != 0):
+    #    ax[0].scatter(np.sqrt(values)[backgroundRejectedIndices], STD[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred')
+    #    ax[1].scatter(values[backgroundRejectedIndices], np.abs(Skew[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred', label="Rejected by background value")
+    #    ax[2].scatter(values[backgroundRejectedIndices], np.abs(kurto[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred')
         
     if (len(stdRejectedIndices) != 0):
         ax[0].scatter(np.sqrt(values)[stdRejectedIndices], STD[stdRejectedIndices], s=120, marker="D", edgecolor='k',color='gold')

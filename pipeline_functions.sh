@@ -1908,7 +1908,7 @@ applyColourcorrectionToSingleCatalogue() {
         colour=$(echo "$line" | awk '{if (NF>=8) print $8; else print "nan"}')
         flux=$(echo "$line" | awk '{print $7}')
         magnitude=$(echo "$line" | awk '{print $6}')
-
+        
         if [[ "$colour" == "nan" || -z "$colour" ]]; then
             echo "$line"
         else
@@ -2322,8 +2322,8 @@ computeAndStoreFactors() {
             # python3 /home/sguerra/pipeline/pipelineScripts/tmp_diagnosis_distributionOfCalibrationFactorsInFrame.py $alphatruedir/$alphaFile $a
 
             # This mean was obtained with "median" before. But Right now I'm doing some tests and sometimes it gives nan even if all the input values exist (gnuastro/0.22 bug ?)
-            mean=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-mean)
-            std=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+            mean=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --mean)
+            std=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --std)
             echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
             count=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
             echo "Frame number $a: $count" >> $numberOfStarsUsedToCalibrateFile
@@ -2529,7 +2529,10 @@ computeWeights() {
     else
         framesToComputeWeight=()
         for a in $(seq 1 $totalNumberOfFrames); do
-            framesToComputeWeight+=("$a")
+            base=entirecamera_"$a".fits
+            if [ -f $photCorrDir/$base ]; then
+                framesToComputeWeight+=("$a")
+            fi
         done
         printf "%s\n" "${framesToComputeWeight[@]}" | parallel -j "$num_cpus" computeWeightForFrame {} $wdir $wonlydir $photCorrDir $noiseskydir $iteration $minRmsFileName
         echo done > $wdone
@@ -2616,7 +2619,10 @@ removeOutliersFromWeightedFrames () {
   else
       framesToRemoveOutliers=()
       for a in $(seq 1 $totalNumberOfFrames); do
+        base=entirecamera_"$a".fits
+        if [ -f $wdir/$base ]; then
           framesToRemoveOutliers+=("$a")
+        fi
       done
       printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $moonwdir $clippingdir $wdir $wonlydir
       echo done > $mowdone
@@ -2869,7 +2875,7 @@ changeNonNansOfFrameToOnes() {
   frame=$framesDir/entirecamera_$a.fits
   output=$outputDir/exposure_tmp_$a.fits
 
-  astarithmetic $frame $frame 0 gt 1 where --output=$output -g1
+  astarithmetic $frame $frame isnotblank 1 where --output=$output -g1
 }
 export -f changeNonNansOfFrameToOnes
 
@@ -2877,15 +2883,19 @@ computeExposureMap() {
     local framesDir=$1
     local exposureMapDir=$2
     local exposureMapDone=$3
+    
 
     if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
     if [ -f $exposuremapdone ]; then
         echo -e "\n\tThe exposure map is already done\n"
     else
-      framesDir=$BDIR/pointings_fullGrid
+      
       framesToProcess=()
       for a in $(seq 1 $totalNumberOfFrames); do
-        framesToProcess+=("$a")
+        base=$framesDir/entirecamera_"$a".fits
+        if [ -f $base ]; then
+            framesToProcess+=("$a")
+        fi
       done
 
       printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
@@ -3139,7 +3149,7 @@ computeFWHMSingleFrame(){
         exit $erroNumber
     fi
 
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$fwhmdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
 
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.

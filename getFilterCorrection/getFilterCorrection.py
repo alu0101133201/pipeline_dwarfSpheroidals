@@ -106,8 +106,8 @@ def obtainFluxFromSpectrumAndFilter(wavelengths, spectrumF,  filterT, plot=False
     for i in range(len(spectrumF)):
         convolvedSpec.append(spectrumF[i] * filterT[i])
 
-    total_flux = np.trapezoid(convolvedSpec, wavelengths)
-    dividedFlux = total_flux / np.trapezoid(filterT, wavelengths)
+    total_flux = np.trapz(convolvedSpec, wavelengths)
+    dividedFlux = total_flux / np.trapz(filterT, wavelengths)
     return(-2.5*np.log10(dividedFlux / 3631))
 
 
@@ -178,9 +178,9 @@ def computeOffset(mag1, mag2, limits):
 
 setMatplotlibConf()
 
-field = "ngc598"
+field = "NGC5308"
 filterName1 = "./filters/panstarrs_i.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = "./filters/tst_i.dat";       waveUnits2 = "nm"; transmittanceUnits2 = "percentage"
+filterName2 = "./filters/WHT_TWFC_i.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 regionToComputeOffset = [12, 15]
 
