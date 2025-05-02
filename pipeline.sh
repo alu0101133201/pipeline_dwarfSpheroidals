@@ -725,7 +725,7 @@ oneNightPreProcessing() {
   removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
 
-  
+
   # Combining masked normalized images to make it3 flat
   if $RUNNING_FLAT; then
     flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
@@ -772,12 +772,12 @@ oneNightPreProcessing() {
         # So choosing 0.85, which seems a reasonable value.
         # Chose this value based on the standard deviation of your ratios, how these vary through the night and how aggresive u want to apply the correction
         astarithmetic $i -h1 set-m  $tmpRatio -h1 set-f m f 0.85 lt nan where -o $flatit3dir/$(basename "$i")
+        propagateKeyword $i $dateHeaderKey $flatit3dir/$(basename "$i")
         rm $tmpRatio
       done
       echo done > $flatit3done
     fi
   fi
-
 
   
   # Dividing the science image by the it3 flat
@@ -897,7 +897,6 @@ totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
 
-
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
@@ -983,9 +982,7 @@ else
       base=$a.fits
       i=$framesForCommonReductionDir/$base
       frameNames+=("$i")
-    break
   done
-
   printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
   echo done > $astroimadone
 fi
@@ -1261,8 +1258,8 @@ else
   
   prefixOfTheFilesToRemove="entirecamera_"
   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
   rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
   removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -1572,8 +1569,8 @@ if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 
 prefixOfTheFilesToRemove="entirecamera_"
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -1691,7 +1688,7 @@ else
   rejectedFramesDir=$BDIR/rejectedFramesResiduals
   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
@@ -1704,37 +1701,41 @@ fi
 
 
 # # Remove intermediate folders to save some space
-# find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
 
-# find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
-# find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/framesWithCoaddSubtracted -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/framesWithCoaddSubtracted -type f ! -name 'done*' -exec rm {} \;
 
-# find $BDIR/weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/weight-dir -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/weight-dir -type f ! -name 'done*' -exec rm {} \;
 
-# find $BDIR/only-weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/only-w-dir -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/only-weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/only-w-dir -type f ! -name 'done*' -exec rm {} \;
 
 
 
 # This code is used for manually masking a region (generally the galaxy)
 
-# mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
-# astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 159.9694023 20.8467568 120 1
+mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
+astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
+valueToPut=1
+python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 189.2659556 14.2706668 260 $valueToPut
+python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 189.1448630 14.2878726 300 $valueToPut
+python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 189.1483376 14.3977554 250 $valueToPut
 
-# mv $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
-# astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 159.9694023 20.8467568 120 1
 
-
+mv $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
+astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
+python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 189.2659556 14.2706668 260 $valueToPut
+python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 189.1448630 14.2878726 300 $valueToPut
+python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 189.1483376 14.3977554 250 $valueToPut
 
 
 ####### ITERATION 2 ######
@@ -1751,6 +1752,7 @@ maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_fullGrid
+
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
@@ -1849,8 +1851,8 @@ else
   
   prefixOfTheFilesToRemove="entirecamera_"
   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
   rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
   removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -2086,8 +2088,8 @@ echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been ide
 
 prefixOfTheFilesToRemove="entirecamera_"
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -2180,7 +2182,7 @@ else
   rejectedFramesDir=$BDIR/rejectedFramesResiduals
   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  # removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
