@@ -119,18 +119,10 @@ noisechisel_param="--tilesize=$tileSize,$tileSize \
 
 # # These paremeters are oriented to TST data at original resolution. 
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-<<<<<<< HEAD:pipeline.sh
 # tileSize=90
 # noisechisel_param="--tilesize=$tileSize,$tileSize \
 #                      --detgrowmaxholesize=5000 \
 #                      --rawoutput"
-=======
-#HIPERCAM 
-#tileSize=25
-#noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                     --rawoutput"
-
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493:pipeline_TST.sh
 export noisechisel_param
 
 echo -e "\n-Noisechisel parameters used for masking:"
@@ -304,14 +296,7 @@ oneNightPreProcessing() {
     fi
     echo done > $mdadone
   done
-<<<<<<< HEAD:pipeline.sh
-    
-=======
 
-  
-  
-
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493:pipeline_TST.sh
   ########## Save airmass ##########
   # The airmass is saved in this files on airmass-analysis_n folder but also propagated throught the steps of the pipeline until that information
   # reaches the "framesForCommonReduction", because that information needs to be used in the future for the detection of bad frames
@@ -378,7 +363,6 @@ oneNightPreProcessing() {
 
   
   ########## Creating the ring mask ##########
-<<<<<<< HEAD:pipeline.sh
   # We always need the common ring  definition always stored for photometric calibration (selection of decals bricks to download)
   ringdir=$BDIR/ring
   if ! [ -d $ringdir ]; then mkdir $ringdir; fi
@@ -394,27 +378,6 @@ oneNightPreProcessing() {
   fi
 
   
-=======
-  # Since the ring possibilities are quite flexible (using one common ring or two rings depending on the angle) I always clean and rebuild the rings (It doesn't cost almost time so is worth it)
-  ringdir=$BDIR/ring
-  #rm -rf $ringdir
-  if ! [ -d $ringdir ]; then 
-    mkdir $ringdir
-
-    # We always need the common ring  definition always stored for photometric calibration (selection of decals bricks to download)
-    cp $commonRingDefinitionFile $ringdir/ring.txt 
-  
-  # We create the .fits ring image based on how the normalisation is going to be done
-  if [[ "$USE_COMMON_RING" = true && ! -f "$ringfir/ring.fits" ]]; then
-    astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
-  else
-    if [[ ! -f "$ringdir/ring_2.fits" || ! -f "$ringfir/ring_1.fits" ]]; then
-      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
-      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
-    fi
-  fi
-  fi
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493:pipeline_TST.sh
   ########## Creating the it1 master flat image ##########
 
   # ****** Decision note *******
@@ -495,12 +458,8 @@ oneNightPreProcessing() {
     wholeNightFlatToUse=$flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone
   fi
-<<<<<<< HEAD:pipeline.sh
 
   
-=======
-rm $normit1dir/*.fits 
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493:pipeline_TST.sh
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
   # Obtain a mask using noisechisel on the running flat images
@@ -537,12 +496,8 @@ rm $normit1dir/*.fits
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir "'$noisechisel_param'"
     echo done > $noiseit2WholeNightdone
   fi
-<<<<<<< HEAD:pipeline.sh
 
 
-=======
-rm $flatit1imadir/*.fits $flatit1WholeNightimaDir/*.fits
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493:pipeline_TST.sh
   # Mask the images (running flat)
   if $RUNNING_FLAT; then
     maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
@@ -616,13 +571,8 @@ rm $maskedit2dir/*.fits $maskedit2WholeNightdir/*.fits
     calculateFlat $flatit2WholeNightdir/flat-it2_wholeNight_n$currentNight.fits $normit2WholeNightdir/*.fits
     echo "done" >> $flatit2WholeNightdone
   fi
-<<<<<<< HEAD:pipeline.sh
 
 
-=======
-rm $normit2dir/*.fits $normit2WholeNightdir/*.fits
-  
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493:pipeline_TST.sh
   # Dividing the science image by the it2 flat
   if $RUNNING_FLAT; then
     flatit2imadir=$BDIR/flat-it2-Running-ima_n$currentNight
@@ -715,12 +665,7 @@ rm $normit2dir/*.fits $normit2WholeNightdir/*.fits
     echo done > $noiseit3WholeNightdone 
   fi
 
-<<<<<<< HEAD:pipeline.sh
  
-=======
-  rm $flatit2imadir/*.fits $flatit2WholeNightimaDir/*.fits
-
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493:pipeline_TST.sh
   # Mask the images (running flat)
   if $RUNNING_FLAT; then
     maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
