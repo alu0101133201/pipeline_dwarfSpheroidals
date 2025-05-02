@@ -3,6 +3,7 @@
 # The output needs to be ID, X, Y, RA, DEC, MAG, SUM
 
 import sys
+import time
 
 import numpy as np 
 
@@ -63,34 +64,56 @@ columnWithYCoordWCS = int(sys.argv[10])
 imageData, shape, wcs = getImageData(image, dataHdu)
 
 x, y = getCoordinatesFromCatalogue(catalogue, columnWithXCoordPx, columnWithYCoordPx)
+z = np.array([(x[i], y[i]) for i in range(len(x))])
+
 ra, dec = getCoordinatesFromCatalogue(catalogue, columnWithXCoordWCS, columnWithYCoordWCS)
+zCoord = np.array([(ra[i], dec[i]) for i in range(len(x))])
+
 
 sigmaClip = SigmaClip(sigma=3.0, maxiters=3)
 innerAnnulus = 3*aperture_radius_px
 outerAnnulus = 4*aperture_radius_px
 
-ids = []
-mag = []
-sums = []
+ids = np.arange(len(x))
+mags = np.full(len(z), np.nan)
+sums = np.full(len(z), np.nan)
 
-for i in range(len(x)):
-    currentAperture = CircularAperture((x[i] - 1, y[i] - 1), r=aperture_radius_px)
-    currentAnnulus  =  CircularAnnulus((x[i] - 1, y[i] - 1), r_in=innerAnnulus, r_out=outerAnnulus)
 
-    phot_table_local = aperture_photometry(imageData, currentAperture, mask = np.isnan(imageData), method="exact")
-    aperstats = ApertureStats(imageData, currentAnnulus, sigma_clip=sigmaClip)
-    bkg_mean = aperstats.median
+# The following section aims to reject sources with nan pixels (not accurate flux, we don't want them)
+# Since we use really huge apertures, I just impose not to be nans in the half central region of it
+aperturesForNanCheck = CircularAperture((z- 1), r=aperture_radius_px/2)
+aperturesMask = aperturesForNanCheck.to_mask(method='center')
 
-    aperture_area = currentAperture.area_overlap(imageData)
-    total_bkg = bkg_mean * aperture_area
-    currentFlux = float(phot_table_local['aperture_sum'][0]) - float(total_bkg)
-       
-    ids.append(i)
+# validIndices stores the apertures that do NOT contains nans in a radius of aperture/2
+validIndices = []
+for i, currApertureMask in enumerate(aperturesMask):
+    cutout = currApertureMask.cutout(imageData)
+    if cutout is None:
+        continue
 
-    with np.errstate(invalid='ignore'): # Some values (of bad detections or whatever) are negative and give an error
-                                        # since I don't want to exclude them directly because i need that entry in the catalogue I just suppress the warning
-        mag.append(-2.5 * np.log10(currentFlux) + zp)
-    sums.append(currentFlux)
+    mask = (currApertureMask.data == 1)
+    aperture_pixels = np.where(mask == 1, cutout, np.inf)
+    if not np.isnan(aperture_pixels).any():
+        validIndices.append(i)
 
-writeDataToCatalogue(output, ids, x, y, ra, dec, mag, sums)
+currentApertures = CircularAperture((z[validIndices] - 1), r=aperture_radius_px)
+currentAnnuli  =  CircularAnnulus((z[validIndices] - 1), r_in=innerAnnulus, r_out=outerAnnulus)
 
+
+phot_table_local = aperture_photometry(imageData, currentApertures, mask = np.isnan(imageData), method="exact")
+aperstats = ApertureStats(imageData, currentAnnuli, sigma_clip=sigmaClip)
+bkg_mean = aperstats.median
+
+aperture_area = currentApertures.area_overlap(imageData)
+total_bkg = bkg_mean * aperture_area
+
+fluxes_valid = np.array(phot_table_local['aperture_sum']) - total_bkg
+with np.errstate(divide='ignore', invalid='ignore'):
+    mag_valid = -2.5 * np.log10(fluxes_valid) + 22.5
+
+for i, idx in enumerate(validIndices):
+    sums[idx] = fluxes_valid[i]
+    mags[idx]    = mag_valid[i]
+
+
+writeDataToCatalogue(output, ids, x, y, ra, dec, mags, sums)

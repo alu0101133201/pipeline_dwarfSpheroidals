@@ -244,8 +244,8 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
 
     allFWHM = np.array(allFWHM)
 
-    mask = sigma_clip(allFWHM, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
-
+    # mask = sigma_clip(allFWHM, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
+    mask = allFWHM>4.5
     allFiles = np.array(allFiles)
     allTogether=pd.DataFrame({'File':allFiles,'FWHM':allFWHM})
     badFiles = allFiles[mask]

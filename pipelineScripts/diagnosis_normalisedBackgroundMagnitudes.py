@@ -83,7 +83,7 @@ def obtainKeyWordFromFits(file, keyword):
             else:
                 raise Exception(f"Keyword '{keyword}' not found in the header.")
     else:
-        raise Exception(f"File {fits_file_path} does not exist.")
+        raise Exception(f"File {file} does not exist.")
 
 def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     frameNumber = obtainNumberFromFrame(currentFile)
@@ -106,7 +106,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         splittedLine = lines[0].strip().split()
         numberOfFields = len(splittedLine)
 
-        if (numberOfFields == 5):
+        if (numberOfFields == 5) or (numberOfFields == 3):
             backgroundValue = float(splittedLine[1])
         elif (numberOfFields == 1):
             return(float('nan')) # Frame which has been lost in reduction (e.g. failed to astrometrise). Just jump to the next iteration
@@ -154,7 +154,7 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName):
+def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, title, imageName):
     myBins = calculateFreedmanBins(values[~np.isnan(values)])
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
@@ -165,7 +165,6 @@ def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueInd
 
     ax.hist(values[rejectedBackgroundValueIndices], bins=myBins, color="darkred", label="Rejected by background value")
     ax.hist(values[rejectedBackgroundStdIndices], bins=myBins, color="gold", label="Rejected by background std")
-    ax.hist(values[rejectedFWHMIndices], bins=myBins, color="mediumorchid", label="Rejected by fwhm")
     ax.hist(values[rejectedAstrometryIndices], bins=myBins, color="blue", label="Rejected by astrometry")
 
     max_bin_height = counts.max() + 5
@@ -174,7 +173,7 @@ def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueInd
     plt.savefig(imageName)
     return()
 
-def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder):
+def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder):
     airMass  = []
     time     = []
     cfactors = []
@@ -212,23 +211,22 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundVal
     ax[0].scatter(time[rejectedAstrometryIndices], cfactors[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
     ax[0].scatter(time[rejectedBackgroundValueIndices], cfactors[rejectedBackgroundValueIndices], marker='X',edgecolor='k',color='darkred',s=120,zorder=1, label="Rejected by background")
     ax[0].scatter(time[rejectedBackgroundStdIndices], cfactors[rejectedBackgroundStdIndices], marker='D',edgecolor='k',color='gold',s=120,zorder=1, label="Rejected by std")
-    ax[0].scatter(time[rejectedFWHMIndices], cfactors[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-
+    
     ax[1].scatter(airMass[rejectedAstrometryIndices], cfactors[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
     ax[1].scatter(airMass[rejectedBackgroundValueIndices], cfactors[rejectedBackgroundValueIndices], marker='X',edgecolor='k',color='darkred',s=120,zorder=1, label="Rejected by background")
     ax[1].scatter(airMass[rejectedBackgroundStdIndices], cfactors[rejectedBackgroundStdIndices], marker='D',edgecolor='k',color='gold',s=120,zorder=1, label="Rejected by std")
-    ax[1].scatter(airMass[rejectedFWHMIndices], cfactors[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-
-    ax[0].legend(loc="upper right", fontsize=20)
     
+    ax[0].legend(loc="upper right", fontsize=20)
+    fig.suptitle(title,fontsize=22)
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
         label.set_horizontalalignment('right')
     plt.tight_layout()
+    
     plt.savefig(imageName)
     return()
 
-def saveBackEvolution(normalisedBackgroundValues,factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, title, imageName, folderWithFramesWithAirmasses):
+def saveBackEvolution(normalisedBackgroundValues,factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, title, imageName, folderWithFramesWithAirmasses):
     airMass  = []
     time     = []
     
@@ -262,13 +260,11 @@ def saveBackEvolution(normalisedBackgroundValues,factors, rejectedAstrometryIndi
     ax[0].scatter(time[rejectedAstrometryIndices], magnitudesPerArcSecSq[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
     ax[0].scatter(time[rejectedBackgroundValueIndices], magnitudesPerArcSecSq[rejectedBackgroundValueIndices], marker='X',edgecolor='k',color='darkred',s=120,zorder=1, label="Rejected by background")
     ax[0].scatter(time[rejectedBackgroundStdIndices], magnitudesPerArcSecSq[rejectedBackgroundStdIndices], marker='D',edgecolor='k',color='gold',s=120,zorder=1, label="Rejected by std")
-    ax[0].scatter(time[rejectedFWHMIndices], magnitudesPerArcSecSq[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-
+    
     ax[1].scatter(airMass[rejectedAstrometryIndices], magnitudesPerArcSecSq[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
     ax[1].scatter(airMass[rejectedBackgroundValueIndices], magnitudesPerArcSecSq[rejectedBackgroundValueIndices], marker='X',edgecolor='k',color='darkred',s=120,zorder=1, label="Rejected by background")
     ax[1].scatter(airMass[rejectedBackgroundStdIndices], magnitudesPerArcSecSq[rejectedBackgroundStdIndices], marker='D',edgecolor='k',color='gold',s=120,zorder=1, label="Rejected by std")
-    ax[1].scatter(airMass[rejectedFWHMIndices], magnitudesPerArcSecSq[rejectedFWHMIndices], marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=1, label="Rejected by FWHM")
-
+    
     ax[0].legend(loc="upper right", fontsize=20)
     
     for label in ax[0].get_xticklabels():
@@ -294,7 +290,7 @@ def filesMatch(file1, file2):
 
 def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFactors):
     calibratedValues = []
-
+    
     for j in backgroundValues:
         backgroundFile = j[0]
         found=False
@@ -330,7 +326,7 @@ def removeBadFramesFromList(data, badFrames_bck, badFrames_fwhm):
                 noBadValues.append(i)
     return(noBadValues,BadValues_bck,BadValues_fwhm)
 
-def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, fileName):
+def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices,  fileName):
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.set_title("If calibration is correct, this should be a straight line", fontsize=20, pad=17)
     configureAxis(ax, 'Background (mag/arcsec^2)', 'Log(Background) (ADU)', logScale=False)
@@ -341,8 +337,7 @@ def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, rejec
     ax.scatter(magnitudesPerArcSecSq[rejectedAstrometryIndices], np.log10(backgroundCounts)[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue',s=120, label="Rejected astrometry")
     ax.scatter(magnitudesPerArcSecSq[rejectedBackgroundValueIndices], np.log10(backgroundCounts)[rejectedBackgroundValueIndices], s=40, color="darkred", label="Rejected background value")
     ax.scatter(magnitudesPerArcSecSq[rejectedBackgroundStdIndices], np.log10(backgroundCounts)[rejectedBackgroundStdIndices], s=40, color="gold", label="Rejected background std")
-    ax.scatter(magnitudesPerArcSecSq[rejectedFWHMIndices], np.log10(backgroundCounts)[rejectedFWHMIndices], s=40, color="mediumorchid", label="Rejected FWHM")
-
+    
     ax.legend(fontsize=18, loc="upper right")
     plt.savefig(fileName)
 
@@ -359,6 +354,28 @@ def getIndicesOfRejectedFrames(normalisedBackgroundValuesArray, rejectedFrames):
                 indices.append(i)
     return(indices)
 
+def identifyBadFrames(folderWithFrames,folderWithAirmasses,airMassKeyWord,folderWithCalibrationFactors):
+    
+    allFiles=[]
+    allBackValues=[]
+    for currentFile in glob.glob(folderWithFrames + "/*.txt"):
+        if fnmatch.fnmatch(currentFile,'*done*.txt'):
+            continue
+        currentValue = obtainNormalisedBackground(currentFile, folderWithAirmasses, airMassKeyWord)
+        matchID=re.search(r'_(\d+).',currentFile).group(1)
+        calFactorFile=glob.glob(f"{folderWithCalibrationFactors}/alpha*Decals*{matchID}.txt")[0]
+        calFactor=retrieveCalibrationFactors(calFactorFile)
+        valueCalibrated = currentValue*calFactor
+
+        magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valueCalibrated, arcsecPerPx)
+        allFiles.append(currentFile)
+        allBackValues.append(magnitudesPerArcSecSq)
+    allFiles=np.array(allFiles)
+    allBackValues=np.array(allBackValues)
+    values_mask=allBackValues<20.5
+    badFiles=allFiles[values_mask]
+    badValues=allBackValues[values_mask]
+    return(badFiles,badValues)
 
 HDU_TO_FIND_AIRMASS = 1
 
@@ -368,7 +385,7 @@ airMassKeyWord                = sys.argv[3]
 folderWithCalibrationFactors  = sys.argv[4]
 arcsecPerPx                   = float(sys.argv[5])
 destinationFolder             = sys.argv[6]
-
+ouptut_badBackground          = sys.argv[7]
 
 setMatplotlibConf()
 
@@ -385,20 +402,20 @@ with open(destinationFolder + "/identifiedBadFrames_astrometry.txt", 'r') as f:
     for line in f:
         rejectedFrames_astrometry.append(line.strip())
 
-rejectedFrames_backgroundValue = []
-with open(destinationFolder + "/identifiedBadFrames_backgroundValue.txt", 'r') as f:
-    for line in f:
-        rejectedFrames_backgroundValue.append(line.strip())
+#rejectedFrames_backgroundValue = []
+#with open(destinationFolder + "/identifiedBadFrames_backgroundValue.txt", 'r') as f:
+#    for line in f:
+#        rejectedFrames_backgroundValue.append(line.strip())
  
 rejectedFrames_backgroundStd = []
 with open(destinationFolder + "/identifiedBadFrames_backgroundStd.txt", 'r') as f:
     for line in f:
         rejectedFrames_backgroundStd.append(line.strip())
 
-rejectedFrames_FWHM = []
-with open(destinationFolder + "/identifiedBadFrames_fwhm.txt", 'r') as f:
-    for line in f:
-        rejectedFrames_FWHM.append(line.strip())
+#rejectedFrames_FWHM = []
+#with open(destinationFolder + "/identifiedBadFrames_fwhm.txt", 'r') as f:
+#    for line in f:
+#        rejectedFrames_FWHM.append(line.strip())
 
 
 # 1.- Obtain the normalised background values ------------------
@@ -416,26 +433,29 @@ for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt
     calibrationFactor = retrieveCalibrationFactors(currentFile)
     totalCalibrationFactors.append([currentFile.split('/')[-1], calibrationFactor])
 
-
+badFiles,badValues=identifyBadFrames(folderWithSkyEstimations,folderWithFramesWithAirmasses,airMassKeyWord,folderWithCalibrationFactors)
 rejectedAstrometryIndices      = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_astrometry)
-rejectedBackgroundValueIndices = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_backgroundValue)
+rejectedBackgroundValueIndices = getIndicesOfRejectedFrames(normalisedBackgroundValues, badFiles)
 rejectedBackgroundStdIndices   = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_backgroundStd)
-rejectedFWHMIndices            = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_FWHM)
+#rejectedFWHMIndices            = getIndicesOfRejectedFrames(normalisedBackgroundValues, rejectedFrames_FWHM)
 
+with open(destinationFolder + "/" + ouptut_badBackground, 'w') as file:
+    for fileName in badFiles:
+        file.write(fileName.split('/')[-1].split("_")[-1].split('.')[0] + '\n')
 
 valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
 
 magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
 
-saveHistogram(np.array(magnitudesPerArcSecSq), rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
+saveHistogram(np.array(magnitudesPerArcSecSq), rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, \
                 "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
 
-saveScatterFactors(totalCalibrationFactors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
+saveScatterFactors(totalCalibrationFactors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, \
                 "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses, destinationFolder)
 
-saveBackEvolution(normalisedBackgroundValues,totalCalibrationFactors,rejectedAstrometryIndices,rejectedBackgroundValueIndices, rejectedBackgroundStdIndices,rejectedFWHMIndices, \
+saveBackEvolution(normalisedBackgroundValues,totalCalibrationFactors,rejectedAstrometryIndices,rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, \
     "Evolution of NORMALISED background magnitudes",destinationFolder+"/backgroundEvolution_magnitudes",folderWithFramesWithAirmasses)
 
 x = [float(i) for i in valuesCalibrated]
-scatterPlotCountsVsMagnitudes(x, magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, rejectedFWHMIndices, \
+scatterPlotCountsVsMagnitudes(x, magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, \
                             destinationFolder + "/countsVsMagnitudes.png")

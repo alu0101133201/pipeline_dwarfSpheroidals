@@ -205,7 +205,7 @@ else:
     bandToStudy = "g"
 
 filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/OSIRIS_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
+filterName2 = f"./filters/WHT_TWFC_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra

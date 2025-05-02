@@ -275,17 +275,17 @@ def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrom
         if j==0:
             ax[0].legend(fontsize=18)
 
-    for j in range(len(backgroundRejectedFiles)):
-        match=re.search(pattern, backgroundRejectedFiles[j])
-        frame=match.group(1)
-        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
-        ax[0].scatter(date_ok, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.' if (j==0) else "")
-        ax[1].scatter(air, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.'if (j==0) else "")
-        if j==0:
-            ax[0].legend(fontsize=18)
+    #for j in range(len(backgroundRejectedFiles)):
+    #    match=re.search(pattern, backgroundRejectedFiles[j])
+    #    frame=match.group(1)
+    #    file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+    #    date=obtainKeyWordFromFits(file,'DATE-OBS')
+    #    air=obtainKeyWordFromFits(file,'AIRMASS')
+    #    date_ok=datetime.fromisoformat(date)
+    #    ax[0].scatter(date_ok, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.' if (j==0) else "")
+    #    ax[1].scatter(air, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.'if (j==0) else "")
+    #    if j==0:
+    #        ax[0].legend(fontsize=18)
 
     for j in range(len(stdRejectedFiles)):
         match=re.search(pattern,stdRejectedFiles[j])
@@ -347,17 +347,17 @@ def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrome
         if j==0:
             ax[0].legend(fontsize=18)
 
-    for j in range(len(backgroundRejectedFiles)):
-        match=re.search(pattern, backgroundRejectedFiles[j])
-        frame=match.group(1)
-        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
-        ax[0].scatter(date_ok, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
-        ax[1].scatter(air, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
-        if j==0:
-            ax[0].legend(fontsize=18)
+    #for j in range(len(backgroundRejectedFiles)):
+    #    match=re.search(pattern, backgroundRejectedFiles[j])
+    #    frame=match.group(1)
+    #    file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+    #    date=obtainKeyWordFromFits(file,'DATE-OBS')
+    #    air=obtainKeyWordFromFits(file,'AIRMASS')
+    #    date_ok=datetime.fromisoformat(date)
+    #    ax[0].scatter(date_ok, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
+    #    ax[1].scatter(air, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
+    #    if j==0:
+    #        ax[0].legend(fontsize=18)
 
     for j in range(len(stdRejectedFiles)):
         match=re.search(pattern,stdRejectedFiles[j])
@@ -414,10 +414,10 @@ def saveValuesVSStats(values, STD, Skew, kurto, backgroundRejectedIndices, stdRe
         ax[2].legend(fontsize=20)
     
 
-    if (len(backgroundRejectedIndices) != 0):
-        ax[0].scatter(np.sqrt(values)[backgroundRejectedIndices], STD[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred')
-        ax[1].scatter(values[backgroundRejectedIndices], np.abs(Skew[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred', label="Rejected by background value")
-        ax[2].scatter(values[backgroundRejectedIndices], np.abs(kurto[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred')
+    #if (len(backgroundRejectedIndices) != 0):
+    #    ax[0].scatter(np.sqrt(values)[backgroundRejectedIndices], STD[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred')
+    #    ax[1].scatter(values[backgroundRejectedIndices], np.abs(Skew[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred', label="Rejected by background value")
+    #    ax[2].scatter(values[backgroundRejectedIndices], np.abs(kurto[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred')
         
     if (len(stdRejectedIndices) != 0):
         ax[0].scatter(np.sqrt(values)[stdRejectedIndices], STD[stdRejectedIndices], s=120, marker="D", edgecolor='k',color='gold')
@@ -528,10 +528,10 @@ saveBACKevol(allData, backgroundRejectedIndices, stdRejectedIndices, badAstromet
 saveSTDevol(allData, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, outputFolder+"/stdEvolution.png")
 saveValuesVSStats(normalisedBackgroundValues, backgroundStds, backgroundSkews, backgroundKurtos, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, outputFolder + "/backgroundStats.png")
 
-with open(outputFolder + "/" + outputFileBackgroundValue, 'w') as file:
-    for fileName in badFilesBCK:
-        file.write(fileName.split('/')[-1].split("_")[-1].split('.')[0] + '\n')
-
+#with open(outputFolder + "/" + outputFileBackgroundValue, 'w') as file:
+#    for fileName in badFilesBCK:
+#        file.write(fileName.split('/')[-1].split("_")[-1].split('.')[0] + '\n')
+###We will only take a look into STD, then on normalisedCounts we will reject by background
 with open(outputFolder + "/" + outputFileBackgroundStd, 'w') as file:
     for fileName in badFilesSTD:
         file.write(fileName.split('/')[-1].split("_")[-1].split('.')[0] + '\n')
