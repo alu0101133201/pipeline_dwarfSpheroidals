@@ -74,10 +74,15 @@ outputConfigurationVariablesInformation() {
         "·Object name:$objectName"
         "·Right ascension:$ra_gal:[deg]"
         "·Declination:$dec_gal:[deg]"
+        "·Latitud of the telescope:$telescopeLat:[deg]"
+        "·Longitude of the telescope:$telescopeLong:[deg]"
+        "·Elevation of the telescope:$telescopeElevation:[deg]"
         ""
+        "·Root directory to perform the reduction:$ROOTDIR"
         "·Keyword for the airmass:$airMassKeyWord"
         "·Keyword for date:$dateHeaderKey"
-        "·Root directory to perform the reduction:$ROOTDIR"
+        "·Keyword for RA of the pointings:$pointingRA:[$pointingRAUnits]"
+        "·Keyword for DEC of the pointings:$pointingDEC:[$pointingDECUnits]"
         ""
         "·Calibration range"
         "  Bright limit individual frames:$calibrationBrightLimitIndividualFrames:[mag]"
@@ -188,13 +193,20 @@ checkIfAllVariablesAreSet() {
     errorNumber=2
     flagToExit=""
     variablesToCheck=(objectName \
+                telescope \
                 ra_gal \
                 dec_gal \
-                telescope \
+                telescopeLat \
+                telescopeLong \
+                telescopeElevation \
                 defaultNumOfCPUs \
                 ROOTDIR \
                 airMassKeyWord \
                 dateHeaderKey \
+                pointingRA \
+                pointingRAUnits \
+                pointingDEC \
+                pointingDECUnits \
                 saturationThreshold \
                 gain \
                 sizeOfOurFieldDegrees \
@@ -230,6 +242,8 @@ checkIfAllVariablesAreSet() {
                 pixelScale \
                 detectorWidth \
                 detectorHeight \
+                overscan \
+                trimsecKey \
                 lowestScaleForIndex \
                 highestScaleForIndex \
                 solve_field_L_Param \
@@ -461,8 +475,8 @@ propagateKeyword() {
     local keyWordToPropagate=$2
     local out=$3
 
-    variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate)
-    eval "astfits --write=$keyWordToPropagate,$variableToDecideRingToNormalise $out -h1"
+    valueToPropagate=$(astfits $image --keyvalue=$keyWordToPropagate --quiet)
+    eval "astfits --write=$keyWordToPropagate,$valueToPropagate $out -h1"
 }
 export -f propagateKeyword
 
@@ -736,8 +750,8 @@ divideImagesByRunningFlats(){
 
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i "POINTRA" $out
-        propagateKeyword $i "POINTDEC" $out
+        propagateKeyword $i $pointingRA $out
+        propagateKeyword $i $pointingDEC $out
     done
     echo done > $flatDone
 }
@@ -757,7 +771,8 @@ divideImagesByWholeNightFlat(){
         astarithmetic $i -h1 $flatToUse -h1 / -o $out
         propagateKeyword $i $dateHeaderKey $out
         propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $dateHeaderKey $out 
+        propagateKeyword $i $pointingRA $out
+        propagateKeyword $i $pointingDEC $out
     done
     echo done > $flatDone
 }
@@ -829,6 +844,7 @@ warpImage() {
 }
 export -f warpImage
 
+
 removeBadFramesFromReduction() {
     local sourceToRemoveFiles=$1
     local destinationDir=$2
@@ -844,6 +860,17 @@ removeBadFramesFromReduction() {
         if [ -f $sourceToRemoveFiles/$fileName ]; then
             mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
         fi
+
+        txtFileName=$prefixOfFilesToRemove"${file_name%.*}".txt
+        if [ -f $sourceToRemoveFiles/$txtFileName ]; then
+            mv $sourceToRemoveFiles/$txtFileName $destinationDir/$txtFileName
+        fi
+
+        maskFileName=$prefixOfFilesToRemove"${file_name%.*}"_masked.fits
+        if [ -f $sourceToRemoveFiles/$maskFileName ]; then
+            mv $sourceToRemoveFiles/$maskFileName $destinationDir/$maskFileName
+        fi
+
     done < "$filePath"
 }
 export -f removeBadFramesFromReduction
@@ -967,7 +994,6 @@ computeSkyForFrame(){
 export -f computeSkyForFrame
 
 computeSky() {
-
     local framesToUseDir=$1
     local noiseskydir=$2
     local noiseskydone=$3
@@ -1231,9 +1257,31 @@ solveField() {
     base=$( basename $i)
 
 
-    pointRA_hours=$( astfits $i -h1 | grep POINTRA | awk -F= '{print $2}' | xargs )
-    pointRA=$( echo "$pointRA_hours * 15" | bc -l)
-    pointDec=$( astfits $i -h1 | grep POINTDEC | awk -F= '{print $2}' | xargs )
+    # Get the RA and Dec of the pointing. It has to be converted to deg
+    pointingRAValue=$( astfits $i --keyvalue=$pointingRA --quiet)
+    if [[ "$pointingRAUnits" == "hours" ]]; then
+        pointRA=$(echo "$pointingRAValue * 15" | bc -l)
+    elif [[ "$pointingRAUnits" == "deg" || "$pointingRAUnits" == "degrees" ]]; then
+        pointRA="$pointingRAValue"
+    else
+        echo "Error: Unsupported RA units: $pointingRAUnits"
+        exit 888
+    fi
+
+    pointingDecValue=$( astfits $i --keyvalue=$pointingDEC --quiet)
+    if [[ "$pointingDECUnits" == "hours" ]]; then
+        pointDec=$(echo "$pointingDecValue * 15" | bc -l)
+    elif [[ "$pointingDECUnits" == "deg" || "$pointingDECUnits" == "degrees" ]]; then
+        pointDec="$pointingDecValue"
+    else
+        echo "Error: Unsupported RA units: $pointingDECUnits"
+        exit 888
+    fi
+
+    # Format to get rid of scientific notation if needed
+    LC_NUMERIC=C
+    pointRA=$( printf "%.8f\n" " $pointRA")
+    pointDec=$( printf "%.8f\n" " $pointDec")
 
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
@@ -2403,7 +2451,6 @@ computeCalibrationFactors() {
     local numberOfApertureUnitsForCalibration=${16}
     local calibratingMosaic=${17}
 
-
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
@@ -2706,11 +2753,12 @@ produceCalibrationCheckPlot() {
     local survey=${11}
     local BDIR=${12}
     local mosaicPlot=${13}
+    local calibratedCataloguesDir=${14}
 
-    calibratedCataloguesDir=$BDIR/calibratedCatalogues
+
     if ! [ -d $calibratedCataloguesDir ]; then mkdir $calibratedCataloguesDir; fi
 
-    for i in $myCatalogue_nonCalibrated/*.cat; do
+    for i in $myCatalogue_nonCalibrated/*.cat; do        
         myFrame=$i
         frameNumber=$(echo "$i" | awk -F '[/]' '{print $(NF)}' | awk -F '[.]' '{print $(1)}' | awk -F '[_]' '{print $(NF)}')
 
@@ -2749,7 +2797,6 @@ produceCalibrationCheckPlot() {
 
             photometryOnImage_photutils -1 $calibratedCataloguesDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $calibratedCataloguesDir/$frameNumber.cat 22.5 $dataHdu \
                                         $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
-
 
             astmatch $referenceCatalogue --hdu=1 $calibratedCataloguesDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=3/3600 --outcols=aRA,aDEC,aMAGNITUDE,bMAGNITUDE -o$calibratedCataloguesDir/"$frameNumber"_matched.cat
             rm $calibratedCataloguesDir/$frameNumber.cat

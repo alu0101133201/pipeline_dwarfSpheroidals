@@ -1044,14 +1044,14 @@ else
   folderWithFramesToWarp=$BDIR/astro-ima
 fi
 
-entiredir_smallGrid=$BDIR/pointings_smallGrid
-entiredir_fullGrid=$BDIR/pointings_fullGrid
-entiredone=$entiredir_fullGrid/done_.txt
+entiredir_smallGrid_preAircorr=$BDIR/pointings_smallGrid_preAirMassCorr
+entiredir_fullGrid_preAircorr=$BDIR/pointings_fullGrid_preAirMassCorr
+entiredone=$entiredir_fullGrid_preAircorr/done_.txt
 swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
 export swarpcfg
 
-if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
-if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
+if ! [ -d $entiredir_smallGrid_preAircorr ]; then mkdir $entiredir_smallGrid_preAircorr; fi
+if ! [ -d $entiredir_fullGrid_preAircorr ]; then mkdir $entiredir_fullGrid_preAircorr; fi
 
 if [ -f $entiredone ]; then
     echo -e "\n\tImages already with astromety corrected using scamp-swarp and regrid to final grid (stored in pointings)\n"
@@ -1061,7 +1061,7 @@ else
       base="$a".fits
       imagesToWarp+=($folderWithFramesToWarp/$base)
   done
-  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
+  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid_preAircorr $entiredir_smallGrid_preAircorr $ra $dec $coaddSizePx $pipelinePath
   echo done > $entiredone
 fi
 
@@ -1080,6 +1080,99 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_fullGrid_preAircorr
   echo done > $badFilesWarningsDone
 fi
+
+
+# compute masks in the full grids in order to do the correction based on airmass maps
+echo -e "\n ${GREEN} ---Performing airmass map correction --- ${NOCOLOUR}"
+
+createMask() {
+  local image=$1
+  local outputDir=$2
+  local noisechisel_param=$3
+
+  base=$( basename $image )
+  mask=$(echo $base | sed 's/.fits/_mask.fits/')
+  astnoisechisel $image $noisechisel_param --numthreads=$num_cpus -o $outputDir/$mask
+}
+export -f createMask
+
+masksForAirMassMapCorr=$BDIR/pointings_smallGrid_masksForAirMassMapCorr
+masksforAirMassMapCorrDone=$masksForAirMassMapCorr/done_.txt
+
+if ! [ -d $masksForAirMassMapCorr ]; then mkdir $masksForAirMassMapCorr; fi
+if [ -f $masksforAirMassMapCorrDone ]; then
+    echo -e "\n\tMasks for air masses map corrections already created\n"
+else
+  imagesToCorrect=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+      base=entirecamera_"$a".fits
+      imagesToCorrect+=($entiredir_smallGrid_preAircorr/$base)
+  done
+  printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createMask {} $masksForAirMassMapCorr "'$noisechisel_param'"
+  echo done > $masksforAirMassMapCorrDone
+fi
+
+
+
+###### Correction based on the airmass map
+createAirMassMapsAndApplyCorr() {
+    local image=$1
+    local airMassMapsDir=$2
+    local smallGridDirPreCorr=$3
+    local fullGridDirPreCorr=$4
+    local folderWithMasks=$5
+    local telescopeLat=$6
+    local telescopeLong=$7
+    local telescopeElevation=$8
+    local fullGridDirCorrected=$9
+    local smallGridDirCorrected=${10}
+    local diagnosis_and_badFilesDir=${11}
+
+
+    baseName=$( basename $image )
+    maskName=$(echo $baseName | sed 's/.fits/_mask.fits/')
+    maskedImage=$smallGridDirPreCorr/$(echo $baseName | sed 's/.fits/_masked.fits/')
+    astarithmetic $image -h1 $folderWithMasks/$maskName -hDETECTIONS 1 eq nan where float32 -o $maskedImage -q
+
+    dateObs=$( astfits $image --keyvalue=$dateHeaderKey --quiet)
+    python3 $pythonScriptsPath/createAirMassCorrectionMap.py $maskedImage $airMassMapsDir $telescopeLat $telescopeLong $telescopeElevation $dateObs $diagnosis_and_badFilesDir
+
+    # move the air mass map to the full grid
+    NAXIS1_image=$(gethead $fullGridDirPreCorr/$baseName NAXIS1); NAXIS2_image=$(gethead $fullGridDirPreCorr/$baseName NAXIS2)
+    python3 $pythonScriptsPath/moveSurfaceFitToFullGrid.py $fullGridDirPreCorr/$baseName $airMassMapsDir/airMassMapCorr_smallGrid_$baseName 1 $NAXIS1_image $NAXIS2_image $airMassMapsDir/airMassMapCorr_fullGrid_$baseName
+
+    # Apply the corrections
+    astarithmetic $fullGridDirPreCorr/$baseName -h1 $airMassMapsDir/airMassMapCorr_fullGrid_$baseName -h1 / -o $fullGridDirCorrected/$baseName
+    astarithmetic $smallGridDirPreCorr/$baseName -h1 $airMassMapsDir/airMassMapCorr_smallGrid_$baseName -h1 / -o $smallGridDirCorrected/$baseName
+    rm $maskedImage
+}
+export -f createAirMassMapsAndApplyCorr
+
+
+
+entiredir_airmassMaps=$BDIR/airMassCorrectionMaps
+entiredir_smallGrid=$BDIR/pointings_smallGrid
+entiredir_fullGrid=$BDIR/pointings_fullGrid
+entiredone=$entiredir_fullGrid/done_.txt
+
+if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
+if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
+if ! [ -d $entiredir_airmassMaps ]; then mkdir $entiredir_airmassMaps; fi
+
+if [ -f $entiredone ]; then
+    echo -e "\n\tAir masses correction map already created and applied\n"
+else
+  imagesToCorrect=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+      base=entirecamera_"$a".fits
+      imagesToCorrect+=($entiredir_smallGrid_preAircorr/$base)
+  done
+  printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createAirMassMapsAndApplyCorr {} $entiredir_airmassMaps $entiredir_smallGrid_preAircorr $entiredir_fullGrid_preAircorr $masksForAirMassMapCorr \
+                                                                                                  $telescopeLat $telescopeLong $telescopeElevation \
+                                                                                                  $entiredir_fullGrid $entiredir_smallGrid $diagnosis_and_badFilesDir                                             
+  echo done > $entiredone
+fi
+######
 
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
@@ -1163,7 +1256,6 @@ else
   echo done > $badFilesWarningsDone
 fi
 
-exit 0
 
 ### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
 echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
@@ -1652,7 +1744,6 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-exit 0
 
 # # Remove intermediate folders to save some space
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
