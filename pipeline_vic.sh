@@ -2220,7 +2220,7 @@ if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtracted
 if [ -f $framesWithCoaddSubtractedDone ]; then
     echo -e "\nFrames with coadd subtracted already generated\n"
 else
-  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_$filter_it$iteration.fits
+  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
   subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
 
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -2239,14 +2239,13 @@ else
   computeMetricOfResiduals $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
   python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
 
+  sumMosaicAfterCoaddSubtractionTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubTagged_"$filter"_it$iteration.fits
+  framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
+  if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
+  computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionTagged "$noisechisel_param"
 
   echo "done" > $framesWithCoaddSubtractedDone
 fi
-
-sumMosaicAfterCoaddSubtractionTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubTagged_"$filter"_it$iteration.fits
-framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
-if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
-computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionTagged "$noisechisel_param"
 
 endTime=$(TZ=UTC date +%D%T)
 echo "Pipeline ended at : ${endTime}"

@@ -1657,7 +1657,6 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
-exit 0
 
 # # Remove intermediate folders to save some space
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -2147,6 +2146,12 @@ else
   
   computeMetricOfResiduals $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
   python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
+
+  sumMosaicAfterCoaddSubtractionTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubTagged_"$filter"_it$iteration.fits
+  framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
+  if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
+  computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionTagged "$noisechisel_param"
+
   echo "done" > $framesWithCoaddSubtractedDone
 fi
 

@@ -105,6 +105,8 @@ def obtainKeyWordFromFits(file, keyword):
             header = hdul[HDU_TO_FIND_AIRMASS].header
             
             if keyword in header:
+                if (keywordValue == "" or keywordValue == None):
+                    keywordValue=np.nan
                 keywordValue = header[keyword]
                 return(keywordValue)
             else:

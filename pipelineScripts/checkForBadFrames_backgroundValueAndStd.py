@@ -211,6 +211,8 @@ def obtainKeyWordFromFits(file, keyword):
             
             if keyword in header:
                 keywordValue = header[keyword]
+                if (keywordValue == "" or keywordValue == None):
+                    keywordValue=np.nan
                 return(keywordValue)
             else:
                 raise Exception(f"Keyword '{keyword}' not found in the header.")

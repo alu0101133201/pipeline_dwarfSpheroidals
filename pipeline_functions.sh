@@ -2914,15 +2914,11 @@ computeMetricOfResiduals() {
 }
 export -f subtractCoaddToFrames
 
+prepareIndividualResidualWithTags() {
+        local i=$1
+        local residualFramesTaggedDir=$2
+        local noisechisel_param=$3
 
-computeSumMosaicAfterCoaddSubtractionWithTracesIndicated() {
-    local residualFramesDir=$1
-    local residualFramesTaggedDir=$2
-    local finalResidualOutput=$3
-    local noisechisel_param=$4
-
-
-    for i in $( ls $residualFramesDir/*.fits ); do
         base=$( basename $i )
         frameNumber=$(echo "$base" | sed -E 's/.*_([0-9]+)\.fits/\1/')
         tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
@@ -2932,20 +2928,34 @@ computeSumMosaicAfterCoaddSubtractionWithTracesIndicated() {
 
         median=$( astarithmetic $residualFramesTaggedDir/$base medianvalue --quiet )
         std=$( astarithmetic $residualFramesTaggedDir/$base stdvalue --quiet )
-        
 
-        numOfStdToMask=3
+        numOfStdToMask=5
         upperThreshold=$( astarithmetic $median $std $numOfStdToMask x + --quiet )
 
-        astarithmetic $i -h1 $i -h1 $upperThreshold gt $frameNumber where -o$residualFramesTaggedDir/tagged_$base --quiet
+        astarithmetic $i -h1 $i -h1 $upperThreshold gt $frameNumber where -o$residualFramesTaggedDir/tmp_$frameNumber.fits --quiet
+        astarithmetic $residualFramesTaggedDir/tmp_$frameNumber.fits -h1 $i -h1 $upperThreshold lt 0 where -o$residualFramesTaggedDir/tagged_$base --quiet
 
         # lowerThreshold=$( astarithmetic $median $std $numOfStdToMask x - --quiet )
         # astarithmetic $i -h1 $residualFramesTaggedDir/$base -h1 $upperThreshold gt $frameNumber where -o$residualFramesTaggedDir/tmp.fits --quiet
         # astarithmetic $residualFramesTaggedDir/tmp.fits -h1 $residualFramesTaggedDir/$base -h1 $lowerThreshold lt $frameNumber where -o$residualFramesTaggedDir/tagged_$base --quiet
         # rm $residualFramesTaggedDir/tmp.fits 
 
-        rm $residualFramesTaggedDir/$tmpMask $residualFramesTaggedDir/$base
+        rm $residualFramesTaggedDir/$tmpMask $residualFramesTaggedDir/$base $residualFramesTaggedDir/tmp_$frameNumber.fits
+}
+export -f prepareIndividualResidualWithTags
+
+computeSumMosaicAfterCoaddSubtractionWithTracesIndicated() {
+    local residualFramesDir=$1
+    local residualFramesTaggedDir=$2
+    local finalResidualOutput=$3
+    local noisechisel_param=$4
+
+    frames=()
+    for i in $( ls $residualFramesDir/*.fits ); do
+        frames+=("$i")
     done
+    printf "%s\n" "${frames[@]}" | parallel -j "$num_cpus" prepareIndividualResidualWithTags {} $residualFramesTaggedDir "'$noisechisel_param'"
+
     astarithmetic $(ls -v $residualFramesTaggedDir/*.fits) $(ls $residualFramesTaggedDir/*.fits | wc -l) sum -g1 -o$finalResidualOutput
 }
 export -f computeSumMosaicAfterCoaddSubtractionWithTracesIndicated
