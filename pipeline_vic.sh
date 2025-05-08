@@ -125,6 +125,12 @@ export noisechisel_param
 echo -e "\n-Noisechisel parameters used for masking:"
 echo -e "\t" $noisechisel_param
 
+######## Loading and transforming to needed format the user-defined masks to apply
+
+maskParams=$(printf "%s " "${masksToApply[@]}")
+echo $maskParams
+export maskParams
+
 ########## Prepare data ##########
 
 echo -e "\n ${GREEN} ---Preparing data--- ${NOCOLOUR}"
@@ -1085,14 +1091,33 @@ fi
 # compute masks in the full grids in order to do the correction based on airmass maps
 echo -e "\n ${GREEN} ---Performing airmass map correction --- ${NOCOLOUR}"
 
+
+
+
+
 createMask() {
   local image=$1
   local outputDir=$2
   local noisechisel_param=$3
+  local maskParams=$4
 
   base=$( basename $image )
   mask=$(echo $base | sed 's/.fits/_mask.fits/')
   astnoisechisel $image $noisechisel_param --numthreads=$num_cpus -o $outputDir/$mask
+
+  # Manual masks defined by the user
+  valueToPut=nan
+  read -r -a maskArray <<< "$maskParams"
+  for ((i=0; i<${#maskArray[@]}; i+=5)); do
+      ra="${maskArray[i]}"
+      dec="${maskArray[i+1]}"
+      r="${maskArray[i+2]}"
+      axisRatio="${maskArray[i+3]}"
+      pa="${maskArray[i+4]}"
+
+      python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $outputDir/$mask $valueToPut $ra $dec $r $axisRatio $pa
+  done
+
 }
 export -f createMask
 
@@ -1108,10 +1133,10 @@ else
       base=entirecamera_"$a".fits
       imagesToCorrect+=($entiredir_smallGrid_preAircorr/$base)
   done
-  printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createMask {} $masksForAirMassMapCorr "'$noisechisel_param'"
+
+  printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createMask {} $masksForAirMassMapCorr "'$noisechisel_param'"  "'$maskParams'"
   echo done > $masksforAirMassMapCorrDone
 fi
-
 
 
 ###### Correction based on the airmass map
@@ -1175,6 +1200,7 @@ fi
 ######
 
 
+
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter".txt
@@ -1185,14 +1211,15 @@ ringDir=$BDIR/ring
 sky_estimation_method=ring
 
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'"
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
 noiseskyctedone=$noiseskyctedir/done_"$filter".txt
 if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"
-  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 fi
 
 
@@ -1751,6 +1778,8 @@ else
 fi
 
 
+
+
 # # Remove intermediate folders to save some space
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1772,20 +1801,30 @@ find $BDIR/only-w-dir -type f ! -name 'done*' -exec rm {} \;
 
 
 
-## This code is used for manually masking a region (generally the galaxy)
+## This code is used for manually adding the user-defined masks to the mask from the coadd
+# First we save the original mask that noisechisel produces
+mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
+astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
-# mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
-# astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
-# valueToPut=1
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 189.2659556 14.2706668 260 $valueToPut
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 189.1448630 14.2878726 300 $valueToPut
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits 189.1483376 14.3977554 250 $valueToPut
+mv $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
+astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
-# mv $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
-# astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 189.2659556 14.2706668 260 $valueToPut
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 189.1448630 14.2878726 300 $valueToPut
-# python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits 189.1483376 14.3977554 250 $valueToPut
+# Then we apply the user-defined masks
+valueToPut=1
+read -r -a maskArray <<< "$maskParams"
+for ((i=0; i<${#maskArray[@]}; i+=5)); do
+	ra="${maskArray[i]}"
+	dec="${maskArray[i+1]}"
+	r="${maskArray[i+2]}"
+	axisRatio="${maskArray[i+3]}"
+	pa="${maskArray[i+4]}"
+
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+done
+
+exit 0
+
 
 
 ####### ITERATION 2 ######

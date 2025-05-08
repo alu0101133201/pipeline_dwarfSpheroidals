@@ -892,10 +892,12 @@ computeSkyForFrame(){
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
     local noisechisel_param=${15}
+    local manualMaskParams=${16}
+
 
     i=$entiredir/$1
 
- 
+
     # ****** Decision note *******
     # Here we have implemented two possibilities. Either the background is estimated by a constant or by a polynomial.
     # If it is a constant we store the fileName, the background value and the std. This is implemented this way because we
@@ -924,13 +926,24 @@ computeSkyForFrame(){
                 astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
                 imageToUse=$noiseskydir/$tmpMaskedImage
                 rm -f $noiseskydir/$tmpMask
+
+                # manual masks defined by the user
+                valueToPut=nan
+                read -r -a maskArray <<< "$manualMaskParams"
+                for ((i=0; i<${#maskArray[@]}; i+=5)); do
+                    ra="${maskArray[i]}"
+                    dec="${maskArray[i+1]}"
+                    r="${maskArray[i+2]}"
+                    axisRatio="${maskArray[i+3]}"
+                    pa="${maskArray[i+4]}"
+
+                    python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
+                done
             else    
                 imageToUse=$i
             fi
             
 
-            # valueToPut=nan
-            # python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse 159.9694023 20.8467568 120 $valueToPut
 
             # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
             tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
@@ -1009,6 +1022,7 @@ computeSky() {
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
     local noisechisel_param=${15}
+    local maskParams=${16}
 
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
@@ -1024,7 +1038,7 @@ computeSky() {
         # Note
         # Here we dont send the noisechisel arguments as we do in the main script (i.e. "'$noisechisel_param'"). This function already receives them in this format, so
         # we simply pass it as it is. This was giving me trouble, so be careful
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $noisechisel_param
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" "'$maskParams'"
         echo done > $noiseskydone
     fi
 }
@@ -3087,9 +3101,9 @@ generateCatalogueFromImage_sextractor(){
     sed -i "1,${numberOfHeaders}d" "$outputDir/"$a"_tmp2.cat"
 
     if [ $apertureUnitsToCalculate == "FWHM" ]; then
-        awk -v col="$reCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
-    elif [ $apertureUnitsToCalculate == "Re" ]; then
         awk -v col="$fwhmCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
+    elif [ $apertureUnitsToCalculate == "Re" ]; then
+        awk -v col="$reCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
