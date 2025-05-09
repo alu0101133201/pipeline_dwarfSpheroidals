@@ -1272,7 +1272,10 @@ solveField() {
 
 
     # Get the RA and Dec of the pointing. It has to be converted to deg
+    LC_NUMERIC=C  # Format to get rid of scientific notation if needed
+
     pointingRAValue=$( astfits $i --keyvalue=$pointingRA --quiet)
+    pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
     if [[ "$pointingRAUnits" == "hours" ]]; then
         pointRA=$(echo "$pointingRAValue * 15" | bc -l)
     elif [[ "$pointingRAUnits" == "deg" || "$pointingRAUnits" == "degrees" ]]; then
@@ -1283,6 +1286,7 @@ solveField() {
     fi
 
     pointingDecValue=$( astfits $i --keyvalue=$pointingDEC --quiet)
+    pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
     if [[ "$pointingDECUnits" == "hours" ]]; then
         pointDec=$(echo "$pointingDecValue * 15" | bc -l)
     elif [[ "$pointingDECUnits" == "deg" || "$pointingDECUnits" == "degrees" ]]; then
@@ -1291,11 +1295,6 @@ solveField() {
         echo "Error: Unsupported RA units: $pointingDECUnits"
         exit 888
     fi
-
-    # Format to get rid of scientific notation if needed
-    LC_NUMERIC=C
-    pointRA=$( printf "%.8f\n" " $pointRA")
-    pointDec=$( printf "%.8f\n" " $pointDec")
 
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
