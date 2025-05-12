@@ -476,6 +476,7 @@ propagateKeyword() {
     local out=$3
 
     valueToPropagate=$(astfits $image --keyvalue=$keyWordToPropagate --quiet)
+    eval "astfits --delete=$keyWordToPropagate $out -h1"
     eval "astfits --write=$keyWordToPropagate,$valueToPropagate $out -h1"
 }
 export -f propagateKeyword
@@ -589,53 +590,61 @@ getStdValueInsideRing() {
 }
 export -f getStdValueInsideRing
 
-getSkewKurtoValueInsideRing(){
+getSkewKurtoValueFromSkyPixels(){
     local i=$1
-    local commonRing=$2
-    local doubleRing_first=$3
-    local doubleRing_second=$4
-    local useCommonRing=$5
-    local keyWordToDecideRing=$6
-    local keyWordThreshold=$7
-    local keyWordValueForFirstRing=$8
-    local keyWordValueForSecondRing=$9
+    local constantSkyMethod=$2
+    local commonRing=$3
+    local doubleRing_first=$4
+    local doubleRing_second=$5
+    local useCommonRing=$6
+    local keyWordToDecideRing=$7
+    local keyWordThreshold=$8
+    local keyWordValueForFirstRing=$9
+    local keyWordValueForSecondRing=${10}
 
-    if [ "$useCommonRing" = true ]; then
-            # Case when we have one common normalisation ring
-            #astarithmetic $i -h1 $commonRing -h1 0 eq nan where -q -o ring_masked.fits
-
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing)
-            # rm ring_masked.fits
-    else
-        # Case when we do NOT have one common normalisation ring
-        # All the following logic is to decide which normalisation ring apply
-        variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
-        firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
-        firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
-        secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
-        secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
-
-        if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first)
-            # rm ring_masked.fits
-        elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second)
-            # rm ring_masked.fits
+    if [ "$constantSkyMethod" == "ring" ]; then
+        if [ "$useCommonRing" = true ]; then
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing)
         else
-            errorNumber=5
-            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
-            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
-            exit $errorNumber
+            # Case when we do NOT have one common normalisation ring
+            # All the following logic is to decide which normalisation ring apply
+            variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
+            firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
+            firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
+            secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
+            secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
+
+            if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
+                #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first)
+                # rm ring_masked.fits
+            elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
+                #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second)
+                # rm ring_masked.fits
+            else
+                errorNumber=5
+                echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
+                echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+                exit $errorNumber
+            fi
         fi
+
+    elif [ "$constantSkyMethod" == "noisechisel" ]; then
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS)
+    else
+        errorNumber=555
+        echo -e "\nIn Function getSkewKurtoValueFromSkyPixels. Not identified the "constantSkyMethod" variable  value" >&2
+        echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+        exit $errorNumber  
     fi
     echo "$skew $kurto"
 }
-export -f getSkewKurtoValueInsideRing
+export -f getSkewKurtoValueFromSkyPixels
 
 normaliseImagesWithRing() {
     local imageDir=$1
@@ -822,15 +831,13 @@ warpImage() {
     # We need to store both. I have tried to store the small one and then warp it again to the big grid, it's more time consuming
     # and the nan wholes grow so we end up with less light in the final coadd.
 
-    # Parameters for identifing our frame in the full grid
     currentIndex=$(basename $imageToSwarp .fits)
-
     tmpFile1=$entiredir"/$currentIndex"_temp1.fits
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "SWarp"
-    SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
 
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
@@ -841,6 +848,11 @@ warpImage() {
     astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
 
     rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1
+
+    # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but 
+    # swarp for some reason propagates it incorrectly
+    propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 
+    propagateKeyword $imageToSwarp $dateHeaderKey $frameFullGrid
 }
 export -f warpImage
 
@@ -875,7 +887,6 @@ removeBadFramesFromReduction() {
 }
 export -f removeBadFramesFromReduction
 
-# Functions for compute and subtract sky from frames
 computeSkyForFrame(){
     local base=$1
     local entiredir=$2
@@ -895,56 +906,53 @@ computeSkyForFrame(){
     local manualMaskParams=${16}
 
 
+    # Masking the frames if they are not already 
     i=$entiredir/$1
-
-
-    # ****** Decision note *******
-    # Here we have implemented two possibilities. Either the background is estimated by a constant or by a polynomial.
-    # If it is a constant we store the fileName, the background value and the std. This is implemented this way because we
-    # need the background to subtract but also later the std for weighing the frames
-    # If it is a polynomial we only use it to subtract the background (the weighing is always with a constat) so we only store
-    # the coefficients of the polynomial.
-    #
-    # Storing this values is also relevant for checking for potential bad frames
     out=$(echo $base | sed 's/.fits/.txt/')
-
     if [ "$constantSky" = true ]; then  # Case when we subtract a constant
         # Here we have two possibilities
         # Estimate the background within the normalisation ring or using noisechisel
+
+        if ! [ "$inputImagesAreMasked" = true ]; then
+            tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
+            tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
+            astnoisechisel $i $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
+            astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
+            imageToUse=$noiseskydir/$tmpMaskedImage
+            rm -f $noiseskydir/$tmpMask
+
+            # manual masks defined by the user
+            valueToPut=nan
+            read -r -a maskArray <<< "$manualMaskParams"
+            for ((i=0; i<${#maskArray[@]}; i+=5)); do
+                ra="${maskArray[i]}"
+                dec="${maskArray[i+1]}"
+                r="${maskArray[i+2]}"
+                axisRatio="${maskArray[i+3]}"
+                pa="${maskArray[i+4]}"
+
+                python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
+            done
+        else    
+            imageToUse=$i
+        fi
+
+
+        # ****** Decision note *******
+        # Here we have implemented two possibilities. Either the background is estimated by a constant or by a polynomial.
+        # If it is a constant we store the fileName, the background value and the std. This is implemented this way because we
+        # need the background to subtract but also later the std for weighing the frames
+        # If it is a polynomial we only use it to subtract the background (the weighing is always with a constat) so we only store
+        # the coefficients of the polynomial.
+        #
+        # Storing this values is also relevant for checking for potential bad frames
+
 
         # The problem is that I can't use the same ring/s as in the normalisation because here we have warped and cropped the images... So I create a new normalisation ring from the centre of the images
         # I cannot even create a common ring for all, because they are cropped based on the number of non-nan (depending on the vignetting and how the NAN are distributed), so i create a ring per image
         # For that reason the subtraction of the background using the ring is always using a ring centered in the frame
         # More logic should be implemented to use the normalisation ring(s) and recover them after the warping and cropping
         if [ "$constantSkyMethod" = "ring" ]; then
-
-            # Mask the image if they are not already masked
-            if ! [ "$inputImagesAreMasked" = true ]; then
-                tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
-                tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
-                astnoisechisel $i $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
-                astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
-                imageToUse=$noiseskydir/$tmpMaskedImage
-                rm -f $noiseskydir/$tmpMask
-
-                # manual masks defined by the user
-                valueToPut=nan
-                read -r -a maskArray <<< "$manualMaskParams"
-                for ((i=0; i<${#maskArray[@]}; i+=5)); do
-                    ra="${maskArray[i]}"
-                    dec="${maskArray[i+1]}"
-                    r="${maskArray[i+2]}"
-                    axisRatio="${maskArray[i+3]}"
-                    pa="${maskArray[i+4]}"
-
-                    python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
-                done
-            else    
-                imageToUse=$i
-            fi
-            
-
-
             # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
             tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
             tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
@@ -960,22 +968,20 @@ computeSkyForFrame(){
            
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            read skew kurto < <(getSkewKurtoValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
 
             echo "$base $me $std $skew $kurto" > $noiseskydir/$out
-
             rm $ringDir/$tmpRingDefinition
             rm $ringDir/$tmpRingFits
-
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
             sky=$(echo $base | sed 's/.fits/_sky.fits/')
-
-            # The sky substraction is done by using the --checksky option in noisechisel
-            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
-
+            astnoisechisel $imageToUse --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
             mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
             std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
-            echo "$base $mean $std" > $noiseskydir/$out
+
+            read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            echo "$base $mean $std $skew $kurto" > $noiseskydir/$out
+            
             rm -f $noiseskydir/$sky
         else
             errorNumber=6
@@ -985,21 +991,11 @@ computeSkyForFrame(){
         fi
 
     else
-        # Case when we model a plane
-        noiseOutTmp=$(echo $base | sed 's/.fits/_sky.fits/')
-        maskTmp=$(echo $base | sed 's/.fits/_masked.fits/')
+        # Case when we fit a plane
         planeOutput=$(echo $base | sed 's/.fits/_poly.fits/')
         planeCoeffFile=$(echo $base | sed 's/.fits/.txt/')
 
-        # This conditional allows us to introduce the images already masked (masked with the mask of the coadd) in the second and next iterations
-        if ! [ "$inputImagesAreMasked" = true ]; then
-            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
-            astarithmetic $i -h1 $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
-            python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
-        else
-            python3 $pythonScriptsPath/surface-fit.py -i $i -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
-        fi
-
+        python3 $pythonScriptsPath/surface-fit.py -i $imageToUse -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
         rm -f $noiseskydir/$noiseOutTmp
         rm -f $noiseskydir/$maskTmp
     fi
@@ -1034,10 +1030,7 @@ computeSky() {
             base=$( basename $a )
             framesToComputeSky+=("$base")
         done
- 
-        # Note
-        # Here we dont send the noisechisel arguments as we do in the main script (i.e. "'$noisechisel_param'"). This function already receives them in this format, so
-        # we simply pass it as it is. This was giving me trouble, so be careful
+
         printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" "'$maskParams'"
         echo done > $noiseskydone
     fi
@@ -2936,7 +2929,7 @@ prepareIndividualResidualWithTags() {
         frameNumber=$(echo "$base" | sed -E 's/.*_([0-9]+)\.fits/\1/')
         tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
 
-        astnoisechisel $noisechisel_param $i -o $residualFramesTaggedDir/$tmpMask
+        astnoisechisel $noisechisel_param $i --numthreads=$num_cpus -o $residualFramesTaggedDir/$tmpMask 
         astarithmetic $i -h1 $residualFramesTaggedDir/$tmpMask -h1 1 eq nan where float32 -o $residualFramesTaggedDir/$base -quiet
 
         median=$( astarithmetic $residualFramesTaggedDir/$base medianvalue --quiet )
@@ -3068,13 +3061,10 @@ export -f generateCatalogueFromImage_noisechisel
 generateCatalogueFromImage_sextractor(){
     local image=$1
     local outputDir=$2
-
     local a=$3
-
     local apertureUnitsToCalculate=$4
 
-
-    # I specify the configuration path here because in the photometric calibration the working directoy changes. This has to be changed and use the config path given in the pipeline
+    # I specify the configuration path here because in the photometric calibration the working directory changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII_HEAD 1>/dev/null 2>&1
 
@@ -3099,10 +3089,11 @@ generateCatalogueFromImage_sextractor(){
     numberOfHeaders=$( grep '^#' $outputDir/"$a"_tmp2.cat | wc -l)
     sed -i "1,${numberOfHeaders}d" "$outputDir/"$a"_tmp2.cat"
 
+    # Note. It seems like reCol and fwhmCol should go the other way around, but the awk command REMOVES the column that receives. So this is not a mistake
     if [ $apertureUnitsToCalculate == "FWHM" ]; then
-        awk -v col="$fwhmCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
-    elif [ $apertureUnitsToCalculate == "Re" ]; then
         awk -v col="$reCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
+    elif [ $apertureUnitsToCalculate == "Re" ]; then
+        awk -v col="$fwhmCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
@@ -3125,8 +3116,8 @@ generateCatalogueFromImage_sextractor(){
         sed -i '1i# Column 2: Y              ' $outputDir/$a.cat
         sed -i '1i# Column 1: X              ' $outputDir/$a.cat
     fi
-    rm $outputDir/"$a"_tmp.cat $outputDir/"$a"_tmp2.cat
 
+    rm $outputDir/"$a"_tmp.cat $outputDir/"$a"_tmp2.cat
     mv  $outputDir/$a.cat $outputDir/catalogue_$a.cat
     echo $outputDir/catalogue_$a.cat
 }
@@ -3238,13 +3229,10 @@ computeFWHMSingleFrame(){
     local headerToUse=$4
     local methodToUse=$5
     local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
-
-
-
+    
     i=$framesForFWHMDir/entirecamera_"$a"
-    ##In the case of using it for Decals or Panstarrs, we need the variable survey
 
-
+    # In the case of using it for Decals or Panstarrs, we need the variable survey
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $fwhmdir $a FWHM )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
@@ -3257,12 +3245,17 @@ computeFWHMSingleFrame(){
     fi
 
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
-
+    # Now we select the stars as we do for the photometry
+    s=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+    minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
+    maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
+    asttable $fwhmdir/match_"$a"_my_gaia.txt --noblank=MAGNITUDE --range=HALF_MAX_RADIUS,$minr:$maxr -c'arith $6 2 x' -o$fwhmdir/fwhm_"$a"_cat.txt
+    
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
-    hFWHM=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-    FWHM=$(awk "BEGIN {print $hFWHM * 2}")
+    FWHM=$(asttable $fwhmdir/fwhm_"$a"_cat.txt -c1  | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
     echo $FWHM > $fwhmdir/fwhm_"$a".txt
-    rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue
+    rm $fwhmdir/match_"$a"_my_gaia.txt $fwhmdir/fwhm_"$a"_cat.txt $outputCatalogue
 }
 export -f computeFWHMSingleFrame

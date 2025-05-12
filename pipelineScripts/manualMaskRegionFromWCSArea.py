@@ -57,9 +57,11 @@ else:
     data[mask] = float(valueToPut)
 
 # Save the masked image
-# fits.writeto(image, data, hdu[0].header, overwrite=True)
+header = hdu[1].header.copy()
+if 'BLANK' in header:
+    del header['BLANK']
 
 primary_hdu = PrimaryHDU()  
-image_hdu = ImageHDU(data=data, header=hdu[1].header)
+image_hdu = ImageHDU(data=data, header=header)
 new_hdul = HDUList([primary_hdu, image_hdu])
 new_hdul.writeto(image, overwrite=True)

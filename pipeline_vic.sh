@@ -987,6 +987,7 @@ else
 fi
 
 
+
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -1037,6 +1038,7 @@ else
 fi
 
 
+
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1071,6 +1073,7 @@ else
   echo done > $entiredone
 fi
 
+
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
@@ -1091,10 +1094,6 @@ fi
 # compute masks in the full grids in order to do the correction based on airmass maps
 echo -e "\n ${GREEN} ---Performing airmass map correction --- ${NOCOLOUR}"
 
-
-
-
-
 createMask() {
   local image=$1
   local outputDir=$2
@@ -1106,7 +1105,7 @@ createMask() {
   astnoisechisel $image $noisechisel_param --numthreads=$num_cpus -o $outputDir/$mask
 
   # Manual masks defined by the user
-  valueToPut=nan
+  valueToPut=1
   read -r -a maskArray <<< "$maskParams"
   for ((i=0; i<${#maskArray[@]}; i+=5)); do
       ra="${maskArray[i]}"
@@ -1133,10 +1132,10 @@ else
       base=entirecamera_"$a".fits
       imagesToCorrect+=($entiredir_smallGrid_preAircorr/$base)
   done
-
   printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createMask {} $masksForAirMassMapCorr "'$noisechisel_param'"  "'$maskParams'"
   echo done > $masksforAirMassMapCorrDone
 fi
+
 
 
 ###### Correction based on the airmass map
@@ -1169,10 +1168,10 @@ createAirMassMapsAndApplyCorr() {
     # Apply the corrections
     astarithmetic $fullGridDirPreCorr/$baseName -h1 $airMassMapsDir/airMassMapCorr_fullGrid_$baseName -h1 / -o $fullGridDirCorrected/$baseName
     astarithmetic $smallGridDirPreCorr/$baseName -h1 $airMassMapsDir/airMassMapCorr_smallGrid_$baseName -h1 / -o $smallGridDirCorrected/$baseName
-    rm $maskedImage
+
+    # rm $maskedImage
 }
 export -f createAirMassMapsAndApplyCorr
-
 
 
 entiredir_airmassMaps=$BDIR/airMassCorrectionMaps
@@ -1195,10 +1194,11 @@ else
   printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createAirMassMapsAndApplyCorr {} $entiredir_airmassMaps $entiredir_smallGrid_preAircorr $entiredir_fullGrid_preAircorr $masksForAirMassMapCorr \
                                                                                                   $telescopeLat $telescopeLong $telescopeElevation \
                                                                                                   $entiredir_fullGrid $entiredir_smallGrid $diagnosis_and_badFilesDir                                             
+  python3 $pythonScriptsPath/diagnosis_gammaFactorsDistribution.py $diagnosis_and_badFilesDir
+  rm $diagnosis_and_badFilesDir/gammaFactorsFromAirMassMapCorr.txt.lock
   echo done > $entiredone
 fi
 ######
-
 
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
@@ -1208,8 +1208,8 @@ noiseskydone=$noiseskydir/done_"$filter".txt
 echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
 ringDir=$BDIR/ring
-sky_estimation_method=ring
 
+sky_estimation_method=noisechisel # This is usually set to ring. Right now I'm working with fornax and some frames have the huge galaxy in the middle even on top of the ring so I use noisechisel
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
@@ -1284,6 +1284,7 @@ else
 fi
 
 
+
 ### BUILD A FIRST COADD FROM SKY SUBTRACTION ####
 echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
 writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
@@ -1325,8 +1326,8 @@ else
 	if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
 	removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
-  echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
   rejectedFramesDir=$BDIR/rejectedFrames_prephot_it1
+  echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
   
@@ -1454,6 +1455,7 @@ else
   python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
   echo "done" > $backgroundBrightnessDone
 fi
+
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 
@@ -1779,7 +1781,6 @@ fi
 
 
 
-
 # # Remove intermediate folders to save some space
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1822,10 +1823,6 @@ for ((i=0; i<${#maskArray[@]}; i+=5)); do
 	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
 	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
 done
-
-exit 0
-
-
 
 ####### ITERATION 2 ######
 iteration=2

@@ -150,42 +150,6 @@ def saveHistogram(values, badAstrometrisedIndices, imageName, title, labelX):
     plt.savefig(imageName)
     return()
 
-# def saveHistogram(values, median, std, badBackgroundIndices, badStdIndices, badAstrometrisedIndices, imageName, numOfStd, title, labelX):
-#     valuesToPlot = values[~np.isnan(values)]
-#     myBins = calculateFreedmanBins(valuesToPlot)
-
-#     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-#     plt.tight_layout(pad=7)
-#     configureAxis(ax, labelX, 'Number of frames', logScale=False)
-#     ax.set_title(title, fontsize=22, pad=17)
-
-#     counts, bins, patches = ax.hist(valuesToPlot, color="teal", bins=myBins)
-#     max_bin_height = counts.max() + 5
-#     ax.set_ylim(0, max_bin_height)
-
-#     ax.text(0.6, 0.8, "Median: " + str(int(median)), transform=ax.transAxes, 
-#         fontsize=20, verticalalignment='top', horizontalalignment='left')
-#     ax.text(0.6, 0.75, "Std: " + str(int(std)), transform=ax.transAxes, 
-#         fontsize=20, verticalalignment='top', horizontalalignment='left')
-#     if (labelX == "Background counts (ADU)"):
-#         rejectedString = "Rejected by bck: "
-#     else:
-#         rejectedString = "Rejected by std: "
-
-#     ax.text(0.6, 0.7, rejectedString + str(len(badValues)), transform=ax.transAxes, 
-#         fontsize=20, verticalalignment='top', horizontalalignment='left')
-
-#     if (len(badBackgroundIndices) != 0):
-#         ax.hist(values[badBackgroundIndices], bins=myBins, color='gold', label='Rejected due to Background')
-#     if (len(badStdIndices) != 0):
-#         ax.hist(values[badStdIndices], bins=myBins, color='darkred', label='Rejected due to Std')
-#     if (len(badAstrometrisedIndices) != 0):
-#         ax.hist(values[badAstrometrisedIndices], bins=myBins, color='blue', label='Rejected due to Astrometry')
-
-#     ax.legend(fontsize=18)
-#     plt.savefig(imageName)
-#     return()
-
 
 def obtainNumberFromFrame(currentFile):
     # I know this code is awful but I use the function in two different places and the names are different
@@ -240,7 +204,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         numberOfFields = len(splittedLine)
 
 
-        if (numberOfFields == 5):
+        if (numberOfFields == 5): 
             backgroundValue = float(splittedLine[1])
             backgroundStd   = float(splittedLine[2])
             backgroundSkew = float(splittedLine[3])
@@ -304,151 +268,6 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
 
     return()
 
-# DEPRECATED FROM WHERE WE USED THE STD TO REJECT
-# def saveBACKevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrometryRejectedIndices, imageName):
-#     fig, ax = plt.subplots(2,1, figsize=(20,10))
-#     configureAxis(ax[0], 'UTC', 'Background (ADU)',logScale=False)
-#     configureAxis(ax[1], 'Airmass', 'Background (ADU)',logScale=False)
-#     fig.suptitle('Background evolution',fontsize=22)
-#     pattern=r"entirecamera_(\d+)"
-
-#     # Plot all the values
-#     for row in range(len(allTable)):
-#         file=allTable.loc[row]['File']
-#         match=re.search(pattern,file)
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         bck=allTable.loc[row]['Background']
-
-#         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-#         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-
-#     # Plot the values of the rejected (by background and by std)
-#     astrometryRejectedFiles         = [x for x in allTable[:]['File'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
-#     astrometryRejectedValues        = [x for x in allTable[:]['Background'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
-#     backgroundRejectedFiles  = [x for x in allTable['File'][backgroundRejectedIndices] ]
-#     backgroundRejectedValues = [x for x in allTable['Background'][backgroundRejectedIndices] ]
-#     stdRejectedFiles         = [x for x in allTable[:]['File'][stdRejectedIndices] ]
-#     stdRejectedValues        = [x for x in allTable[:]['Background'][stdRejectedIndices] ]
-
-#     for j in range(len(astrometryRejectedFiles)):
-#         match=re.search(pattern, astrometryRejectedFiles[j])
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
-#         ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
-#         if j==0:
-#             ax[0].legend(fontsize=18)
-
-#     for j in range(len(backgroundRejectedFiles)):
-#         match=re.search(pattern, backgroundRejectedFiles[j])
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         ax[0].scatter(date_ok, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.' if (j==0) else "")
-#         ax[1].scatter(air, backgroundRejectedValues[j], marker='X', edgecolor='k',color='darkred',s=350,zorder=6,label='Rejected background value.'if (j==0) else "")
-#         if j==0:
-#             ax[0].legend(fontsize=18)
-
-#     for j in range(len(stdRejectedFiles)):
-#         match=re.search(pattern,stdRejectedFiles[j])
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         ax[0].scatter(date_ok, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
-#         ax[1].scatter(air, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
-#         if j==0:
-#             ax[0].legend(fontsize=18)
-
-#     for label in ax[0].get_xticklabels():
-#         label.set_rotation(45)
-#         label.set_horizontalalignment('right')
-
-#     plt.tight_layout()
-#     plt.savefig(imageName)
-
-#     return()
-
-# def saveSTDevol(allTable, backgroundRejectedIndices, stdRejectedIndices, astrometryRejectedIndices, imageName):
-#     fig, ax = plt.subplots(2,1, figsize=(20,10))
-#     configureAxis(ax[0], 'UTC', 'STD (ADU)')
-#     configureAxis(ax[1],'Airmass','STD (ADU)')
-#     fig.suptitle('STD evolution',fontsize=22)
-#     pattern=r"entirecamera_(\d+)"
-
-#     for row in range(len(allTable)):
-#         file=allTable.loc[row]['File']
-#         match=re.search(pattern,file)
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         bck=allTable.loc[row]['STD']
-#         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-#         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
-    
-#     # Plot the values of the rejected (by background and by std)
-#     astrometryRejectedFiles  = [x for x in allTable['File'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
-#     astrometryRejectedValues = [x for x in allTable['STD'][astrometryRejectedIndices] ] if len(astrometryRejectedIndices) > 0 else []
-#     backgroundRejectedFiles  = [x for x in allTable['File'][backgroundRejectedIndices] ]
-#     backgroundRejectedValues = [x for x in allTable['STD'][backgroundRejectedIndices] ]
-#     stdRejectedFiles         = [x for x in allTable[:]['File'][stdRejectedIndices] ]
-#     stdRejectedValues        = [x for x in allTable[:]['STD'][stdRejectedIndices] ]
-
-#     for j in range(len(astrometryRejectedFiles)):
-#         match=re.search(pattern, astrometryRejectedFiles[j])
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
-#         ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
-#         if j==0:
-#             ax[0].legend(fontsize=18)
-
-#     for j in range(len(backgroundRejectedFiles)):
-#         match=re.search(pattern, backgroundRejectedFiles[j])
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         ax[0].scatter(date_ok, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
-#         ax[1].scatter(air, backgroundRejectedValues[j],marker='X',edgecolor='k',color='darkred',s=120,zorder=6,label='Rejected background value.' if (j==0) else "")
-#         if j==0:
-#             ax[0].legend(fontsize=18)
-
-#     for j in range(len(stdRejectedFiles)):
-#         match=re.search(pattern,stdRejectedFiles[j])
-#         frame=match.group(1)
-#         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-#         date=obtainKeyWordFromFits(file,'DATE-OBS')
-#         air=obtainKeyWordFromFits(file,'AIRMASS')
-#         date_ok=datetime.fromisoformat(date)
-#         ax[0].scatter(date_ok, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
-#         ax[1].scatter(air, stdRejectedValues[j],marker='D',edgecolor='k',color='gold',s=120,zorder=6, label='Rejected std' if (j==0) else "")
-#         if j==0:
-#             ax[0].legend(fontsize=18)
-
-#     for label in ax[0].get_xticklabels():
-#         label.set_rotation(45)
-#         label.set_horizontalalignment('right')
-
-#     plt.tight_layout()
-#     plt.savefig(imageName)
-#     return()
 
 def saveValuesVSStats(values, STD, Skew, kurto, backgroundRejectedIndices, stdRejectedIndices, badAstrometrisedIndices, imageName):
     allRejectedIndices = np.append(backgroundRejectedIndices, stdRejectedIndices)
@@ -514,39 +333,6 @@ def getIndicesOfFiles(files, filesNames):
             if (i == files[j]):
                 indices.append(j)
     return(np.array(indices))
-
-# def identifyBadFrames(folderWithFrames, folderWithFramesWithAirmasses, airMassKeyWord, numberOfStdForRejecting):
-#     badFiles   = []
-#     allFiles   = []
-#     allStd     = []
-#     allBackgroundValues = []
-
-#     for currentFile in glob.glob(folderWithFrames + "/*.txt"):
-#         if fnmatch.fnmatch(currentFile, '*done*.txt'):
-#             continue
-#         currentValue, currentStd, currentSkew, currentKurto  = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
-
-#         if (math.isnan(currentValue)):
-#             continue
-#         allFiles.append(currentFile)
-#         allStd.append(currentStd)
-#         allBackgroundValues.append(currentValue)
-
-#     allStd = np.array(allStd)
-#     allBackgroundValues = np.array(allBackgroundValues)
-
-#     std_mask = sigma_clip(allStd, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
-#     values_mask = sigma_clip(allBackgroundValues, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
-
-#     combined_mask = values_mask | std_mask
-#     allFiles = np.array(allFiles)
-#     allTogether=pd.DataFrame({'File':allFiles,'Background':allBackgroundValues,'STD':allStd})
-
-#     badFiles = allFiles[combined_mask]
-#     badValues=allBackgroundValues[values_mask]; badFilesBCK=allFiles[values_mask]
-#     badStd=allStd[std_mask]; badFilesSTD=allFiles[std_mask]
-
-#     return(badFiles, badValues, badStd, allTogether, badFilesBCK, badFilesSTD)
 
 
 HDU_TO_FIND_AIRMASS = 1

@@ -75,7 +75,7 @@ def sec(z_deg):
     return value
 
 def objective_function(gamma, masked_image, airmass_map, X0):
-    corrected_image = masked_image / (airmass_map / X0) ** gamma
+    corrected_image = masked_image / ((airmass_map / X0) ** gamma)
     return np.nanstd(corrected_image)
 
 def writeGammaToFile(diagnosis_and_badFilesDir, imageNumber, gamma):
@@ -128,12 +128,11 @@ savePlot(airmass_map)
 center_y, center_x = np.array(data.shape) // 2
 X0 = airmass_map[center_y, center_x]
 
-gamma_init = 1
-result = minimize(objective_function, gamma_init, args=(data, airmass_map, X0), bounds=[(0.0, 3.0)])
+gamma_init = 0.5
+result = minimize(objective_function, gamma_init, args=(data, airmass_map, X0), bounds=[(0.0, 1.5)])
 optimal_gamma = result.x[0]
 
 writeGammaToFile(diagnosis_and_badFilesDir, imageNumber, optimal_gamma)
-
 
 finalMapForCorrection = (airmass_map / X0) ** optimal_gamma
 createMassMapCorrectionFits(finalMapForCorrection, wcs, imageNumber)

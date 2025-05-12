@@ -272,7 +272,6 @@ with open(outputFolder + "/fwhmValues.dat", 'w') as f:
 fwhmRejectedIndices            = getIndicesOfFiles(allData, badFilesFWHM)
 astrometryRejectedIndices      = getIndicesOfFiles(allData, rejectedAstrometrisedFrames)
 
-print("here")
 saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, outputFolder+"/fwhmEvol.png")
 
 pattern = r"\d+"
