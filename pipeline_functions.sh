@@ -3202,21 +3202,25 @@ limitingSurfaceBrightness() {
 
 
     numOfSigmasForMetric=3
+    zp_asec=$(astarithmetic $pixelScale log10 5 x 22.5 + -q)
+    expMax=$(aststatistics $exposureMap --maximum -q)
+    exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
 
     out_mask=$directoryOfImages/mask_det.fits
     astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
+    out_maskexp_tmp=$directoryOfImages/mask_exp_tmp.fits
+    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp_tmp >/dev/null 2>&1
 
+    # We run again noisechisel because we need the SKY_STD header. We need it because we want to use MEDSTD, it is said
+    # in gnuastro documentation that it is more reliable than simply using the std of the background px of the image.
     out_maskexp=$directoryOfImages/mask_exp.fits
-    expMax=$(aststatistics $exposureMap --maximum -q)
-    exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
-    astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp >/dev/null 2>&1
-    zp_asec=$(astarithmetic $pixelScale log10 5 x 22.5 + -q)
-    sigma=$(aststatistics $out_maskexp --sigclip-std -q)
+    astnoisechisel $out_maskexp_tmp -o$out_maskexp
+    sigma=$( astfits $out_maskexp --hdu=SKY_STD --keyvalue='MEDSTD' --quiet )
 
     sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
     echo "$sb_lim" > "$outFile"
 
-    rm $out_mask $out_maskexp
+    rm $out_mask $out_maskexp_tmp $out_maskexp
     echo "Limiting magnitude ($numOfSigmasForMetric sigma, $areaSB x $areaSB): $sb_lim" > "$outFile"
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }

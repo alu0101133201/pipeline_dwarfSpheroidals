@@ -2216,6 +2216,7 @@ else
 fi
 
 
+
 echo -e "\nAdding keywords to the coadd"
 
 keyWords=("FRAMES_COMBINED" \
