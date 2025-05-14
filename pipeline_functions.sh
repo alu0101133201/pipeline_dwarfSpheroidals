@@ -2920,49 +2920,110 @@ computeMetricOfResiduals() {
 }
 export -f subtractCoaddToFrames
 
+
+tagIndividualResidualBasedOnPixels() {
+    local individualResidual=$1
+    local residualFramesTaggedDir=$2
+    local individualResidualMasked=$3
+    local frameNumber=$4
+
+    numOfStdToTag=5
+    median=$( astarithmetic $residualFramesTaggedDir/$individualResidualMasked medianvalue --quiet )
+    std=$( astarithmetic $residualFramesTaggedDir/$individualResidualMasked stdvalue --quiet )
+    upperThreshold=$( astarithmetic $median $std $numOfStdToTag x + --quiet )
+
+    astarithmetic $individualResidual -h1 $individualResidual -h1 $upperThreshold gt $frameNumber where -o$residualFramesTaggedDir/tmp_$frameNumber.fits --quiet
+    astarithmetic $residualFramesTaggedDir/tmp_$frameNumber.fits -h1 $i -h1 $upperThreshold lt 0 where -o$residualFramesTaggedDir/pxTagged_$base --quiet
+    rm  $residualFramesTaggedDir/tmp_$frameNumber.fits
+}
+export -f tagIndividualResidualBasedOnPixels
+
+tagIndividualResidualsBasedOnApertures() {
+    local individualResidual=$1
+    local residualFramesTaggedDir=$2
+    local residualMask=$3
+    local numberOfFWHMusedForApertures=$4
+    local frameNumber=$5
+    local fwhmDir=$6
+    local segmentation=$7
+    local residualCatalogue=$8
+
+    fileWithFWHM=$fwhmDir/fwhm_$frameNumber.fits.txt
+    read fwhmValue < $fileWithFWHM
+    formattedValue=$(printf "%f" "$fwhmValue") # To get rid of scientific notation
+    aperturePx=$( echo "$formattedValue * $numberOfFWHMusedForApertures" | bc -l )
+
+    # gnuastro code for obtaining the upper limit using the apertures
+    echo "1 100 100 5 $aperturePx 0 0 1 1 1" | astmkprof --background=$individualResidual --clearcanvas --mforflatpix --type=uint8 --output=$residualFramesTaggedDir/tmp_aperture_$frameNumber.fits
+    astmkcatalog $residualFramesTaggedDir/tmp_aperture_$frameNumber.fits -h1 --zeropoint=22.5 -o$residualFramesTaggedDir/sbl_$frameNumber.fits \
+                    --valuesfile=$individualResidual --valueshdu=1 --upmaskfile=$residualFramesTaggedDir/$residualMask --upmaskhdu=DETECTIONS\
+                    --upnsigma=3 --checkuplim=1 --upnum=1000 --ids --upperlimit-sb
+    upperLimitMag=$( asttable $residualFramesTaggedDir/sbl_$frameNumber.fits -cUPPERLIMIT_SB )
+
+    taggedResidual_tmp=$residualFramesTaggedDir/tmp_apertureTagged_$base
+    taggedResidual=$residualFramesTaggedDir/apertureTagged_$base
+
+    asttable $residualFramesTaggedDir/$residualCatalogue --range=MAGNITUDE,-999,$upperLimitMag -o$residualFramesTaggedDir/filteredCat_$base
+    objectsToMask=$( asttable $residualFramesTaggedDir/filteredCat_$base --column=OBJ_ID)
+
+
+    expr=""
+    for label in $objectsToMask; do
+        if [ -z "$expr" ]; then
+            expr="o $label eq"
+        else
+            expr="$expr o $label eq or"
+        fi
+    done
+    astarithmetic $individualResidual -h1 $residualFramesTaggedDir/$segmentation -h1 set-o $expr o isnotblank and $frameNumber where -o$taggedResidual_tmp 
+    astarithmetic $taggedResidual_tmp -h1 $taggedResidual_tmp -h1 $frameNumber ne 0 where -o $taggedResidual
+
+    rm $residualFramesTaggedDir/tmp_aperture_$frameNumber.fits $residualFramesTaggedDir/sbl_$frameNumber.fits \
+        $residualFramesTaggedDir/filteredCat_$base $residualFramesTaggedDir/sbl_"$frameNumber"_upcheck.fits \
+        $taggedResidual_tmp
+}
+export -f tagIndividualResidualsBasedOnApertures
+
 prepareIndividualResidualWithTags() {
-        local i=$1
-        local residualFramesTaggedDir=$2
-        local noisechisel_param=$3
+    local i=$1
+    local residualFramesTaggedDir=$2
+    local fwhmDir=$3
+    local noisechisel_param=$4
 
-        base=$( basename $i )
-        frameNumber=$(echo "$base" | sed -E 's/.*_([0-9]+)\.fits/\1/')
-        tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
+    base=$( basename $i )
+    frameNumber=$(echo "$base" | sed -E 's/.*_([0-9]+)\.fits/\1/')
+    tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
+    residualMasked=$(echo $base | sed 's/.fits/_masked.fits/')
 
-        astnoisechisel $noisechisel_param $i --numthreads=$num_cpus -o $residualFramesTaggedDir/$tmpMask 
-        astarithmetic $i -h1 $residualFramesTaggedDir/$tmpMask -h1 1 eq nan where float32 -o $residualFramesTaggedDir/$base -quiet
+    astnoisechisel $noisechisel_param $i --numthreads=$num_cpus -o $residualFramesTaggedDir/$tmpMask 
+    astsegment $residualFramesTaggedDir/$tmpMask --gthresh=-15 --objbordersn=0 -o$residualFramesTaggedDir/seg_$base
+    astmkcatalog $residualFramesTaggedDir/seg_$base --ids --x --y --ra --dec --magnitude --zeropoint=22.5 -o$residualFramesTaggedDir/cat_$base
+    astarithmetic $i -h1 $residualFramesTaggedDir/$tmpMask -h1 1 eq nan where float32 -o $residualFramesTaggedDir/$residualMasked -quiet
+    
+    tagIndividualResidualBasedOnPixels $i $residualFramesTaggedDir $residualMasked $frameNumber
+    numberOfFWHMusedForApertures=2
+    tagIndividualResidualsBasedOnApertures $i $residualFramesTaggedDir $tmpMask $numberOfFWHMusedForApertures $frameNumber $fwhmDir seg_$base cat_$base 
 
-        median=$( astarithmetic $residualFramesTaggedDir/$base medianvalue --quiet )
-        std=$( astarithmetic $residualFramesTaggedDir/$base stdvalue --quiet )
-
-        numOfStdToMask=5
-        upperThreshold=$( astarithmetic $median $std $numOfStdToMask x + --quiet )
-
-        astarithmetic $i -h1 $i -h1 $upperThreshold gt $frameNumber where -o$residualFramesTaggedDir/tmp_$frameNumber.fits --quiet
-        astarithmetic $residualFramesTaggedDir/tmp_$frameNumber.fits -h1 $i -h1 $upperThreshold lt 0 where -o$residualFramesTaggedDir/tagged_$base --quiet
-
-        # lowerThreshold=$( astarithmetic $median $std $numOfStdToMask x - --quiet )
-        # astarithmetic $i -h1 $residualFramesTaggedDir/$base -h1 $upperThreshold gt $frameNumber where -o$residualFramesTaggedDir/tmp.fits --quiet
-        # astarithmetic $residualFramesTaggedDir/tmp.fits -h1 $residualFramesTaggedDir/$base -h1 $lowerThreshold lt $frameNumber where -o$residualFramesTaggedDir/tagged_$base --quiet
-        # rm $residualFramesTaggedDir/tmp.fits 
-
-        rm $residualFramesTaggedDir/$tmpMask $residualFramesTaggedDir/$base $residualFramesTaggedDir/tmp_$frameNumber.fits
+    rm $residualFramesTaggedDir/$tmpMask $residualFramesTaggedDir/$residualMasked $residualFramesTaggedDir/seg_$base $residualFramesTaggedDir/cat_$base
 }
 export -f prepareIndividualResidualWithTags
 
 computeSumMosaicAfterCoaddSubtractionWithTracesIndicated() {
     local residualFramesDir=$1
     local residualFramesTaggedDir=$2
-    local finalResidualOutput=$3
-    local noisechisel_param=$4
+    local finalResidualOutputpx=$3
+    local finalResidualOutputAper=$4
+    local fwhmFolder=$5
+    local noisechisel_param=$6
 
     frames=()
     for i in $( ls $residualFramesDir/*.fits ); do
         frames+=("$i")
     done
-    printf "%s\n" "${frames[@]}" | parallel -j "$num_cpus" prepareIndividualResidualWithTags {} $residualFramesTaggedDir "'$noisechisel_param'"
+    printf "%s\n" "${frames[@]}" | parallel -j "$num_cpus" prepareIndividualResidualWithTags {} $residualFramesTaggedDir $fwhmFolder "'$noisechisel_param'"
 
-    astarithmetic $(ls -v $residualFramesTaggedDir/*.fits) $(ls $residualFramesTaggedDir/*.fits | wc -l) sum -g1 -o$finalResidualOutput
+    astarithmetic $(ls -v $residualFramesTaggedDir/pxTagged*.fits) $(ls $residualFramesTaggedDir/pxTagged*.fits | wc -l) sum -g1 -o$finalResidualOutputpx
+    astarithmetic $(ls -v $residualFramesTaggedDir/apertureTagged*.fits) $(ls $residualFramesTaggedDir/apertureTagged*.fits | wc -l) sum -g1 -o$finalResidualOutputAper
 }
 export -f computeSumMosaicAfterCoaddSubtractionWithTracesIndicated
 
