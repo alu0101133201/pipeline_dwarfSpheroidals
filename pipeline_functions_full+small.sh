@@ -847,54 +847,15 @@ warpImage() {
     read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
     astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
 
-    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 $frameFullGrid
+    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1
 
-    # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but  swarp for some reason propagates it incorrectly
+    # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but 
+    # swarp for some reason propagates it incorrectly
     propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 
+    propagateKeyword $imageToSwarp $dateHeaderKey $frameFullGrid
 }
 export -f warpImage
 
-
-smallGridToFullGridSingleFrame(){
-    local smallFrame=$1
-    local fullDir=$2
-    local fullSize=$3
-    local fullRA=$4
-    local fullDEC=$5
-
-    base=$( basename $smallFrame )
-    out=$fullDir/$base
-    astfits $smallFrame --copy=0 --primaryimghdu -o $out
-    for h in $(seq 1 $num_ccd); do
-        astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
-        astfits $fullDir/ccd_$base --copy=1 -o $out
-        rm $fullDir/ccd_$base
-    done
-}
-export -f smallGridToFullGridSingleFrame
-
-smallGridtoFullGrid(){
-    local smallGridDir=$1
-    local fullGridDir=$2
-    local fullGridDone=$3
-    local fullGridSize=$4
-    local fullGridRA=$5
-    local fullGridDEC=$6
-    
-
-    if [ -f $fullGridDone ]; then
-        echo -e "\n\tFrames from {$smallGridDir} have been already pased into the full grid\n"
-    else
-        framesToGrid=()
-        for frame in $smallGridDir/*.fits; do
-            framesToGrid+=("$frame")
-        done
-        printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_cpus" smallGridToFullGridSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC 
-        echo done > $fullGridDone
-        
-    fi
-}
-export -f smallGridtoFullGrid
 
 removeBadFramesFromReduction() {
     local sourceToRemoveFiles=$1
@@ -2637,7 +2598,7 @@ export -f computeWeights
 buildUpperAndLowerLimitsForOutliers() {
     local clippingdir=$1
     local clippingdone=$2
-    local photCorrImagesDir=$3
+    local wdir=$3
     local sigmaForStdSigclip=$4
 
     if ! [ -d $clippingdir ]; then mkdir $clippingdir; fi
@@ -2649,11 +2610,11 @@ buildUpperAndLowerLimitsForOutliers() {
             std_im=$clippingdir/std_image.fits
             gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
             if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-                astarithmetic $(ls -v $photCorrImagesDir/*.fits) $(ls $photCorrImagesDir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 --writeall -o$med_im
-                astarithmetic $(ls -v $photCorrImagesDir/*.fits) $(ls $photCorrImagesDir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 --writeall -o$std_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1 --writeall -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1 --writeall -o$std_im
             else
-                astarithmetic $(ls -v $photCorrImagesDir/*.fits) $(ls $photCorrImagesDir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1  -o$med_im
-                astarithmetic $(ls -v $photCorrImagesDir/*.fits) $(ls $photCorrImagesDir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1  -o$std_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-median -g1  -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) $sigmaForStdSigclip 0.2 sigclip-std -g1  -o$std_im
             fi
 
             # Compute "borders" images
@@ -2671,36 +2632,53 @@ buildUpperAndLowerLimitsForOutliers() {
 export -f buildUpperAndLowerLimitsForOutliers
 
 removeOutliersFromFrame(){
-    local base=$1
-    local imagesToMaskDir=$2
-    local clippingDir=$3
-    local imagesWithMaskedOutliersDir=$4
+    local a=$1
+    local mowdir=$2
+    local moonwdir=$3
+    local clippingdir=$4
+    local wdir=$5
+    local wonlydir=$6
 
-    tmp_ab=$imagesWithMaskedOutliersDir/"$objectName"-"$filter"_"$base"_ccd"$h"_maskabove.fits
-    maskedImage=$imagesWithMaskedOutliersDir/$base
+    base=entirecamera_"$a".fits
+    tmp_ab=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_maskabove.fits
+    wom=$mowdir/$base
 
-    astarithmetic $imagesToMaskDir/$base -h1 set-i i i $clippingDir/upperlim.fits -h1 gt nan where float32 -q -o $tmp_ab
-    astarithmetic $tmp_ab -h1 set-i i i $clippingDir/lowerlim.fits -h1 lt nan where float32 -q -o$maskedImage
+    astarithmetic $wdir/$base -h1 set-i i i $clippingdir/upperlim.fits -h1 gt nan where float32 -q -o $tmp_ab
+    astarithmetic $tmp_ab -h1 set-i i i $clippingdir/lowerlim.fits -h1 lt nan where float32 -q -o$wom
+    # save the new mask
+    mask=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_mask.fits
+    astarithmetic $wom -h1 isblank float32 -o $mask
+    # mask the onlyweight image
+    owom=$moonwdir/$base
+    astarithmetic $wonlydir/$base $mask -g1 1 eq nan where -q float32    -o $owom
+
+    # Remove temporary files
     rm -f $tmp_ab
+    rm -f $mask
 }
 export -f removeOutliersFromFrame
 
 removeOutliersFromWeightedFrames () {
-  local imagesToMaskOutliersDir=$1
-  local clippingdir=$2
-  local imagesWithMaskedOutliersDir=$3
-  local imagesWithMaskedOutliersDone=$4
+  local mowdone=$1
+  local totalNumberOfFrames=$2
+  local mowdir=$3
+  local moonwdir=$4
+  local clippingdir=$5
+  local wdir=$6
+  local wonlydir=$7
 
-  if [ -f $imagesWithMaskedOutliersDone ]; then
-      echo -e "\n\tOutliers of the phot corrected images already masked\n"
+  if [ -f $mowdone ]; then
+      echo -e "\n\tOutliers of the weighted images already masked\n"
   else
       framesToRemoveOutliers=()
-      for a in $( ls $imagesToMaskOutliersDir/*.fits ); do
-        base=$( basename $a )
-        framesToRemoveOutliers+=("$base")
+      for a in $(seq 1 $totalNumberOfFrames); do
+        base=entirecamera_"$a".fits
+        if [ -f $wdir/$base ]; then
+          framesToRemoveOutliers+=("$a")
+        fi
       done
-      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $imagesToMaskOutliersDir $clippingdir $imagesWithMaskedOutliersDir
-      echo done > $imagesWithMaskedOutliersDone
+      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $moonwdir $clippingdir $wdir $wonlydir
+      echo done > $mowdone
   fi
 }
 export -f removeOutliersFromWeightedFrames
@@ -2891,8 +2869,8 @@ export -f produceHalfMaxRadVsMagForOurData
 buildCoadd() {
     local coaddir=$1
     local coaddName=$2
-    local wdir=$3
-    local wonlydir=$4
+    local mowdir=$3
+    local moonwdir=$4
     local coaddone=$5
 
     if ! [ -d $coaddir ]; then mkdir $coaddir; fi
@@ -2901,11 +2879,11 @@ buildCoadd() {
     else
             gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
             if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_wx.fits
-                astarithmetic $(ls -v $wonlydir/*.fits ) $(ls $wonlydir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_w.fits
+                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_w.fits
             else
-                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_wx.fits
-                astarithmetic $(ls -v $wonlydir/*.fits ) $(ls $wonlydir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_w.fits
+                astarithmetic $(ls -v $mowdir/*.fits) $(ls $mowdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls -v $moonwdir/*.fits ) $(ls $moonwdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_w.fits
             fi
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
             echo done > $coaddone
@@ -3283,6 +3261,7 @@ limitingSurfaceBrightness() {
     local pixelScale=$7
     local outFile=$8
 
+
     numOfSigmasForMetric=3
     zp_asec=$(astarithmetic $pixelScale log10 5 x 22.5 + -q)
     expMax=$(aststatistics $exposureMap --maximum -q)
@@ -3296,12 +3275,13 @@ limitingSurfaceBrightness() {
     # We run again noisechisel because we need the SKY_STD header. We need it because we want to use MEDSTD, it is said
     # in gnuastro documentation that it is more reliable than simply using the std of the background px of the image.
     out_maskexp=$directoryOfImages/mask_exp.fits
-    astnoisechisel $out_maskexp_tmp -o$out_maskexp >/dev/null 2>&1
+    astnoisechisel $out_maskexp_tmp -o$out_maskexp
     sigma=$( astfits $out_maskexp --hdu=SKY_STD --keyvalue='MEDSTD' --quiet )
 
     sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
+    echo "$sb_lim" > "$outFile"
 
-    rm $out_mask $out_maskexp_tmp $out_maskexp >/dev/null 2>&1
+    rm $out_mask $out_maskexp_tmp $out_maskexp
     echo "Limiting magnitude ($numOfSigmasForMetric sigma, $areaSB x $areaSB): $sb_lim" > "$outFile"
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }
