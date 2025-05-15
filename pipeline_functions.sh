@@ -846,6 +846,7 @@ warpImage() {
     regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameFullGrid 1)
     read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
     astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
+    echo $row_min $row_max $col_min $col_max > $entiredir/entirecamera_"$currentIndex"_cropRegion.txt
 
     rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 $frameFullGrid
 
@@ -891,7 +892,6 @@ smallGridtoFullGrid(){
         done
         printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_cpus" smallGridToFullGridSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC 
         echo done > $fullGridDone
-        
     fi
 }
 export -f smallGridtoFullGrid
@@ -2711,20 +2711,14 @@ cropAndApplyMaskPerFrame() {
     local dirOfFramesToMask=$2
     local dirOfFramesMasked=$3
     local wholeMask=$4
-    local dirOfFramesFullGrid=$5
+    local dirWithCropParameters=$5
 
+    fileWithCropParameters=$dirWithCropParameters/entirecamera_"$a"_cropRegion.txt
+    read row_min row_max col_min col_max < "$fileWithCropParameters"
 
     frameToMask=$dirOfFramesToMask/entirecamera_$a.fits
-    frameToObtainCropRegion=$dirOfFramesFullGrid/entirecamera_$a.fits
     tmpMaskFile=$dirOfFramesMasked/"maskFor"$a.fits
 
-    # Parameters for identifing our frame in the full grid
-    frameCentre=$( getCentralCoordinate $frameToMask )
-    centralRa=$(echo "$frameCentre" | awk '{print $1}')
-    centralDec=$(echo "$frameCentre" | awk '{print $2}')
-
-    regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameToObtainCropRegion 1)
-    read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
     astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile --quiet
     astarithmetic $frameToMask -h1 $tmpMaskFile -h1 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_$a.fits -q
     rm $tmpMaskFile
@@ -2738,7 +2732,7 @@ maskPointings() {
     local smallPointings_maskedDir=$2
     local maskedPointingsDone=$3
     local maskName=$4
-    local dirOfFramesFullGrid=$5
+    local dirWithCropParameters=$5
 
     if ! [ -d $smallPointings_maskedDir ]; then mkdir $smallPointings_maskedDir; fi
     if [ -f $maskedPointingsDone ]; then
@@ -2748,7 +2742,7 @@ maskPointings() {
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToMask+=("$a")
         done
-        printf "%s\n" "${framesToMask[@]}" | parallel -j "$num_cpus" cropAndApplyMaskPerFrame {} $entiredir_smallGrid $smallPointings_maskedDir $maskName $dirOfFramesFullGrid
+        printf "%s\n" "${framesToMask[@]}" | parallel -j "$num_cpus" cropAndApplyMaskPerFrame {} $entiredir_smallGrid $smallPointings_maskedDir $maskName $dirWithCropParameters
         echo done > $maskedPointingsDone
     fi
 }
