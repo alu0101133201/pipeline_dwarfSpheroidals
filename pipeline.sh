@@ -1143,9 +1143,6 @@ subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
-exit 0
-
-
 toleranceForMatching=3 #arcsec
 sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
@@ -1176,7 +1173,6 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
-
 
 echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
 writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
@@ -1253,7 +1249,6 @@ else
 fi
 
 
-
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
@@ -1284,7 +1279,7 @@ prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $apertureP
 # Calibration of coadd prephot
 writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
 if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
-cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
+cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
 
 # Calibrate the coadd only in the high snr section 
 expMax=$(aststatistics $BDIR/coadds-prephot/exposureMap.fits --maximum -q)
@@ -1430,8 +1425,8 @@ photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
 rm $photCorrPrePhotDir/*
 rm $BDIR/coaddForCalibration_it$iteration/*
 
-cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-echo cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+echo cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
 alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
 applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
 
@@ -1660,6 +1655,9 @@ else
 fi
 
 
+exit 0
+
+
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky_prephot -type f ! -name 'done*' -exec rm {} \;
@@ -1820,7 +1818,6 @@ else
 
   coaddDir=$BDIR/coadds-prephot_it$iteration
   maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-  coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot.fits
   if [ -f $maskName ]; then
     echo -e "\tThe mask of the weighted coadd is already done"
   else
@@ -1835,7 +1832,7 @@ fi
 
 # Calibration of coadd prephot
 if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
-cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
+cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
 
 # Calibrate the coadd only in the high snr section 
 expMax=$(aststatistics $BDIR/coadds-prephot_it$iteration/exposureMap.fits --maximum -q)
@@ -1929,7 +1926,7 @@ photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
 rm $photCorrPrePhotDir/*
 rm $BDIR/coaddForCalibration_it$iteration/*
 
-cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
 alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
 applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
 
