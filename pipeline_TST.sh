@@ -1148,7 +1148,7 @@ writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 #     2.- Improve the astrometry thanks to scamp
 
 entiredir_smallGrid=$BDIR/pointings_smallGrid
-entiredir_fullGrid=$BDIR/pointings_fullGrid
+#entiredir_fullGrid=$BDIR/pointings_fullGrid
 entiredone=$entiredir_smallGrid/done_.txt
 swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
 export swarpcfg
@@ -1167,7 +1167,7 @@ else
       imagesToWarp+=($astroimadir/$base)
   done
 
-  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
+  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
   echo done > $entiredone
 fi
 
@@ -1197,8 +1197,8 @@ noiseskydone=$noiseskydir/done_"$filter".txt
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 
-subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
-subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
+#subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it1
+#subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
 
 echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
@@ -1242,7 +1242,7 @@ fi
 
 echo -e "\n·Subtracting background"
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+#subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
 
 ### BUILD A FIRST COADD FROM SKY SUBTRACTION #### #I'm gonna skip this for now, and then think about it a bit more
@@ -1340,7 +1340,7 @@ echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
 ### PARAMETERS ###
-toleranceForMatching=3 #arcsec
+toleranceForMatching=5 #arcsec
 sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
 export sigmaForPLRegion
@@ -1427,9 +1427,8 @@ done
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
-applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
+#applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
 ##On the very this point we will need the match tables to have proper names because if not astropy will fail misearbly
@@ -1507,6 +1506,29 @@ computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation
 minRmsFileName=min_rms_it1.txt
 python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noiseskydir $DIR $iteration min_rms_it1.txt
 
+##We first recover the fullGrid
+
+photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+photCorrFullGridDone=$photCorrFullGridDir/done.txt
+
+if ! [ -d $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
+smallGridtoFullGrid $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
+
+
+echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+# Remove outliers before the final coadd by using sigclip-median and sigclip-std
+# This is particularly important to remove cosmic rays
+
+sigmaForStdSigclip=3
+clippingdir=$BDIR/clipping-outliers
+clippingdone=$clippingdir/done.txt
+buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
+
+mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
+mowdone=$mowdir/done.txt
+if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $clippingdir $photCorrFullGridDir
 
 ### Calculate the weights for the images based on the minimum rms ###
 echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
@@ -1520,26 +1542,10 @@ wonlydir=$BDIR/only-w-dir
 wonlydone=$wonlydir/done.txt
 if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
 # We provide the fullGrid because we are going to combine then now
-computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskydir $iteration $minRmsFileName
+computeWeights $wdir $wdone $wonlydir $wonlydone $mowdir $noiseskydir $iteration $minRmsFileName
 
 
-echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
-# Remove outliers before the final coadd by using sigclip-median and sigclip-std
-# This is particularly important to remove cosmic rays
 
-sigmaForStdSigclip=2
-clippingdir=$BDIR/clipping-outliers
-clippingdone=$clippingdir/done.txt
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
-
-mowdir=$BDIR/weight-dir-no-outliers
-moonwdir=$BDIR/only-weight-dir-no-outliers
-mowdone=$mowdir/done.txt
-if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
-
-removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
 
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
@@ -1573,7 +1579,7 @@ echo -e "\n·Building coadd"
 coaddDir=$BDIR/coadds
 coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
-buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
 
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
@@ -1614,7 +1620,7 @@ fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $mowir $exposuremapDir $exposuremapdone
+computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone
 
 
 #Compute surface brightness limit
@@ -1801,23 +1807,24 @@ find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky_forPlaneCoadd_it1 -type f ! -name 'done*' -exec rm {} \;
 
-find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+#find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+#find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/photCorrFullGrid-dir-no-outliers_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/ourData-catalogs-apertures_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtracted -type f ! -name 'done*' -exec rm {} \;
 
-find $BDIR/weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/weight-dir-no-outliers_plane_it1 -type f ! -name 'done*' -exec rm {} \;
+#find $BDIR/weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
+#find $BDIR/weight-dir-no-outliers_plane_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/weight-dir -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/weight-dir_plane_it1 -type f ! -name 'done*' -exec rm {} \;
 
-find $BDIR/only-weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/only-weight-dir-no-outliers_plane_it1 -type f ! -name 'done*' -exec rm {} \;
+#find $BDIR/only-weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
+#find $BDIR/only-weight-dir-no-outliers_plane_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/only-w-dir -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/only-w-dir_plane_it1 -type f ! -name 'done*' -exec rm {} \;
 
@@ -1829,27 +1836,27 @@ iteration=2
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
 ######Normalise by gain
 normalised_smallGrid=$BDIR/normalised_smallGrid
-normalised_fullGrid=$BDIR/normalised_fullGrid
-normaliseGainImages $entiredir_smallGrid $entiredir_fullGrid $num_ccd $BDIR/ring 3 $normalised_smallGrid $normalised_fullGrid
-
-######################
-echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
+#normalised_fullGrid=$BDIR/normalised_fullGrid
+normaliseGainImages $entiredir_smallGrid $num_ccd $BDIR/ring 3 $normalised_smallGrid
+#
+#######################
+#echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
 
 psfFile=$CDIR/PSF_"$filter".fits
 psfRadFile=$CDIR/RP_PSF_"$filter".fits
-#starCatalog=$CDIR/stars_to_subtract.txt 
-
-##So far I will do in this way, I will for sure change it
-#Catalog will be: RA DEC MAG
-#We will make the following:
-  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
-  # If AZ exist in the catalog we will measure the profile in azimuth
-  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
-  # Finally, we will subtract from all the frames where the star is, and continue to the next one
-  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
-
+##starCatalog=$CDIR/stars_to_subtract.txt 
+#
+###So far I will do in this way, I will for sure change it
+##Catalog will be: RA DEC MAG
+##We will make the following:
+#  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
+#  # If AZ exist in the catalog we will measure the profile in azimuth
+#  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
+#  # Finally, we will subtract from all the frames where the star is, and continue to the next one
+#  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
+#
 input_subStar_small=$normalised_smallGrid
-input_subStar_full=$normalised_fullGrid
+#input_subStar_full=$normalised_fullGrid
 starsToSubtract=$CDIR/starsToSubtract.txt
 radiusToSearch=$(awk -v r="$sizeOfOurFieldDegrees" 'BEGIN { printf "%.6f", r/2 }')
 query_param="gaia --dataset=edr3 --center=$ra_gal,$dec_gal --radius=$radiusToSearch --column=ra,dec,phot_g_mean_mag"
@@ -1867,29 +1874,31 @@ while IFS= read -r line; do
 
   ((starId++))
   outputDir_small=$BDIR/pointings_smallGrid_sub$starId
-  outputDir_full=$BDIR/pointings_fullGrid_sub$starId
-  subtractStars $input_subStar_small $input_subStar_full "$line" $psfFile $psfRadFile $outputDir_small $outputDir_full $starId
-  #if (( $(echo "$starId == 13" | bc -l) )); then exit; fi
+  #outputDir_full=$BDIR/pointings_fullGrid_sub$starId
+  subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId
+  
+  #if (( $(echo "$starId == 8" | bc -l) )); then exit; fi
   if ! (( $(echo "$starId == 1" | bc -l) )); then
     if ! (( $(echo "$starId == 2" | bc -l) )); then
 	    rm $input_subStar_small/*.fits
-	    rm $input_subStar_full/*.fits
+	    #rm $input_subStar_full/*.fits
     fi
   fi
   input_subStar_small=$outputDir_small
-  input_subStar_full=$outputDir_full
+  #input_subStar_full=$outputDir_full
 done < $starsToSubtract
 
 
-
-######################
+#######################
 entiredir_smallGrid=$outputDir_small
-entiredir_fullGrid=$outputDir_full
+
+##We will conserve photCorrFullGrid-dir_it1 in order to make the crop 
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-dirForCrop=$BDIR/pointings_fullGrid
+dirForCrop=$BDIR/photCorrFullGrid-dir_it1
 
 maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $dirForCrop
+
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter".txt
@@ -1897,8 +1906,8 @@ noiseskydone=$noiseskydir/done_"$filter".txt
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 
-subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
-subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
+##subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
+##subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
 
 ###EXPERIMENTAL: LBTg OF NGC3938
 # We're gonna do the following now: instead of going detector by detector, we're gonna generate an sky inside the full camera
@@ -1928,7 +1937,7 @@ computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CO
 #subskyFullGrid_done_precal=$subskyFullGrid_dir_precal/done.txt
 
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+#subtractSky $entiredir_fullGrid $subskyFullGrid_dir $subskyFullGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
 ##Finally we restore to the non-calibrated data
 #inverseApplication=TRUE
@@ -1959,7 +1968,7 @@ computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration 
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
-applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
+#applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles_it$iteration
 #if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
 #for h in $(seq 1 $num_ccd); do
@@ -1975,9 +1984,14 @@ applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 #  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $h $dateHeaderKey
 #done
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
+##Recover the full grid
+
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $dirForCrop
+
+#Now we dont need the it1 ones
+find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
@@ -1986,6 +2000,24 @@ computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true fu
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $noiseskydir $DIR $iteration $minRmsFileName
+
+photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+photCorrFullGridDone=$photCorrFullGridDir/done.txt
+if ! [ -f $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
+smallGridtoFullGrid $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
+
+
+clippingdir=$BDIR/clipping-outliers_it$iteration
+clippingdone=$clippingdir/done_"$k".txt
+sigmaForStdSigclip=3
+buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
+
+mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
+#moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
+if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+#if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
+mowdone=$mowdir/done.txt
+removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $clippingdir $photCorrFullGridDir
 
 
 wdir=$BDIR/weight-dir_it$iteration
@@ -1996,18 +2028,8 @@ wonlydone=$wonlydir/done_"$k"_ccd"$h".txt
 if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
 
 # We provide the fullGrid because we are going to combine then now
-computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrFullGridDir $noiseskydir $iteration $minRmsFileName
+computeWeights $wdir $wdone $wonlydir $wonlydone $mowdir $noiseskydir $iteration $minRmsFileName
 
-clippingdir=$BDIR/clipping-outliers_it$iteration
-clippingdone=$clippingdir/done_"$k".txt
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $wdir $sigmaForStdSigclip
-
-mowdir=$BDIR/weight-dir-no-outliers_it$iteration
-moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
-if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
-mowdone=$mowdir/done.txt
-removeOutliersFromWeightedFrames $mowdone $totalNumberOfFrames $mowdir $moonwdir $clippingdir $wdir $wonlydir
 
 
 echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
@@ -2040,7 +2062,7 @@ rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 coaddDir=$BDIR/coadds_it$iteration 
 coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter".fits
-buildCoadd $coaddDir $coaddName $mowdir $moonwdir $coaddDone
+buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
 
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then

@@ -211,7 +211,7 @@ we directly remove the brick from the IdentificationFile and the folder.
 """
 if survey=='PANSTARRS':
     bricksIdFile=pd.read_csv(bricksIdentificationFile,sep='\t')
-    #3600x3600 pix panstarrs brick has a size of ~50Mb
+    #250x250 pix panstarrs brick has a size of ~4Mb
     badRows=[]
     for row in range(len(bricksIdFile)):
         fname=downloadDestination+'/'+bricksIdFile.loc[row]['BrickName']+'.fits'

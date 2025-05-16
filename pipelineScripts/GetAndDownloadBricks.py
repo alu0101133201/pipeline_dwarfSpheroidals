@@ -244,7 +244,7 @@ def getPanstarrsQuery(tra, tdec, size=3600, filters="grizy", format="fits", imag
 
 
 def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filters):
-    #We want panstarrs bricks of 3600 pix = 900 arcsec = 0.25deg. Field of fiew is up to now square
+    #We want panstarrs bricks of 3600 pix = 250 arcsec = 0.25deg. Field of fiew is up to now square
     isRaList = isinstance(firstPoint, (list, np.ndarray, tuple))
     isDecList = isinstance(secondPoint, (list, np.ndarray, tuple))
     if ((not isRaList) and (not isDecList)):

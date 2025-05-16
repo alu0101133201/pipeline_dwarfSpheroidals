@@ -812,11 +812,10 @@ export -f getCentralCoordinate
 
 warpImage() {
     local imageToSwarp=$1
-    local entireDir_fullGrid=$2
-    local entiredir=$3
-    local ra=$4
-    local dec=$5
-    local coaddSizePx=$6
+    local entiredir=$2
+    local ra=$3
+    local dec=$4
+    local coaddSizePx=$5
 
     # ****** Decision note *******
     # We need to regrid the frames into the final coadd grid. But if we do this right now we will be processing
@@ -855,7 +854,7 @@ warpImage() {
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
     #for h in $(seq 1 $num_ccd); do
 
-    frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
+    #frameFullGrid=$entiredir/entirecamera_"$currentIndex"_fullGrid.fits
     frameSmallGrid=$entiredir/entirecamera_$currentIndex.fits
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
@@ -867,13 +866,13 @@ warpImage() {
     for h in $(seq 1 $num_ccd); do
         tmpFile1=$entiredir/"$currentIndex"_ccd"$h"_temp.fits
         tmpFile2=$entiredir/"$currentIndex"_ccd"$h"_temp2.fits
-        tmpFile3=$entireDir_fullGrid/"$currentIndex"_ccd"$h"_temp.fits
+        tmpFile3=$entiredir/"$currentIndex"_ccd"$h"_temp3.fits
         
         astarithmetic "$currentIndex".000"$h".resamp.weight.fits -h0 set-i i i 0 lt nan where -o $tmpFile1
         astarithmetic "$currentIndex".000"$h".resamp.fits -h0 $tmpFile1 -h1 0 eq nan where -o $tmpFile2
         #astfits $tmpFile2 --copy=1 -o $frameSmallGrid #Would be easier but will make the maskPointings of 2nd iteration coadd not work
         astcrop $tmpFile2 --mode=wcs --center=$ra,$dec --widthinpix --width=$coaddSizePx,$coaddSizePx --zeroisnotblank -o $tmpFile3
-        astfits $tmpFile3 --copy=1 -o $frameFullGrid
+        #astfits $tmpFile3 --copy=1 -o $frameFullGrid
         #Now we use tmpFIle3 to generate the frameSmallGrid
         regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $tmpFile3 1)
         read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
@@ -881,12 +880,12 @@ warpImage() {
         astcrop $tmpFile3 --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpFile4 --quiet
         astfits $tmpFile4 --copy=1 -o $frameSmallGrid
         rm $tmpFile1 $tmpFile2 $tmpFile3  "$currentIndex".000"$h"*.fits $tmpFile4
-        propagateKeyword $imageToSwarp $gain $frameFullGrid $h 
+        #propagateKeyword $imageToSwarp $gain $frameFullGrid $h 
         propagateKeyword $imageToSwarp $gain $frameSmallGrid $h
     done
-    propagateKeyword $imageToSwarp $airMassKeyWord $frameFullGrid 0 
+    #propagateKeyword $imageToSwarp $airMassKeyWord $frameFullGrid 0 
     propagateKeyword $imageToSwarp $airMassKeyWord $frameSmallGrid 0
-    propagateKeyword $imageToSwarp $dateHeaderKey $frameFullGrid 0 
+    #propagateKeyword $imageToSwarp $dateHeaderKey $frameFullGrid 0 
     propagateKeyword $imageToSwarp $dateHeaderKey $frameSmallGrid 0
     #Swarp temporary files are named as
         # Mask bad pixels
@@ -1815,6 +1814,7 @@ prepareCalibrationData() {
                                                 $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
                                                 $calibrationBrightLimit $calibrationFaintLimit
         fi
+        
         echo done > $mosaicDone
     fi
 }
@@ -2010,7 +2010,7 @@ prepareSurveyDataForPhotometricCalibration() {
     # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
     calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5
     calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15
-
+ 
     read offset_g factorToApplyToCounts_g < "$mosaicDir/offsetToCorrectSurveyToGaia_g.txt"
     read offset_r factorToApplyToCounts_r < "$mosaicDir/offsetToCorrectSurveyToGaia_r.txt"
 
@@ -2520,6 +2520,7 @@ combineCatalogues() {
     firstBrick=${bricks[0]}
    
     asttablePrompt="asttable $cataloguesDir/$firstBrick.cat -o$outputDir/$catalogueName.cat"
+    
 
     remainingBricks=$(echo "$bricks" | cut -d' ' -f2-)  # Get the rest of the bricks
     for brick in "${bricks[@]}"; do  # Iterate over remaining bricks
@@ -2619,7 +2620,7 @@ computeCalibrationFactors() {
     
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration 
-     
+    
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
     
@@ -2791,10 +2792,8 @@ export -f buildUpperAndLowerLimitsForOutliers
 removeOutliersFromFrame(){
     local a=$1
     local mowdir=$2
-    local moonwdir=$3
-    local clippingdir=$4
-    local wdir=$5
-    local wonlydir=$6
+    local clippingdir=$3
+    local wdir=$4
 
     base=entirecamera_"$a".fits
     tmp_ab=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_maskabove.fits
@@ -2806,18 +2805,18 @@ removeOutliersFromFrame(){
         astarithmetic $tmp_ab -h1 set-i i i $clippingdir/lowerlim.fits -h1 lt nan where float32 -q -o$wom_ccd
         astfits $wom_ccd --copy=1 -o$wom
     # save the new mask
-        mask=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_mask.fits
-        astarithmetic $wom_ccd -h1 isblank float32 -o $mask
+        #mask=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_mask.fits
+        #astarithmetic $wom_ccd -h1 isblank float32 -o $mask
     # mask the onlyweight image
-        owom=$moonwdir/$base
-        owom_ccd=$moonwdir/ccd_$base
-        astarithmetic $wonlydir/$base -h$h $mask -h1 1 eq nan where -q float32    -o $owom_ccd
-        astfits $owom_ccd --copy=1 -o$owom
+        #owom=$moonwdir/$base
+        #owom_ccd=$moonwdir/ccd_$base
+        #astarithmetic $wonlydir/$base -h$h $mask -h1 1 eq nan where -q float32    -o $owom_ccd
+        #astfits $owom_ccd --copy=1 -o$owom
 
     # Remove temporary files
         rm -f $tmp_ab
-        rm -f $mask
-        rm -f $owom_ccd $wom_ccd
+        #rm -f $mask
+        rm -f $wom_ccd
     done
 }
 export -f removeOutliersFromFrame
@@ -2826,10 +2825,8 @@ removeOutliersFromWeightedFrames () {
   local mowdone=$1
   local totalNumberOfFrames=$2
   local mowdir=$3
-  local moonwdir=$4
-  local clippingdir=$5
-  local wdir=$6
-  local wonlydir=$7
+  local clippingdir=$4
+  local wdir=$5
 
   if [ -f $mowdone ]; then
       echo -e "\n\tOutliers of the weighted images already masked\n"
@@ -2838,7 +2835,7 @@ removeOutliersFromWeightedFrames () {
       for a in $(seq 1 $totalNumberOfFrames); do
           framesToRemoveOutliers+=("$a")
       done
-      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $moonwdir $clippingdir $wdir $wonlydir
+      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $clippingdir $wdir
       echo done > $mowdone 
   fi
 }
@@ -3352,6 +3349,7 @@ smallGridToFullGridSingleFrame(){
 
     base=$( basename $smallFrame )
     out=$fullDir/$base
+    astfits $smallFrame --copy=0 --primaryimghdu -o $out
     for h in $(seq 1 $num_ccd); do
         astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
         astfits $fullDir/ccd_$base --copy=1 -o $out
@@ -3373,7 +3371,7 @@ smallGridtoFullGrid(){
         echo -e "\n\tFrames from {$smallGridDir} have been already pased into the full grid\n"
     else
         framesToGrid=()
-        for frame in $smallGrid/*.fits; do
+        for frame in $smallGridDir/*.fits; do
             framesToGrid+=("$frame")
         done
         printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_cpus" smallGridToFullGridSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC 
@@ -3536,16 +3534,15 @@ export -f normaliseGainSingleFrame
 
 normaliseGainImages(){
     local smallGrid=$1
-    local fullGrid=$2
-    local num_ccd=$3
-    local ringDir=$4
-    local ccd_ref=$5
-    local outputDir_small=$6
-    local outputDir_full=$7
+    local num_ccd=$2
+    local ringDir=$3
+    local ccd_ref=$4
+    local outputDir_small=$5
+    
 
     outputDir_done=$outputDir_small/done.txt
     if ! [ -d $outputDir_small ]; then mkdir $outputDir_small; fi
-    if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
+    #if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
     
     echo -e "\n·Computing Gain Correction and normalising images"
     if [ -f $outputDir_done ]; then 
@@ -3558,7 +3555,7 @@ normaliseGainImages(){
             imagesToNormalise+=("$a")
         done
         printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseGainSingleFrame {} $smallGrid $outputDir_small $outputDir_small $num_ccd $ccd_ref
-        printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseGainSingleFrame {} $fullGrid $outputDir_small $outputDir_full $num_ccd $ccd_ref
+        #printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseGainSingleFrame {} $fullGrid $outputDir_small $outputDir_full $num_ccd $ccd_ref
         echo done > $outputDir_done
     fi
 
@@ -3567,13 +3564,11 @@ export -f normaliseGainImages
 
 subtractStars(){
     local inputFolder_small=$1
-    local inputFolder_full=$2
-    local starLine=$3
-    local psf=$4
-    local psfProfile=$5
-    local outputDir_small=$6
-    local outputDir_full=$7
-    local starId=$8
+    local starLine=$2
+    local psf=$3
+    local psfProfile=$4
+    local outputDir_small=$5
+    local starId=$6
     
     starRa=$(echo "$starLine" | awk '{print $1}')
     starDec=$(echo "$starLine" | awk '{print $2}')
@@ -3589,9 +3584,9 @@ subtractStars(){
     else
         for a in $(seq 1 $totalNumberOfFrames); do
             image=$inputFolder_small/entirecamera_"$a".fits
-            #We are gonna do the following: we generate circles where PSF reaches 26.3 mag arcsec^-2, ie, ~50 times lower than typical
+            #We are gonna do the following: we generate circles where PSF reaches 26.5 mag arcsec^-2, ie, ~50 times lower than typical
             # sky background (THis is literally by eye)
-            circleRad=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile 26.3 $pixelScale) 
+            circleRad=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile 26.5 $pixelScale) 
             python3 $pythonScriptsPath/check_starLocation.py $image $starLocationFile $num_ccd $starRa $starDec $circleRad 
         done
         while IFS= read -r line; do
@@ -3644,10 +3639,10 @@ subtractStars(){
     fi
 
     echo -e "·Subtracting star from frames"
-    limMag=31
+    limMag=32 #bellow surface brightness limit
 
     if ! [ -d $outputDir_small ]; then mkdir $outputDir_small; fi
-    if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
+    #if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
     subtractionDone=$outputDir_small/done.txt
     if [ -f $subtractionDone ]; then
         echo -e "Subtraction of Star $starId already done"
@@ -3668,7 +3663,7 @@ subtractStars(){
         
         for a in $(seq 1 $totalNumberOfFrames); do
            subtractStarFromFrame $a $psfCrop $scaleDir $inputFolder_small $outputDir_small $starRa $starDec 
-           subtractStarFromFrame $a $psfCrop $scaleDir $inputFolder_full $outputDir_full $starRa $starDec
+           #subtractStarFromFrame $a $psfCrop $scaleDir $inputFolder_full $outputDir_full $starRa $starDec
         done
         rm $psfCrop
         echo done > $subtractionDone

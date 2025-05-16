@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 import sys,os
 from joblib import Parallel, delayed
+from scipy.optimize import curve_fit
 
 def plot_params():
     plt.rcParams['axes.linewidth']    = 2.3
@@ -54,7 +55,7 @@ def get_profileRange(star_file,star_mag,psf_file,pixScale):
         I_star=hdul[1].data['SIGCLIP_MEAN']
         R_star=hdul[1].data['RADIUS']
         ##First: check where I<6000ADU to avoid saturation
-        ind_min=np.where((I_star<6e3)&(~np.isnan(I_star)))
+        ind_min=np.where((I_star<1e4)&(~np.isnan(I_star)))
         R_min=R_star[ind_min[0][0]]
         mag_lim=25
         ind_max=np.where(mag_psf>=mag_lim)
@@ -94,9 +95,9 @@ def get_parameterRange(star_file,psf_file,r_min,r_max,back_mean):
         alf_min=1
         alf_max=200
     
-    return(back_min,back_max,alf_min,alf_max)
+    return(back_min,back_max,alf_min,alf_max,alf_mean)
 
-back_min,back_max,alfa_min,alfa_max=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
+back_min,back_max,alfa_min,alfa_max,alfa_mean=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
 
 def chisqi(Istar,stdstar,Ipsf,alfa,back):
     """
@@ -141,6 +142,10 @@ def compute_chi2_parallel_joblib(star_file,psf_file,alfa_min,alfa_max,back_min,b
         
     return chi2test, alfa_test, back_test
 
+def linear_model(I_psf,alfa,back):
+    return alfa*I_psf+back
+
+
 #alfa_test=np.linspace(alfa_min,alfa_max,200)
 #back_test=np.linspace(back_min,back_max,200)
 #chi2test=np.zeros((200,200))
@@ -148,26 +153,46 @@ def compute_chi2_parallel_joblib(star_file,psf_file,alfa_min,alfa_max,back_min,b
 #    for j in range(back_test.size):
 #        chis=chisq(star_file,psf_file,alfa_test[i],back_test[j],r_min,r_max)
 #        chi2test[j,i]=chis
-chi2test,alfa_test,back_test=compute_chi2_parallel_joblib(star_file,psf_file,alfa_min,alfa_max,back_min,back_max,r_min,r_max)
-chi2test_min=np.amin(chi2test[~np.isnan(chi2test)])
-indices_chi2test=np.where(chi2test==chi2test_min)
-alfa_min_test=alfa_test[indices_chi2test[1]]
-back_min_test=back_test[indices_chi2test[0]]
+#chi2test,alfa_test,back_test=compute_chi2_parallel_joblib(star_file,psf_file,alfa_min,alfa_max,back_min,back_max,r_min,r_max)
+#chi2test_min=np.amin(chi2test[~np.isnan(chi2test)])
+#indices_chi2test=np.where(chi2test==chi2test_min)
+#alfa_min_test=alfa_test[indices_chi2test[1]]
+#back_min_test=back_test[indices_chi2test[0]]
+#
+#aa,bb=np.meshgrid(alfa_test,back_test)
+#levels=[0,2.3,6.18,11.83]
+#dchi=chi2test-chi2test_min
+#base=os.path.basename(star_file)
+#frameNumber=base.split('.')[0].split('_')[2]
+#plt.figure(figsize=(10,8))
+#plt.contour(aa,bb,dchi,levels,colors='k')
+#plt.contourf(aa,bb,dchi,levels)
+#plt.plot(alfa_min_test,back_min_test,color='r',marker='X',markersize=5,linewidth=0,label=rf'Min:$\alpha$={alfa_min_test}; Bck.={back_min_test}')
+#plt.xlabel(r'$\alpha$')
+#plt.ylabel('Background')
+#plt.title(fr"$\Delta\chi^{2}$: Frame {frameNumber} R: {r_min} - {r_max} ")
+#plt.legend()
+#plt.tight_layout()
+#plt.savefig(f'{output_folder}/{base}_fit.pdf')
+#
+#print(alfa_min_test[0])
 
-aa,bb=np.meshgrid(alfa_test,back_test)
-levels=[0,2.3,6.18,11.83]
-dchi=chi2test-chi2test_min
-base=os.path.basename(star_file)
-frameNumber=base.split('.')[0].split('_')[2]
-plt.figure(figsize=(10,8))
-plt.contour(aa,bb,dchi,levels,colors='k')
-plt.contourf(aa,bb,dchi,levels)
-plt.plot(alfa_min_test,back_min_test,color='r',marker='X',markersize=5,linewidth=0,label=rf'Min:$\alpha$={alfa_min_test}; Bck.={back_min_test}')
-plt.xlabel(r'$\alpha$')
-plt.ylabel('Background')
-plt.title(fr"$\Delta\chi^{2}$: Frame {frameNumber} R: {r_min} - {r_max} ")
-plt.legend()
-plt.tight_layout()
-plt.savefig(f'{output_folder}/{base}_fit.pdf')
+##We are gonna use scipy curve fitting for make the fit
 
-print(alfa_min_test[0])
+starTab=fits.open(star_file)[1].data
+psfTab=fits.open(psf_file)[1].data
+R_star=starTab['RADIUS']
+I_star=starTab['SIGCLIP_MEAN']
+indexes=np.where((R_star>=r_min)&(R_star<=r_max)&(~np.isnan(I_star)))
+I_psf_ok=psfTab['MEAN'][indexes[0]]
+I_star_ok=I_star[indexes[0]]
+std_star_ok=starTab['SIGCLIP_STD'][indexes[0]]
+
+initial_guess=[alfa_mean,back_mean]
+bounds=([alfa_min,back_min],[alfa_max,back_max])
+
+popt,pcov=curve_fit(linear_model,I_psf_ok,I_star_ok,p0=initial_guess,bounds=bounds,sigma=std_star_ok,absolute_sigma=True)
+alfa_fit,back_fit=popt
+perr=np.sqrt(np.diag(pcov))
+
+print(alfa_fit)
