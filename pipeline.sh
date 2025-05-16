@@ -1165,7 +1165,7 @@ else
   imagesToFWHM=()
   for a in $(seq 1 $totalNumberOfFrames); do
     base="$a".fits
-    imagesToFWHM+=("$base")
+    imagesToFWHM+=("entirecamera_$base")
   done
   methodToUse="sextractor"
 
@@ -1173,6 +1173,8 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
+
+
 
 echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
 writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
@@ -1655,7 +1657,14 @@ else
 fi
 
 
-exit 0
+fwhmPlotsWithCoadd=$diagnosis_and_badFilesDir/done_fwhmPlotswithCoadd.txt
+if [ -f $fwhmPlotsWithCoadd ]; then
+  coaddFWHMDir=$BDIR/seeing_values_coadd
+  if ! [ -d $coaddFWHMDir ]; then mkdir $coaddFWHMDir; fi
+  computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds $coaddFWHMDir 1 "sextractor" $tileSize
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
+  echo "done" > $fwhmPlotsWithCoadd
+fi
 
 
 # # Remove intermediate folders to save some space

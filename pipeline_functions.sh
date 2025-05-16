@@ -3293,13 +3293,14 @@ limitingSurfaceBrightness() {
     astnoisechisel $out_maskexp_tmp -o$out_maskexp >/dev/null 2>&1
     sigma=$( astfits $out_maskexp --hdu=SKY_STD --keyvalue='MEDSTD' --quiet )
 
-    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
+    sb_lim=$(astar ithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
 
     rm $out_mask $out_maskexp_tmp $out_maskexp >/dev/null 2>&1
     echo "Limiting magnitude ($numOfSigmasForMetric sigma, $areaSB x $areaSB): $sb_lim" > "$outFile"
     echo "$sb_lim" # We need to recover the value outside for adding it to the coadd header
 }
 export -f limitingSurfaceBrightness
+
 
 computeFWHMSingleFrame(){
     local a=$1
@@ -3309,7 +3310,7 @@ computeFWHMSingleFrame(){
     local methodToUse=$5
     local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
     
-    i=$framesForFWHMDir/entirecamera_"$a"
+    i=$framesForFWHMDir/$a
 
     # In the case of using it for Decals or Panstarrs, we need the variable survey
     if [[ "$methodToUse" == "sextractor" ]]; then
@@ -3329,12 +3330,13 @@ computeFWHMSingleFrame(){
     std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
     minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
     maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
-    asttable $fwhmdir/match_"$a"_my_gaia.txt --noblank=MAGNITUDE --range=HALF_MAX_RADIUS,$minr:$maxr -c'arith $6 2 x' -o$fwhmdir/fwhm_"$a"_cat.txt
+    asttable $fwhmdir/match_"$a"_my_gaia.txt --noblank=MAGNITUDE --range=HALF_MAX_RADIUS,$minr:$maxr -c3,4,6 -c'arith $6 2 x' -o$fwhmdir/cat_fwhm_"$a".txt
+    
     
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
-    FWHM=$(asttable $fwhmdir/fwhm_"$a"_cat.txt -c1  | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    FWHM=$(asttable $fwhmdir/cat_fwhm_"$a".txt  -c4 | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
     echo $FWHM > $fwhmdir/fwhm_"$a".txt
-    rm $fwhmdir/match_"$a"_my_gaia.txt $fwhmdir/fwhm_"$a"_cat.txt $outputCatalogue
+    rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue 
 }
 export -f computeFWHMSingleFrame

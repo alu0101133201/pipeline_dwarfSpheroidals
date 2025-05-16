@@ -58,7 +58,7 @@ def configureAxis(ax, xlabel, ylabel, logScale=True):
 
 
 
-def retrieveFWHMValues(currentFile,arcsecPerPix):
+def retrieveFWHMValues(currentFile, arcsecPerPix):
     with open(currentFile, 'r') as f:
         lines = f.readlines()
         if( len(lines) != 1):
@@ -87,7 +87,15 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, fwhmRejectedIndices, astrometryRejectedIndices, imageName, title):
+def getCoaddSeeing(dirWithFrameFWHM):
+    for filename in os.listdir(dirWithFrameFWHM):
+        if filename.startswith("fwhm_"):
+            fileWithFWHM = filename
+            coaddFWHM = retrieveFWHMValues(dirWithFrameFWHM + "/" + fileWithFWHM, arcsecPerPix)
+    return(coaddFWHM)
+
+
+def saveHistogram(values, fwhmRejectedIndices, astrometryRejectedIndices, imageName, title, addCoaddSeeing, dirWithFrameFWHM):
     myBins = calculateFreedmanBins(values)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
@@ -100,15 +108,18 @@ def saveHistogram(values, fwhmRejectedIndices, astrometryRejectedIndices, imageN
     ax.text(0.6, 0.7,"Rejected Frames by fwhm: "+str(len(fwhmRejectedIndices)),transform=ax.transAxes,
                 fontsize=20,verticalalignment='top',horizontalalignment='left')
 
-
     ax.hist(values[fwhmRejectedIndices], bins=myBins, color='mediumorchid', label='Rejected FWHM')
     ax.hist(values[astrometryRejectedIndices], bins=myBins, color='blue', label='Rejected astrometry')
 
+    if (addCoaddSeeing):
+        coaddFWHM = getCoaddSeeing(dirWithFrameFWHM)
+        ax.axvline(coaddFWHM, lw=2.5, ls="--", color="crimson", label="Coadd FWHM")
+        
     ax.legend(fontsize=15)
     plt.savefig(imageName)
     return()
     
-def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, imageName):
+def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, imageName, addCoaddSeeing, dirWithFrameFWHM):
     
     fig, ax = plt.subplots(2, 1, figsize=(20,10))
     configureAxis(ax[0], 'UTC', 'FWHM (arcsec)',logScale=False)
@@ -165,6 +176,11 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
     ax[0].hlines(fwhmThreshold, xmin=np.nanmin(alldate_ok), xmax=np.nanmax(alldate_ok), lw=1.5, ls="--", color="black", label="Rejection threshold")
     ax[1].hlines(fwhmThreshold, xmin=np.nanmin(allAir), xmax=np.nanmax(allAir), lw=1.5, ls="--", color="black")
 
+    if (addCoaddSeeing):
+        coaddFWHM = getCoaddSeeing(dirWithFrameFWHM)
+        ax[0].hlines(coaddFWHM, xmin=np.nanmin(alldate_ok), xmax=np.nanmax(alldate_ok), lw=2.5, ls="--", color="crimson", label="Coadd FWHM")
+        ax[1].hlines(coaddFWHM, xmin=np.nanmin(allAir), xmax=np.nanmax(allAir), lw=2.5, ls="--", color="crimson", label="Coadd FWHM")
+
     ax[0].legend(fontsize=15)
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
@@ -210,8 +226,7 @@ def identifyBadFrames(folderWithFWHM, fwhmThreshold):
         fwhmValue = retrieveFWHMValues(currentFile,arcsecPerPix)
         if (math.isnan(fwhmValue)):
             continue
-        
-        allFiles.append(".".join(currentFile.split("/")[-1].split("_")[1].split(".")[:-1]))
+        allFiles.append(".".join(currentFile.split("/")[-1].split("_")[2].split(".")[:-1]))
         allFWHM.append(fwhmValue)
 
     allFWHM = np.array(allFWHM)
@@ -245,6 +260,15 @@ folderWithFramesWithAirmasses = sys.argv[4]
 arcsecPerPix=float(sys.argv[5])
 fwhmThreshold=float(sys.argv[6])
 
+if (len(sys.argv) > 7):
+    addCoaddSeeing=sys.argv[7]
+    dirWithFrameFWHM=sys.argv[8]
+    stringForPlotNames="_withCoadd"
+else:
+    addCoaddSeeing=False
+    dirWithFrameFWHM=""
+    stringForPlotNames=""
+
 setMatplotlibConf()
 
 
@@ -263,6 +287,7 @@ for currentFile in glob.glob(folderWithFWHM + "/fwhm_*.txt"):
 # 2.- Identify what frames are outside the acceptance region -----------------------
 badFilesFWHM, badFWHM, allData = identifyBadFrames(folderWithFWHM, fwhmThreshold)
 
+
 with open(outputFolder + "/fwhmValues.dat", 'w') as f:
     for i in range(len(allData)):
         f.write(str(allData["File"][i]) + " " + str(allData["FWHM"][i]) + ("\n"))
@@ -272,7 +297,7 @@ with open(outputFolder + "/fwhmValues.dat", 'w') as f:
 fwhmRejectedIndices            = getIndicesOfFiles(allData, badFilesFWHM)
 astrometryRejectedIndices      = getIndicesOfFiles(allData, rejectedAstrometrisedFrames)
 
-saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, outputFolder+"/fwhmEvol.png")
+saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, outputFolder + f"/fwhmEvol{stringForPlotNames}.png", addCoaddSeeing, dirWithFrameFWHM)
 
 pattern = r"\d+"
 with open(outputFolder + "/" + outputFile, 'w') as file:
@@ -283,4 +308,4 @@ with open(outputFolder + "/" + outputFile, 'w') as file:
 
 
 # 3.- Obtain the median and std and do teh histogram -------------------------------------
-saveHistogram(allData["FWHM"], fwhmRejectedIndices, astrometryRejectedIndices, outputFolder + "/fwhmHist.png", "FWHM of frames")
+saveHistogram(allData["FWHM"], fwhmRejectedIndices, astrometryRejectedIndices, outputFolder + f"/fwhmHist{stringForPlotNames}.png", "FWHM of frames", addCoaddSeeing, dirWithFrameFWHM)

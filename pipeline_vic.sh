@@ -1754,6 +1754,15 @@ else
 fi
 
 
+fwhmPlotsWithCoadd=$diagnosis_and_badFilesDir/done_fwhmPlotswithCoadd.txt
+if [ -f $fwhmPlotsWithCoadd ]; then
+  coaddFWHMDir=$BDIR/seeing_values_coadd
+  if ! [ -d $coaddFWHMDir ]; then mkdir $coaddFWHMDir; fi
+  computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds $coaddFWHMDir 1 "sextractor" $tileSize
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
+  echo "done" > $fwhmPlotsWithCoadd
+fi
+
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky_prephot -type f ! -name 'done*' -exec rm {} \;
