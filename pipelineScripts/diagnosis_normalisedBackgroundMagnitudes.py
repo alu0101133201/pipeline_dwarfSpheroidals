@@ -81,6 +81,8 @@ def obtainKeyWordFromFits(file, keyword):
             
             if keyword in header:
                 keywordValue = header[keyword]
+                if (keywordValue == "" or keywordValue == None):
+                    keywordValue=np.nan
                 return(keywordValue)
             else:
                 raise Exception(f"Keyword '{keyword}' not found in the header.")
@@ -156,11 +158,7 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-<<<<<<< HEAD
 def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, title, imageName):
-=======
-def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, title, imageName):
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
     myBins = calculateFreedmanBins(values[~np.isnan(values)])
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
@@ -169,18 +167,12 @@ def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueInd
     configureAxis(ax, 'Background (mag/arcsec^2)', '', logScale=False)
     counts, bins, patches = ax.hist(values, bins=myBins, color="teal")
 
-<<<<<<< HEAD
     if (len(rejectedBackgroundIndices) > 0):
         ax.hist(values[rejectedBackgroundIndices - 1], bins=myBins, color="red", label="Rejected by background brightness")
     if (len(rejectedFWHMIndices)):
         ax.hist(values[rejectedFWHMIndices - 1], bins=myBins, color="mediumorchid", label="Rejected by fwhm")
     if (len(rejectedAstrometryIndices)):
         ax.hist(values[rejectedAstrometryIndices - 1], bins=myBins, color="blue", label="Rejected by astrometry")
-=======
-    ax.hist(values[rejectedBackgroundValueIndices], bins=myBins, color="darkred", label="Rejected by background value")
-    ax.hist(values[rejectedBackgroundStdIndices], bins=myBins, color="gold", label="Rejected by background std")
-    ax.hist(values[rejectedAstrometryIndices], bins=myBins, color="blue", label="Rejected by astrometry")
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
 
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
@@ -188,11 +180,7 @@ def saveHistogram(values, rejectedAstrometryIndices,  rejectedBackgroundValueInd
     plt.savefig(imageName)
     return()
 
-<<<<<<< HEAD
 def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder):
-=======
-def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedBackgroundValueIndices, rejectedBackgroundStdIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder):
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
     airMass  = []
     time     = []
     cfactors = []

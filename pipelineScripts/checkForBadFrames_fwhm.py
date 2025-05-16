@@ -181,6 +181,8 @@ def obtainKeyWordFromFits(file, keyword):
             
             if keyword in header:
                 keywordValue = header[keyword]
+                if (keywordValue == "" or keywordValue == None):
+                    keywordValue=np.nan
                 return(keywordValue)
             else:
                 raise Exception(f"Keyword '{keyword}' not found in the header.")
@@ -270,7 +272,6 @@ with open(outputFolder + "/fwhmValues.dat", 'w') as f:
 fwhmRejectedIndices            = getIndicesOfFiles(allData, badFilesFWHM)
 astrometryRejectedIndices      = getIndicesOfFiles(allData, rejectedAstrometrisedFrames)
 
-print("here")
 saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, outputFolder+"/fwhmEvol.png")
 
 pattern = r"\d+"
