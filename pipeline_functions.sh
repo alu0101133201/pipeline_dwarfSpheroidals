@@ -836,8 +836,8 @@ warpImage() {
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
     # Resample into the final grid
-    # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "SWarp"
-    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
+    SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
 
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
@@ -2964,16 +2964,17 @@ tagIndividualResidualsBasedOnApertures() {
     local segmentation=$7
     local residualCatalogue=$8
 
-    fileWithFWHM=$fwhmDir/fwhm_$frameNumber.fits.txt
+    fileWithFWHM=$fwhmDir/fwhm_entirecamera_$frameNumber.fits.txt
     read fwhmValue < $fileWithFWHM
-    formattedValue=$(printf "%f" "$fwhmValue") # To get rid of scientific notation
+    # formattedValue=$(printf "%f" "$fwhmValue") # To get rid of scientific notation
+    formattedValue=$( awk -v v="$fwhmValue" 'BEGIN {printf "%f", v}' )
     aperturePx=$( echo "$formattedValue * $numberOfFWHMusedForApertures" | bc -l )
 
     # gnuastro code for obtaining the upper limit using the apertures
     echo "1 100 100 5 $aperturePx 0 0 1 1 1" | astmkprof --background=$individualResidual --clearcanvas --mforflatpix --type=uint8 --output=$residualFramesTaggedDir/tmp_aperture_$frameNumber.fits
     astmkcatalog $residualFramesTaggedDir/tmp_aperture_$frameNumber.fits -h1 --zeropoint=22.5 -o$residualFramesTaggedDir/sbl_$frameNumber.fits \
                     --valuesfile=$individualResidual --valueshdu=1 --upmaskfile=$residualFramesTaggedDir/$residualMask --upmaskhdu=DETECTIONS\
-                    --upnsigma=3 --checkuplim=1 --upnum=1000 --ids --upperlimit-sb
+                    --upnsigma=5 --checkuplim=1 --upnum=1000 --ids --upperlimit-sb
     upperLimitMag=$( asttable $residualFramesTaggedDir/sbl_$frameNumber.fits -cUPPERLIMIT_SB )
 
     taggedResidual_tmp=$residualFramesTaggedDir/tmp_apertureTagged_$base

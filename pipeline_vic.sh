@@ -1264,7 +1264,7 @@ else
   imagesToFWHM=()
   for a in $(seq 1 $totalNumberOfFrames); do
     base="$a".fits
-    imagesToFWHM+=("$base")
+    imagesToFWHM+=("entirecamera_$base")
   done
   methodToUse="sextractor"
 
@@ -1763,8 +1763,6 @@ if [ -f $fwhmPlotsWithCoadd ]; then
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
 fi
-
-
 
 
 # # Remove intermediate folders to save some space
