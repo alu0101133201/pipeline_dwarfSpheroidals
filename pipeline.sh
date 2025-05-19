@@ -619,7 +619,7 @@ oneNightPreProcessing() {
   if [ -f $badFilesWarningsDone ]; then
       echo -e "\n\tFrames with strange background value and std values already cleaned\n"
   else
-    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'"
+    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
     numberOfStdForBadFrames=5
     python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $currentNight
     echo "done" > $badFilesWarningsDone
@@ -1190,7 +1190,7 @@ if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
 if [ -f $coaddDone ]; then
 	echo -e "\n Coadd pre-photometry already done\n"
 else
-	computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+	computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
   subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
   subskyfullGridDone=$subskyfullGrid_dir/done.txt
@@ -1485,7 +1485,7 @@ echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt
@@ -1732,7 +1732,7 @@ maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDon
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 imagesAreMasked=true
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
@@ -1749,7 +1749,7 @@ maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDon
 noiseskydir=$BDIR/noise-sky_maskPrephot_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 imagesAreMasked=true
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
@@ -1778,7 +1778,7 @@ else
   maskPointings $subskySmallGrid_dir $subSkyPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
   imagesAreMasked=true
-	computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+	computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
   
   subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_maskPrephot_it$iteration
   subskyfullGridDone=$subskyfullGrid_dir/done.txt
@@ -1999,7 +1999,7 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt
