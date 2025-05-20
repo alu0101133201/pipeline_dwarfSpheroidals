@@ -106,6 +106,9 @@ fi
 echo -e "\nNumber of CPUs allocated: $num_cpus"
 export num_cpus
 
+#Each filter is composed by a single CCD with 4 windows: we are gonna make fla-bias as a multidetector
+num_ccd=4
+export num_ccd
 
 # ****** Decision note *******
 # Rebinned data
