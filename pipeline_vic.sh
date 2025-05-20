@@ -109,8 +109,9 @@ export num_cpus
 
 # ****** Decision note *******
 # Rebinned data
-tileSize=25
+tileSize=35
 noisechisel_param="--tilesize=$tileSize,$tileSize \
+                    --detgrowmaxholesize=5000 \
                     --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
@@ -920,10 +921,7 @@ else
   radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 fi
 
-#This is just for Hipercam
-radiusToDownloadCatalogue=0.6
-
-query_param="vizier --dataset=panstarrs1 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=RAJ2000,DEJ2000,gmag"
+query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
 catName=$catdir/"$objectName"_Gaia_DR3.fits
 catRegionName=$catdir/"$objectName"_Gaia_DR3_regions.reg
@@ -973,41 +971,22 @@ echo "add_path $indexdir" >> $astrocfg
 echo autoindex >> $astrocfg
 
 astroimadir=$BDIR/astro-ima
-astroimacondir=$BDIR/astro-ima-convolved
-convolimadir=$BDIR/frames-convolved
-if ! [ -d $convolimadir ]; then mkdir $convolimadir; fi
-kernel_astro=$BDIR/kernel_astro.fits
-if ! [ -f $kernel_astro ]; then 
-  astmkprof --kernel=moffat,3,2.8,5 --oversample=5 -o $kernel_astro
-fi
-convolimadone=$convolimadir/done.txt
-if [ -f $convolimadone ]; then
-  echo -e "\n\t Images are already convolved with astrometry kernel"
-else
-  for file in $framesForCommonReductionDir/*.fits; do
-    base=$( basename $file )
-    astconvolve $file --kernel=$kernel_astro --type=float32 --domain=spatial --khdu=1 -o $convolimadir/$base
-  done
-  echo done > $convolimadone
-fi
 astroimadone=$astroimadir/done_"$filter".txt
 if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
-if ! [ -d $astroimacondir ]; then mkdir $astroimacondir; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
   frameNames=()
   for a in $(seq 1 $totalNumberOfFrames); do
       base=$a.fits
-      i=$convolimadir/$base
+      i=$framesForCommonReductionDir/$base
       frameNames+=("$i")
   done
-  echo $totalNumberOfFrames
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir 
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
   echo done > $astroimadone
 fi
 
-exit 0
+
 
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
@@ -1059,7 +1038,6 @@ else
 fi
 
 
-
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1076,18 +1054,18 @@ else
   folderWithFramesToWarp=$BDIR/astro-ima
 fi
 
-entiredir_smallGrid=$BDIR/pointings_smallGrid
-entiredone=$entiredir_smallGrid/done_.txt
+entiredir_smallGrid_preAircorr=$BDIR/pointings_smallGrid_preAirMassCorr
+entiredone=$entiredir_smallGrid_preAircorr/done_.txt
 swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
 export swarpcfg
 
-if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
+if ! [ -d $entiredir_smallGrid_preAircorr ]; then mkdir $entiredir_smallGrid_preAircorr; fi
 
 if [ -f $entiredone ]; then
     echo -e "\n\tImages already with astromety corrected using scamp-swarp and regrid to final grid (stored in pointings)\n"
 else
-  entiredir_fullGrid=$BDIR/pointings_fullGrid
-  if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
+  entiredir_fullGrid_preAircorr=$BDIR/pointings_fullGrid_preAirMassCorr
+  if ! [ -d $entiredir_fullGrid_preAircorr ]; then mkdir $entiredir_fullGrid_preAircorr; fi
 
   imagesToWarp=()
   for a in $(seq 1 $totalNumberOfFrames); do
@@ -1095,8 +1073,8 @@ else
       imagesToWarp+=($folderWithFramesToWarp/$base)
   done
 
-  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
-  rm -rf $entiredir_fullGrid
+  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid_preAircorr $entiredir_smallGrid_preAircorr $ra $dec $coaddSizePx $pipelinePath
+  rm -rf $entiredir_fullGrid_preAircorr
   echo done > $entiredone
 fi
 
@@ -1113,9 +1091,107 @@ else
   # I create the file because we need it even if empty (for future python scripts). 
   # If you use frames already astrometrised it won't be created if we do not do that explicitly with the touch commmand
   touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
-  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid
+  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid_preAircorr
   echo done > $badFilesWarningsDone
 fi
+
+
+# compute masks in the full grids in order to do the correction based on airmass maps
+echo -e "\n ${GREEN} ---Performing airmass map correction --- ${NOCOLOUR}"
+
+createMask() {
+  local image=$1
+  local outputDir=$2
+  local noisechisel_param=$3
+  local maskParams=$4
+
+  base=$( basename $image )
+  mask=$(echo $base | sed 's/.fits/_mask.fits/')
+  astnoisechisel $image $noisechisel_param --numthreads=$num_cpus -o $outputDir/$mask
+
+  # Manual masks defined by the user
+  valueToPut=1
+  read -r -a maskArray <<< "$maskParams"
+  for ((i=0; i<${#maskArray[@]}; i+=5)); do
+      ra="${maskArray[i]}"
+      dec="${maskArray[i+1]}"
+      r="${maskArray[i+2]}"
+      axisRatio="${maskArray[i+3]}"
+      pa="${maskArray[i+4]}"
+
+      python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $outputDir/$mask $valueToPut $ra $dec $r $axisRatio $pa
+  done
+
+}
+export -f createMask
+
+masksForAirMassMapCorr=$BDIR/pointings_smallGrid_masksForAirMassMapCorr
+masksforAirMassMapCorrDone=$masksForAirMassMapCorr/done_.txt
+
+if ! [ -d $masksForAirMassMapCorr ]; then mkdir $masksForAirMassMapCorr; fi
+if [ -f $masksforAirMassMapCorrDone ]; then
+    echo -e "\n\tMasks for air masses map corrections already created\n"
+else
+  imagesToCorrect=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+      base=entirecamera_"$a".fits
+      imagesToCorrect+=($entiredir_smallGrid_preAircorr/$base)
+  done
+  printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createMask {} $masksForAirMassMapCorr "'$noisechisel_param'"  "'$maskParams'"
+  echo done > $masksforAirMassMapCorrDone
+fi
+
+
+###### Correction based on the airmass map
+createAirMassMapsAndApplyCorr() {
+    local image=$1
+    local airMassMapsDir=$2
+    local smallGridDirPreCorr=$3
+    local folderWithMasks=$4
+    local telescopeLat=$5
+    local telescopeLong=$6
+    local telescopeElevation=$7
+    local smallGridDirCorrected=$8
+    local diagnosis_and_badFilesDir=$9
+
+    baseName=$( basename $image )
+    maskName=$(echo $baseName | sed 's/.fits/_mask.fits/')
+    maskedImage=$smallGridDirPreCorr/$(echo $baseName | sed 's/.fits/_masked.fits/')
+    astarithmetic $image -h1 $folderWithMasks/$maskName -hDETECTIONS 1 eq nan where float32 -o $maskedImage -q
+
+    dateObs=$( astfits $image --keyvalue=$dateHeaderKey --quiet)
+    python3 $pythonScriptsPath/createAirMassCorrectionMap.py $maskedImage $airMassMapsDir $telescopeLat $telescopeLong $telescopeElevation $dateObs $diagnosis_and_badFilesDir
+
+    astarithmetic $smallGridDirPreCorr/$baseName -h1 $airMassMapsDir/airMassMapCorr_smallGrid_$baseName -h1 / -o $smallGridDirCorrected/$baseName
+    cp $smallGridDirPreCorr/"${baseName%.*}"_cropRegion.txt $smallGridDirCorrected/"${baseName%.*}"_cropRegion.txt
+    rm $maskedImage
+}
+export -f createAirMassMapsAndApplyCorr
+
+
+entiredir_airmassMaps=$BDIR/airMassCorrectionMaps
+entiredir_smallGrid=$BDIR/pointings_smallGrid
+entiredone=$entiredir_smallGrid/done_.txt
+
+if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
+if ! [ -d $entiredir_airmassMaps ]; then mkdir $entiredir_airmassMaps; fi
+
+if [ -f $entiredone ]; then
+    echo -e "\n\tAir masses correction map already created and applied\n"
+else
+  imagesToCorrect=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+      base=entirecamera_"$a".fits
+      imagesToCorrect+=($entiredir_smallGrid_preAircorr/$base)
+  done
+  printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" createAirMassMapsAndApplyCorr {} $entiredir_airmassMaps $entiredir_smallGrid_preAircorr $masksForAirMassMapCorr \
+                                                                                                  $telescopeLat $telescopeLong $telescopeElevation \
+                                                                                                  $entiredir_smallGrid $diagnosis_and_badFilesDir                                             
+  python3 $pythonScriptsPath/diagnosis_gammaFactorsDistribution.py $diagnosis_and_badFilesDir
+  rm $diagnosis_and_badFilesDir/gammaFactorsFromAirMassMapCorr.txt.lock
+  echo done > $entiredone
+fi
+######
 
 
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
@@ -1164,6 +1240,7 @@ subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
+
 toleranceForMatching=3 #arcsec
 sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
@@ -1194,6 +1271,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
+
 
 echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
 writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
@@ -1270,6 +1348,7 @@ else
 fi
 
 
+
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
@@ -1318,7 +1397,6 @@ calibratingMosaic=true
 imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                           $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
-
 
 # Calibration of individual frames
 writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
@@ -1674,9 +1752,6 @@ else
 
   echo done > $framesWithCoaddSubtractedDone 
 fi
-
-
-exit 0
 
 
 # # Remove intermediate folders to save some space
@@ -2077,7 +2152,7 @@ fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $mowdir $exposuremapDir $exposuremapdone 
+computeExposureMap $wdir $exposuremapDir $exposuremapdone 
 
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
