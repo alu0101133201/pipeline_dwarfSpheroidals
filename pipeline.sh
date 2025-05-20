@@ -1328,6 +1328,12 @@ else
   echo done > $numberOfStarsUsedInEachFrameDone
 fi
 
+# Get common calibration factor to apply based on the distribution (this is done in one stacking method that is implemented)
+computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
+
+# VARIABLE TO DECIDE IF THE COMMON CALIBRATION FACTOR OR INDIVIDUAL CALIBRATION FACTORS ARE USED
+applyCommonCalibrationFactor=True
+export applyCommonCalibrationFactor
 
 
 # DIAGNOSIS PLOT
@@ -1343,7 +1349,7 @@ if [ -f $backgroundBrightnessDone ]; then
   echo -e "\nDiagnosis based on background brightness already done"
 else
   badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
-  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
+  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudesAndCalibrationFactorPlots.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt
   echo "done" > $backgroundBrightnessDone
 fi
 
@@ -1352,12 +1358,11 @@ echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
+applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
 
 photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
 alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
-
+applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
 
@@ -1430,7 +1435,7 @@ rm $BDIR/coaddForCalibration_it$iteration/*
 cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
 echo cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
 alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir False
 
 coaddPrephotDir=$BDIR/coadds-prephot
 coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated.fits
@@ -1623,6 +1628,8 @@ comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N fr
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
+
+
 halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
 if [ -f $halfMaxRadForCoaddName ]; then
   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
@@ -1662,9 +1669,12 @@ if [ -f $fwhmPlotsWithCoadd ]; then
   coaddFWHMDir=$BDIR/seeing_values_coadd
   if ! [ -d $coaddFWHMDir ]; then mkdir $coaddFWHMDir; fi
   computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds $coaddFWHMDir 1 "sextractor" $tileSize
+  # The name of the script is confusing because this was not planned, but this is for generating the fwhm plot with the coadd fwhm on top of it
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
 fi
+
+exit 0
 
 
 # # Remove intermediate folders to save some space
@@ -1796,7 +1806,10 @@ else
   rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
   removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
- 
+  rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+  removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+  removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+
   python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
 
 
@@ -1883,12 +1896,12 @@ echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
+applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $applyCommonCalibrationFactor
 
 
 alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
 photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir False
 
 # Calibration
 iteration=2
@@ -1937,7 +1950,7 @@ rm $BDIR/coaddForCalibration_it$iteration/*
 
 cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
 alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir False
 
 
 
@@ -2119,19 +2132,9 @@ else
   photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
   subtractCoaddToFrames $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
 
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  prefixOfTheFilesToRemove="entirecamera_"
-  rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-  rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
-  rejectedFramesDir=$BDIR/rejectedFramesResiduals
-  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   
+  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
   computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
   python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
 

@@ -837,7 +837,7 @@ warpImage() {
 
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
 
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
@@ -2477,6 +2477,27 @@ combineDecalsBricksCataloguesForEachFrame() {
 }
 export -f combineDecalsBricksCataloguesForEachFrame
 
+computeCommonCalibrationFactor() {
+  local calibrationFactorsDir=$1
+  local iteration=$2
+  local objectName=$3
+  local BDIR=$4 
+  
+  calibrationFactors=()
+  for i in $( ls $calibrationFactorsDir/alpha_"$objectName"*.txt); do
+    read currentCalibrationFactor currentStd < $i
+    calibrationFactors+=("$currentCalibrationFactor")
+  done
+
+  tmpTableFits=$BDIR/tableTest.fits
+  printf "%s\n" "${calibrationFactors[@]}" | asttable -o "$tmpTableFits"
+  commonCalibrationFactor=$( aststatistics $tmpTableFits --sigclip-median)
+  echo $commonCalibrationFactor > $BDIR/commonCalibrationFactor_it$iteration.txt
+
+  rm $tmpTableFits
+}
+export -f computeCommonCalibrationFactor
+
 computeCalibrationFactors() {
     local surveyForCalibration=$1
     local iteration=$2
@@ -2524,15 +2545,43 @@ computeCalibrationFactors() {
 }
 export -f computeCalibrationFactors
 
+getCalibrationFactorForIndividualFrame() {
+    local a=$1
+    local alphatruedir=$2
+
+    alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
+    alpha=$(awk 'NR=='1'{print $1}' $alpha_cat)
+    echo $alpha
+}
+export -f getCalibrationFactorForIndividualFrame
+
+getCommonCalibrationFactor() {
+    local iteration=$1
+
+    commonFactorFile=$BDIR/commonCalibrationFactor_it$iteration.txt
+    alpha=$(awk 'NR=='1'{print $1}' $commonFactorFile)
+    echo $alpha
+}   
+export -f getCommonCalibrationFactor
+
 applyCalibrationFactorsToFrame() {
     local a=$1
     local imagesForCalibration=$2
     local alphatruedir=$3
     local photCorrDir=$4
+    local iteration=$5
+    local applyCommonCalibrationFactor=$6
 
     f=$imagesForCalibration/entirecamera_"$a".fits
-    alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
-    alpha=$(awk 'NR=='1'{print $1}' $alpha_cat)
+
+    if [[ "$applyCommonCalibrationFactor" == "true" || "$applyCommonCalibrationFactor" == "True" ]]; then
+        alpha=$( getCommonCalibrationFactor $iteration )
+    elif  [[ "$applyCommonCalibrationFactor" == "false" || "$applyCommonCalibrationFactor" == "False" ]]; then
+        alpha=$( getCalibrationFactorForIndividualFrame $a $alphatruedir )
+    else
+        echo "Value of variable applyCommonCalibrationFactor ($applyCommonCalibrationFactor) not recognised"
+        exit 55
+    fi
     astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/entirecamera_"$a".fits
 }
 export -f applyCalibrationFactorsToFrame
@@ -2541,6 +2590,8 @@ applyCalibrationFactors() {
     local imagesForCalibration=$1
     local alphatruedir=$2
     local photCorrDir=$3
+    local iteration=$4
+    local applyCommonCalibrationFactor=$5
 
     muldone=$photCorrDir/done_calibration.txt
     if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
@@ -2548,14 +2599,13 @@ applyCalibrationFactors() {
             echo -e "\n\tMultiplication for alpha in the pointings (huge grid) is done for extension $h\n"
     else
         framesToApplyFactor=()
-
         for a in $(ls $imagesForCalibration/*.fits); do
             frameName=$( basename $a )
             frameNumber=$( echo $frameName | grep -oP '(?<=_)\d+(?=\.fits)' )
             framesToApplyFactor+=("$frameNumber")
         done
 
-        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir
+        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir $iteration $applyCommonCalibrationFactor
         echo done > $muldone
     fi
 }
@@ -3294,7 +3344,7 @@ limitingSurfaceBrightness() {
     astnoisechisel $out_maskexp_tmp -o$out_maskexp >/dev/null 2>&1
     sigma=$( astfits $out_maskexp --hdu=SKY_STD --keyvalue='MEDSTD' --quiet )
 
-    sb_lim=$(astar ithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
+    sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
 
     rm $out_mask $out_maskexp_tmp $out_maskexp >/dev/null 2>&1
     echo "Limiting magnitude ($numOfSigmasForMetric sigma, $areaSB x $areaSB): $sb_lim" > "$outFile"
