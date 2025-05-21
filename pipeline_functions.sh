@@ -409,6 +409,39 @@ checkIfAllTheTransmittancesNeededAreGiven() {
 }
 export -f checkIfAllTheTransmittancesNeededAreGiven
 
+prepareRingTemplate(){
+    local template=$1
+    local imageDir=$2
+    local ringDir=$3
+    local filter=$4
+
+    oneImage=$(ls $imageDir/*.fits | head -1)
+    ringRadius=$(awk '{print $5}' $template)
+    x_camera=$(awk '{print $2}' $template)
+    y_camera=$(awk '{print $3}' $template)
+    base="${template%.txt}"
+    x_h1=$((x_camera-1024))
+    y_h1=$((y_camera))
+    x_h2=$((x_camera))
+    y_h2=$((y_camera))
+    x_h3=$((x_camera))
+    y_h3=$((y_camera-512))
+    x_h4=$((x_camera-1024))
+    y_h4=$((y_camera-512))
+    if [[ "$filter" = "g" || "$filter" = "z" ]]; then
+        echo "1 $x_h1 $y_h1 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd1.txt
+        echo "1 $x_h2 $y_h2 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd2.txt
+        echo "1 $x_h3 $y_h3 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd3.txt
+        echo "1 $x_h4 $y_h4 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd4.txt
+    else
+        echo "1 $x_h2 $y_h2 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd1.txt
+        echo "1 $x_h1 $y_h1 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd2.txt
+        echo "1 $x_h4 $y_h4 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd3.txt
+        echo "1 $x_h3 $y_h3 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd4.txt
+    fi
+
+}
+
 # Functions used in Flat
 maskImages() {
     local inputDirectory=$1
@@ -666,7 +699,7 @@ normaliseImagesWithRing() {
     local keyWordValueForSecondRing=${10}
 
     for a in $(seq 1 $n_exp); do
-        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
         i=$imageDir/$base
         out=$outputDir/$base
         astfits $i --copy=0 --primaryimghdu -o $out 
@@ -688,10 +721,10 @@ export -f normaliseImagesWithRing
 calculateFlat() {
     local flatName="$1"
     local flatIteration="$2"
-    shift
+    shift 2
     local filesToUse="$@"
     numberOfFiles=$#
-
+   
     # ****** Decision note *******
     # The rejection parameters for the construction of the flat has been chosen to be 2 sigmas
     # The running flat implies that we only have fewer frames for the flat (in our case 11 for example)
@@ -704,9 +737,9 @@ calculateFlat() {
     for h in $(seq 1 $num_ccd); do
         if [ "$flatIteration" -ne "3" ]; then
             if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-                astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g$h --writeall -o "${flatName%.fits}_temp.fits"
+                astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g$h --writeall -o "${flatName%.fits}_temp_ccd"$h".fits"
             else
-                astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g$h -o "${flatName%.fits}_temp.fits"
+                astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g$h -o "${flatName%.fits}_temp_ccd"$h".fits"
             fi
         else
             badFilesWarningFile=$BDIR/diagnosis_and_badFiles/CCD"$h"/identifiedBadFrames_preFlat_onlyStd.txt
@@ -731,13 +764,13 @@ calculateFlat() {
             fi
             numberOfFilesOk=${#filesToUseOk[@]}
             if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-                astarithmetic "${filesToUseOk[@]}" $numberOfFilesOk $sigmaValue $iterations sigclip-median -g$h --writeall -o "${flatName%.fits}_temp.fits"
+                astarithmetic "${filesToUseOk[@]}" $numberOfFilesOk $sigmaValue $iterations sigclip-median -g$h --writeall -o "${flatName%.fits}_temp_ccd"$h".fits"
             else
-                astarithmetic "${filesToUseOk[@]}" $numberOfFilesOk $sigmaValue $iterations sigclip-median -g$h -o "${flatName%.fits}_temp.fits"
+                astarithmetic "${filesToUseOk[@]}" $numberOfFilesOk $sigmaValue $iterations sigclip-median -g$h -o "${flatName%.fits}_temp_ccd"$h".fits"
             fi
         fi
-        astfits "${flatName%.fits}_temp.fits" --copy=1 -o $flatName
-        rm "${flatName%.fits}_temp.fits"
+        astfits "${flatName%.fits}_temp_ccd"$h".fits" --copy=1 -o $flatName
+        rm "${flatName%.fits}_temp_ccd"$h".fits"
     done
 }
 export -f calculateFlat
@@ -756,13 +789,15 @@ calculateRunningFlat() {
 
     lefFlatFiles=("${fileArray[@]:0:$windowSize}")
     echo "Computing left flat - iteration $iteration"
-    calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left.fits" "$iteartion" "${lefFlatFiles[@]}"
+    calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left.fits" "$iteration" "${lefFlatFiles[@]}" 
     propagateKeyword "${lefFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left.fits" 0
 
 
     rightFlatFiles=("${fileArray[@]:(fileArrayLength-$windowSize):fileArrayLength}")
+    
     echo "Computing right flat - iteration $iteration"
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right.fits" "$iteration" "${rightFlatFiles[@]}"
+    
     propagateKeyword "${rightFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right.fits" 0
 
 
@@ -1029,17 +1064,22 @@ computeSkyForFrame(){
             rm -f $noiseskydir/$tmpMask
 
             # manual masks defined by the user
-            valueToPut=nan
-            read -r -a maskArray <<< "$manualMaskParams"
-            for ((i=0; i<${#maskArray[@]}; i+=5)); do
-                ra="${maskArray[i]}"
-                dec="${maskArray[i+1]}"
-                r="${maskArray[i+2]}"
-                axisRatio="${maskArray[i+3]}"
-                pa="${maskArray[i+4]}"
+            #If we do not have wcs, we skip this step
+            pixscale=$(astfits $i -h1 --pixelscale -q | awk '{print $1}')
 
-                python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
-            done
+            if [ $pixscale -ne 1 ]; then
+                valueToPut=nan
+                read -r -a maskArray <<< "$manualMaskParams"
+                for ((i=0; i<${#maskArray[@]}; i+=5)); do
+                    ra="${maskArray[i]}"
+                    dec="${maskArray[i+1]}"
+                    r="${maskArray[i+2]}"
+                    axisRatio="${maskArray[i+3]}"
+                    pa="${maskArray[i+4]}"
+
+                    python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
+                done
+            fi
         else    
             imageToUse=$i
         fi
@@ -1064,34 +1104,41 @@ computeSkyForFrame(){
             #tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
             tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
             tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
-            for h in $(seq 1 $num_ccd); do ###FROM HERE ABOVE
-
-            naxis1=$(fitsheader $imageToUse | grep "NAXIS1" | awk '{print $3}')
-            naxis2=$(fitsheader $imageToUse | grep "NAXIS2" | awk '{print $3}')
-            half_naxis1=$(echo "$naxis1 / 2" | bc)
-            half_naxis2=$(echo "$naxis2 / 2" | bc)
-
-            ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
-            echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
-            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
-           
-            me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-
-            echo "$base $me $std $skew $kurto" > $noiseskydir/$out
-            rm $ringDir/$tmpRingDefinition
+            for h in $(seq 1 $num_ccd); do 
+                if [ "$swarped" = "YES" ]; then
+                    x_ring=$( awk ' {print $2}' $ringDir/ring_ccd"$h".txt )
+                    y_ring=$( awk ' {print $3}' $ringDir/ring_ccd"$h".txt )
+                    tmpRingDefinition=$(echo $base | sed 's/.fits/_ring_ccd.txt/')
+                    ringRadius=$( awk '{print $5}' $ringDir/ring_ccd"$h".txt )
+                    echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                    astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
+                    rm -f $ringDir/$tmpRingDefinition
+                else
+                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/ring_ccd"$h".txt
+                fi
+                astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+                rm -f $ringDir/$tmpRingFits_single
+            done
+            for h in $(seq 1 $num_ccd); do
+                me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
+                std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
+                read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
+                echo "$base $me $std $skew $kurto" > $noiseskydir/$out
+            done
+            
             rm $ringDir/$tmpRingFits
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
-            sky=$(echo $base | sed 's/.fits/_sky.fits/')
-            astnoisechisel $imageToUse --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
-            mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
-            std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
+            for h in $(seq 1 $num_ccd); do
+                sky=$(echo $base | sed 's/.fits/_sky.fits/')
+                astnoisechisel $imageToUse -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
+                mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
+                std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
 
-            read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            echo "$base $mean $std $skew $kurto" > $noiseskydir/$out
-            
-            rm -f $noiseskydir/$sky
+                rskew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $noiseskydir/$sky SKEWNESS NO $h)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $noiseskydir/$sky KURTOSIS NO $h)
+                echo "$base $mean $std $skew $kurto" >> $noiseskydir/$out
+                rm -f $noiseskydir/$sky
+            done
         else
             errorNumber=6
             echo -e "\nAn invalid value for the sky_estimation_method was provided" >&2
@@ -1128,6 +1175,7 @@ computeSky() {
     local ringWidth=${14}
     local noisechisel_param=${15}
     local maskParams=${16}
+    local swarped=${16}
 
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
@@ -1140,7 +1188,7 @@ computeSky() {
             framesToComputeSky+=("$base")
         done
 
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" "'$maskParams'"
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" "'$maskParams'" $swarped
         echo done > $noiseskydone
     fi
 }

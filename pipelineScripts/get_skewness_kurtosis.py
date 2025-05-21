@@ -10,8 +10,11 @@ ring=sys.argv[3]
 h=int(sys.argv[4])
 
 data=fits.open(image)[h].data
-mask=fits.open(ring)[h].data
-nonan_ring=(np.logical_not(np.isnan(data))) & (mask!=0)
+if ring != "NO" :
+    mask=fits.open(ring)[h].data
+    nonan_ring=(np.logical_not(np.isnan(data))) & (mask!=0)
+else:
+    nonan_ring=(np.logical_not(np.isnan(data)))
 
 ## We remove the negatives. Here the background has not been substracted so they are all bad pixels
 clipped_data = data[nonan_ring]
