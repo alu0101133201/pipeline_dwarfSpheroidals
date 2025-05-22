@@ -15,8 +15,8 @@ dec=float(sys.argv[4])
 observing_location = EarthLocation(lat='28d18m04s', lon='-16d30m38s', height=2390*u.m)  
 
 #Header
-hed = fits.open(img)[1].header
-date_obs = Time(hed[datK][:10]+' '+hed[datK][12:])
+hed = fits.open(img)[0].header
+date_obs = Time(hed[datK],format='mjd',scale='utc')
  
 aa = AltAz(location=observing_location, obstime=date_obs)
 

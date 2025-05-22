@@ -942,15 +942,59 @@ for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
-exit 0
+
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
 
+##Since we have created a ring folder for each night, but we only need one up to now, we move the first one to ring and delete the others
+if ! [ -d $BDIR/ring ]; then
+  mv $BDIR/ring_n1 $BDIR/ring
+  rm -rf $BDIR/ring_n*
+fi
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
 # All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
+
+echo -e "\n${GREEN} --- Gain Correction --- ${NOCOLOUR}\n"
+# We have made a multi-detector treatment of the hipercam since gain is different on each one of the windows. However, continuing with a multi-detector
+# treatment from now will be impossible. FoV of Hipercam is so small that we won't have enough stars to make astrometry and photometry using each of the windows.
+# Because of that, we compute a continuity on each window, building a mosaic that is effectively a single-detector. This will compile to main steps:
+# 1. Compute the gain correction. Taking as reference h1, we will measure using the ring the difference in background between each of the other detectors and the h1.
+#     We will then multiply the other windows by its ratio
+# 2. Stitch all together. Using gnuastro's stitch operator, we build the single detector mosaic
+
+gaincordir=$BDIR/gain-corrected
+gaincordone=$gaincordir/done.txt
+ringDir=$BDIR/ring
+if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
+if [ -f $gaincordone ]; then
+  echo -e "\nMulti-layer windows already gain corrected"
+else
+  frameNames=()
+  for a in $framesForCommonReductionDir/*.fits; do
+    frameNames+=("$a")
+  done
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" gainCorrection {} $ringDir "'$noisechisel_param'" $gaincordir
+  echo done > $gaincordone
+fi
+
+stitchdir=$BDIR/framesStitched
+stitchdone=$stitchdir/done.txt
+if ! [ -d $stitchdir ]; then mkdir $stitchdir; fi
+if [ -f $stitchdone ]; then
+  echo -e "\nSingle layer mosaics already built"
+else
+  frameNames=()
+  for a in $gaincordir/*.fits; do
+    frameNames+=("$a")
+  done
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" stitchImage {} $filter $stitchdir
+  echo done > $stitchdone
+fi
+
+
 echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
 
 writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
@@ -964,14 +1008,16 @@ echo -e "·Downloading Gaia Catalogue"
 # 2.- This gaia catalogue is used to match the survey data for calibration to gaia, calibrating thus the survey to our photometric framework
 # of gaia. It has to be large enough to be to perform this calibration process
 
-if (( sizeOfOurFieldDegrees > 1 )); then
-  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
-else
-  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
-fi
+######NOTE: For Hipercam GAIA is not enough. Instead, we will use Panstarrs catalog, which is usable for solve-field
+
+#if (( sizeOfOurFieldDegrees > 1 )); then
+#  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+#else
+#  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+#fi
 
 #This is just for Hipercam
-radiusToDownloadCatalogue=0.6
+radiusToDownloadCatalogue=0.6 #This can change, but is a good option for hipercam
 
 query_param="vizier --dataset=panstarrs1 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=RAJ2000,DEJ2000,gmag"
 catdir=$BDIR/catalogs
@@ -1022,6 +1068,9 @@ echo cpulimit 300 >> $astrocfg
 echo "add_path $indexdir" >> $astrocfg
 echo autoindex >> $astrocfg
 
+###Astrometry on hipercam is a bit tricky, we are gonna force two things:
+  # 1. Convolve images with a kernel to enhance the sources
+  # 2. solve-field will also be changed respect to the standard pipelines to be more restrictive
 astroimadir=$BDIR/astro-ima
 astroimacondir=$BDIR/astro-ima-convolved
 convolimadir=$BDIR/frames-convolved
@@ -1034,12 +1083,13 @@ convolimadone=$convolimadir/done.txt
 if [ -f $convolimadone ]; then
   echo -e "\n\t Images are already convolved with astrometry kernel"
 else
-  for file in $framesForCommonReductionDir/*.fits; do
+  for file in $stitchdir/*.fits; do
     base=$( basename $file )
     astconvolve $file --kernel=$kernel_astro --type=float32 --domain=spatial --khdu=1 -o $convolimadir/$base
   done
   echo done > $convolimadone
 fi
+
 astroimadone=$astroimadir/done_"$filter".txt
 if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
 if ! [ -d $astroimacondir ]; then mkdir $astroimacondir; fi
@@ -1052,8 +1102,7 @@ else
       i=$convolimadir/$base
       frameNames+=("$i")
   done
-  echo $totalNumberOfFrames
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir 
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir $stitchdir
   echo done > $astroimadone
 fi
 

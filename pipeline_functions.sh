@@ -1247,6 +1247,68 @@ subtractSky() {
 }
 export -f subtractSky
 
+#Specific functions for hipercam: gain correction and stitching
+gainCorrection() {
+    local image=$1
+    local ringDir=$2
+    local noisechisel_param=$3
+    local outDir=$4
+    
+    base=$( basename $image )
+    output=$outDir/$base
+    astfits $image --copy=0 --primaryimghdu -o$output
+    ringFile=$ringDir/ring.fits
+    noiseOut=$outDir/noise_$base
+    maskOut=$outDir/mask_$base
+    gainOut=$outDir/gain_$base
+    for h in $(seq 1 $num_ccd); do
+        astnoisechisel $image -h$h $noisechisel_param --numthreads=$num_cpus -o $noiseOut
+        astarithmetic $image -h$h $noiseOut -h1 0 ne nan where -q -o$outDir/temp_$base
+        astarithmetic $outDir/temp_$base -h1 $ringFile -h$h 0 eq nan where -q -o$maskOut
+        gain_h=$(aststatistics $maskOut --sigclip-median -q)
+        if [ $h -eq 1 ]; then
+            gain_ref=$gain_h
+            astfits $image --copy=$h -o $output
+        else
+            astarithmetic $image -h$h $gain_ref x $gain_h / -o$gainOut
+            astfits $gainOut --copy=1 -o$output
+            rm $gainOut
+        fi
+        rm $outDir/temp_$base $noiseOut $maskOut
+    done
+
+}
+export -f gainCorrection
+
+stitchImage() {
+    local image=$1
+    local filter=$2
+    local outDir=$3
+
+    name=$( basename $image )
+    out=$outDir/$name
+    
+    if [[ "$filter" = "g" || "$filter" = "z" ]]; then
+        astarithmetic $image -h2 $image -h1 2 1 stitch \
+            $image -h3 $image -h4 2 1 stitch \
+            2 2 stitch -o $out
+    else
+        astarithmetic $image -h1 $image -h2 2 1 stitch \
+            $image -h4 $image -h3 2 1 stitch \
+            2 2 stitch -o $out
+    fi
+    ##Last thing: propagate needed keywords from the original DATA, just in case
+    ofile=$(astfits $framesForCommonReductionDir/$name -h0 --keyvalue=ORIGINAL_FILE -q)
+    date=$(astfits $INDIR/night*/$ofile -h0 --keyvalue=$dateHeaderKey -q)
+    air=$(astfits $INDIR/night*/$ofile -h0 --keyvalue=$airMassKeyWord -q)
+    pointRa=$(astfits $INDIR/night*/$ofile -h0 --keyvalue=$pointingRA -q)
+    pointDe=$(astfits $INDIR/night*/$ofile -h0 --keyvalue=$pointingDEC -q)
+
+    astfits $out -h1 --write=$airMassKeyWord,$air --write=$dateHeaderKey,$date --write=$pointingRA,$pointRa --write=$pointingDEC,$pointDe
+
+}
+export -f stitchImage
+
 # Functions for decals data
 # The function that is to be used (the 'public' function using OOP terminology) is 'prepareSurveyDataForPhotometricCalibration'
 getBricksWhichCorrespondToFrame() {
@@ -1365,32 +1427,11 @@ downloadGaiaCatalogue() {
     local catName=$3
 
     astquery $query -o $catdir/"$objectName"_Gaia_DR3_tmp.fits
-    asttable $catdir/"$objectName"_Gaia_DR3_tmp.fits -c1,2,3  -o$catName
+    asttable $catdir/"$objectName"_Gaia_DR3_tmp.fits -c1,2,3  --colmetadata=1,RA,deg --colmetadata=2,DEC,deg --colmetadata=3,phot_g_mean_mag,mag -o$catName
 
-    # I have explored 3 different ways of selecting good stars.
-    # From the most restrictive to the less restrictive:
+    # We are downloading Panstarrs for hipercam, this will stay as it is. We change the metadata to mimic that of 
 
-    # # Here I demand that the gaia object fulfills simultaneously that:
-    # # 1.- Parallax > 3 times its error
-    # # 2.- Proper motion (ra) > 3 times its error
-    # # 3.- Proper motion (dec) > 3 times its error
-    # asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
-    # asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
-    # asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $catName
-
-    # # Here I only demand that the parallax is > 3 times its error
-    # asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -o$catdir/test_.txt
-    # asttable $catdir/test_.txt -c1,2,3 --range=ARITH_2,999,1001 -o $catName
-
-    # Here I  demand that the parallax OR a proper motion is > 3 times its error
-    #asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
-    #asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
-    #asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName
-
-    # # Here we don't demand any condition
-    # asttable $catdir/tmp.txt -o $catName
-
-    rm $catdir/test1.txt $catdir/tmp.txt $catdir/"$objectName"_Gaia_DR3_tmp.fits $catdir/test_.txt
+    rm $catdir/"$objectName"_Gaia_DR3_tmp.fits 
 }
 export -f downloadGaiaCatalogue
 
@@ -1401,8 +1442,8 @@ downloadIndex() {
 
     build-astrometry-index -i $catName -e1 \
                             -P $re \
-                            -S gmag \
-                            -E -A RAJ2000 -D  DEJ2000 \
+                            -S phot_g_mean_mag \
+                            -E -A RA -D  DEC \
                             -o $indexdir/index_$re.fits;
 }
 export -f downloadIndex
@@ -1419,13 +1460,14 @@ solveField() {
     local sexcfg_sf=$9
     local sizeOfOurFieldDegrees=${10}
     local astroimacondir=${11}
+    local stitchdir=${12}
     base=$( basename $i)
 
 
     # Get the RA and Dec of the pointing. It has to be converted to deg
     LC_NUMERIC=C  # Format to get rid of scientific notation if needed
 
-    pointingRAValue=$( astfits $framesForCommonReductionDir/$base --keyvalue=$pointingRA --quiet)
+    pointingRAValue=$( astfits $stitchdir/$base --keyvalue=$pointingRA --quiet)
     pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
     if [[ "$pointingRAUnits" == "hours" ]]; then
         pointRA=$(echo "$pointingRAValue * 15" | bc -l)
@@ -1436,7 +1478,7 @@ solveField() {
         exit 888
     fi
     
-    pointingDecValue=$( astfits $framesForCommonReductionDir/$base --keyvalue=$pointingDEC --quiet)
+    pointingDecValue=$( astfits $stitchdir/$base --keyvalue=$pointingDEC --quiet)
     pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
     if [[ "$pointingDECUnits" == "hours" ]]; then
         pointDec=$(echo "$pointingDecValue * 15" | bc -l)
@@ -1446,7 +1488,7 @@ solveField() {
         echo "Error: Unsupported RA units: $pointingDECUnits"
         exit 888
     fi
-
+    
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
@@ -1467,7 +1509,7 @@ solveField() {
             
         ((attempt++))
     done
-    astarithmetic $framesForCommonReductionDir/$base --wcsfile=$astroimacondir/$base -o $astroimadir/$base
+    astarithmetic $stitchdir/$base --wcsfile=$astroimacondir/$base -o $astroimadir/$base
 }
 export -f solveField
 
