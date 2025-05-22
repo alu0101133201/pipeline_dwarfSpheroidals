@@ -451,7 +451,7 @@ maskImages() {
     local keyWordToDecideRing=$5
 
     for a in $(seq 1 $n_exp); do
-        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
         i=$inputDirectory/$base
         out=$outputDirectory/$base
         astfits $i --copy=0 --primaryimghdu -o $out
@@ -888,8 +888,8 @@ runNoiseChiselOnFrame() {
     output=$outputDir/$baseName
     for h in $(seq 1 $num_ccd); do
         astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$num_cpus -o $outputDir/temp_$baseName
-        astfits $outputDir/temp_$base --copy=DETECTIONS -o $output
-        rm $outputDir/temp_$base
+        astfits $outputDir/temp_$baseName --copy=DETECTIONS -o $output
+        rm $outputDir/temp_$baseName
     done
 }
 export -f runNoiseChiselOnFrame
@@ -1039,8 +1039,8 @@ computeSkyForFrame(){
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
     local noisechisel_param=${15}
-    local manualMaskParams=${16}
-    local swarped=${17}
+    local swarped=${16}
+    local manualMaskParams=${17}
 
 
     # Masking the frames if they are not already 
@@ -1174,8 +1174,8 @@ computeSky() {
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
     local noisechisel_param=${15}
-    local maskParams=${16}
     local swarped=${16}
+    local maskParams=${17}
 
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
@@ -1188,7 +1188,7 @@ computeSky() {
             framesToComputeSky+=("$base")
         done
 
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" "'$maskParams'" $swarped
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" $swarped "'$maskParams'" 
         echo done > $noiseskydone
     fi
 }
