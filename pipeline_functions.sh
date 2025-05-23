@@ -948,7 +948,7 @@ warpImage() {
     rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 $frameFullGrid
 
     # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but  swarp for some reason propagates it incorrectly
-    propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 
+    propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 1
 }
 export -f warpImage
 
@@ -1065,9 +1065,9 @@ computeSkyForFrame(){
 
             # manual masks defined by the user
             #If we do not have wcs, we skip this step
-            pixscale=$(astfits $i -h1 --pixelscale -q | awk '{print $1}')
+            #pixscale=$(astfits $i -h1 --pixelscale -q | awk '{print $1}')
 
-            if [ $pixscale -ne 1 ]; then
+            if [ "$swarped" = "YES" ]; then
                 valueToPut=nan
                 read -r -a maskArray <<< "$manualMaskParams"
                 for ((i=0; i<${#maskArray[@]}; i+=5)); do
@@ -1100,25 +1100,36 @@ computeSkyForFrame(){
         # For that reason the subtraction of the background using the ring is always using a ring centered in the frame
         # More logic should be implemented to use the normalisation ring(s) and recover them after the warping and cropping
         if [ "$constantSkyMethod" = "ring" ]; then
-            # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
-            #tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
             tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
-            tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
-            for h in $(seq 1 $num_ccd); do 
-                if [ "$swarped" = "YES" ]; then
-                    x_ring=$( awk ' {print $2}' $ringDir/ring_ccd"$h".txt )
-                    y_ring=$( awk ' {print $3}' $ringDir/ring_ccd"$h".txt )
-                    tmpRingDefinition=$(echo $base | sed 's/.fits/_ring_ccd.txt/')
-                    ringRadius=$( awk '{print $5}' $ringDir/ring_ccd"$h".txt )
-                    echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
-                    astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
-                    rm -f $ringDir/$tmpRingDefinition
-                else
+            if [ "$swarped" = "YES" ]; then
+                tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
+                ###Images might be rotated. We are gonna use the astro-ima dir to compute the center in wcs
+                x_ring=$( awk ' {print $2}' $DIR/$commonRingDefinitionFile )
+                y_ring=$( awk ' {print $3}' $DIR/$commonRingDefinitionFile )
+                ringRadius=$( awk '{print $5}' $DIR/$commonRingDefinitionFile )
+                image_astro=${base#entirecamera_}
+                ringCentre=$( xy2sky $BDIR/astro-ima/$image_astro $x_ring $y_ring )
+                ringRa=$(echo "$ringCentre" | awk '{print $1}')
+                ringDec=$(echo "$ringCentre" | awk '{print $2}')
+                newringCentre=$( sky2xy $imageToUse $ringRa $ringDec )
+                x_new=$(echo "$newringCentre" | awk '{print $5}')
+                y_new=$(echo "$newringCentre" | awk '{print $6}')
+                echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
+                
+            else
+                # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
+                #tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
+                
+                tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
+                for h in $(seq 1 $num_ccd); do 
+
                     astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/ring_ccd"$h".txt
-                fi
-                astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
-                rm -f $ringDir/$tmpRingFits_single
-            done
+
+                    astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+                    rm -f $ringDir/$tmpRingFits_single
+                done
+            fi
             for h in $(seq 1 $num_ccd); do
                 me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
                 std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
@@ -1126,7 +1137,7 @@ computeSkyForFrame(){
                 echo "$base $me $std $skew $kurto" > $noiseskydir/$out
             done
             
-            rm $ringDir/$tmpRingFits
+            rm $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
             for h in $(seq 1 $num_ccd); do
                 sky=$(echo $base | sed 's/.fits/_sky.fits/')

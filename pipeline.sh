@@ -994,6 +994,7 @@ else
   echo done > $stitchdone
 fi
 
+num_ccd=1
 
 echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
 
@@ -1106,7 +1107,7 @@ else
   echo done > $astroimadone
 fi
 
-exit 0
+
 
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
@@ -1118,44 +1119,47 @@ exit 0
 # In the LBT pipeline this two steps were done sequentially in two different blocks, first sextractor and then scamp
 # I have put them together so we can loop them easily, because to perform an iterative astrometrisation we need to do
 # sextractor + scamp, so for doing it in a confortable manner in the code both steps are in the same block
-writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
-echo -e "·Creating SExtractor catalogues and running scamp"
 
-numOfSextractorPlusScampIterations=2
+echo -e "·We won't correct from distortion using scamp in HiPERCAM"
 
-sexcfg=$CDIR/sextractor_astrometry.sex
-sexparam=$CDIR/sextractor_astrometry.param
-sexconv=$CDIR/default.conv
-sexdir=$BDIR/sex-it1
-
-scampcfg=$CDIR/scamp.cfg
-scampdir=$BDIR/scamp-it1
-scampres=$scampdir/results_Decals-"$filter"
-scampdone=$scampdir/done_"$filter".txt
-
-if ! [ -d $sexdir ]; then mkdir $sexdir; fi
-if ! [ -d $scampdir ]; then mkdir $scampdir; fi
-if ! [ -d $scampres ]; then mkdir $scampres; fi
-
-if [ -f $scampdone ]; then
-    echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
-else
-  frameNames=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-      frameNames+=("$a")
-  done
-
-  for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
-    echo -e "\tSExtractor + scamp iteration $i"
-
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
-    scamp -c $scampcfg $(ls -v $sexdir/*.cat)
-    cp $sexdir/*.head $astroimadir
-    mv *.pdf $scampres/
-    mv scamp.xml $scampdir
-  done
-  echo done > $scampdone
-fi
+#writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
+#echo -e "·Creating SExtractor catalogues and running scamp"
+#
+#numOfSextractorPlusScampIterations=2
+#
+#sexcfg=$CDIR/sextractor_astrometry.sex
+#sexparam=$CDIR/sextractor_astrometry.param
+#sexconv=$CDIR/default.conv
+#sexdir=$BDIR/sex-it1
+#
+#scampcfg=$CDIR/scamp.cfg
+#scampdir=$BDIR/scamp-it1
+#scampres=$scampdir/results_Decals-"$filter"
+#scampdone=$scampdir/done_"$filter".txt
+#
+#if ! [ -d $sexdir ]; then mkdir $sexdir; fi
+#if ! [ -d $scampdir ]; then mkdir $scampdir; fi
+#if ! [ -d $scampres ]; then mkdir $scampres; fi
+#
+#if [ -f $scampdone ]; then
+#    echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
+#else
+#  frameNames=()
+#  for a in $(seq 1 $totalNumberOfFrames); do
+#      frameNames+=("$a")
+#  done
+#
+#  for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
+#    echo -e "\tSExtractor + scamp iteration $i"
+#
+#    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
+#    scamp -c $scampcfg $(ls -v $sexdir/*.cat)
+#    cp $sexdir/*.head $astroimadir
+#    mv *.pdf $scampres/
+#    mv scamp.xml $scampdir
+#  done
+#  echo done > $scampdone
+#fi
 
 
 
@@ -1199,7 +1203,6 @@ else
   echo done > $entiredone
 fi
 
-
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
@@ -1212,7 +1215,7 @@ else
   # I create the file because we need it even if empty (for future python scripts). 
   # If you use frames already astrometrised it won't be created if we do not do that explicitly with the touch commmand
   touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
-  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid
+  #python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid
   echo done > $badFilesWarningsDone
 fi
 
@@ -1225,9 +1228,9 @@ echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
 ringDir=$BDIR/ring
 
-sky_estimation_method=noisechisel # This is usually set to ring. Right now I'm working with fornax and some frames have the huge galaxy in the middle even on top of the ring so I use noisechisel
+sky_estimation_method=ring # This is usually set to ring. Right now I'm working with fornax and some frames have the huge galaxy in the middle even on top of the ring so I use noisechisel
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" YES "$maskParams"
 
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
@@ -1253,7 +1256,7 @@ else
   else
     tmpDir=$noiseskyctedir
   fi
-  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir
+  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $stitchdir $airMassKeyWord $dateHeaderKey $diagnosis_and_badFilesDir
   echo done > $badFilesWarningsDone
 fi
 
@@ -1290,7 +1293,7 @@ else
   methodToUse="sextractor"
 
   printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse $tileSize
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $stitchdir $pixelScale $maximumSeeing $dateHeaderKey
   echo done > $badFilesWarningsDone
 fi
 
@@ -1308,7 +1311,7 @@ if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
 if [ -f $coaddDone ]; then
 	echo -e "\n Coadd pre-photometry already done\n"
 else
-	computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+	computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" YES "$maskParams"
 
   subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
   subskyfullGridDone=$subskyfullGrid_dir/done.txt
@@ -1322,11 +1325,11 @@ else
   
   prefixOfTheFilesToRemove="entirecamera_"
   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-  removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+  #removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  #removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+  #rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+  #removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+  #removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 
 	python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
   
@@ -1368,7 +1371,7 @@ else
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
 
-
+exit 0
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps

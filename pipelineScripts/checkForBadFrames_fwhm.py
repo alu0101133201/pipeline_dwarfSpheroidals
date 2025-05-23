@@ -17,6 +17,7 @@ from astropy.stats import sigma_clipped_stats
 from matplotlib.ticker import MultipleLocator
 
 from datetime import datetime
+from astropy.time import Time
 import time
 
 def setMatplotlibConf():
@@ -123,9 +124,12 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
         match=re.search(pattern,file)
         frame=int(match.group(1))
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        if dateHeaderKey.startswith("DATE"):
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey.startswith("MJD"):
+            date_ok=Time(date,format='mjd').to_datetime()
         fwhm=allTable.loc[row]['FWHM']
         ax[0].scatter(date_ok,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
         ax[1].scatter(air,fwhm,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
@@ -144,9 +148,12 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
         match=re.search(pattern, fwhmRejectedFiles[j])
         frame=int(match.group(1))
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        if dateHeaderKey.startswith("DATE"):
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey.startswith("MJD"):
+            date_ok=Time(date,format='mjd').to_datetime()
 
         ax[0].scatter(date_ok, fwhmRejectedValues[j],marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=6,label='Rejected by FWHM' if (j==0) else "")
         ax[1].scatter(air, fwhmRejectedValues[j],marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=6,label='Rejected by FWHM'  if (j==0) else "")
@@ -155,9 +162,12 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
         match=re.search(pattern, astrometryRejectedFiles[j])
         frame=int(match.group(1))
         file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        if dateHeaderKey.startswith("DATE"):
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey.startswith("MJD"):
+            date_ok=Time(date,format='mjd').to_datetime()
 
         ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry'  if (j==0) else "")
@@ -242,6 +252,7 @@ outputFile                = sys.argv[3]
 folderWithFramesWithAirmasses = sys.argv[4]
 arcsecPerPix=float(sys.argv[5])
 fwhmThreshold=float(sys.argv[6])
+dateHeaderKey             = sys.argv[7]
 
 setMatplotlibConf()
 

@@ -17,6 +17,7 @@ from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
 
 from datetime import datetime
+from astropy.time import Time
 import time
 
 def setMatplotlibConf():
@@ -270,9 +271,12 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
         match=re.search(pattern,file)
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
         air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        if dateHeaderKey.startswith("DATE"):
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey.startswith("MJD"):
+            date_ok=Time(date,format='mjd').to_datetime()
         bck=values[i]
 
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
@@ -285,9 +289,12 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
         match=re.search(pattern, astrometryRejectedFiles[j])
         frame=match.group(1)
         file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+        date=obtainKeyWordFromFits(file,dateHeaderKey)
+        air=obtainKeyWordFromFits(file,airMassKeyWord)
+        if dateHeaderKey.startswith("DATE"):
+            date_ok=datetime.fromisoformat(date)
+        elif dateHeaderKey.startswith("MJD"):
+            date_ok=Time(date,format='mjd').to_datetime()
         ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
         if j==0:
@@ -552,7 +559,8 @@ HDU_TO_FIND_AIRMASS = 1
 folderWithSkyEstimations      = sys.argv[1]
 folderWithFramesWithAirmasses = sys.argv[2] # The airmasses are in the header of the fits files that are in this folder
 airMassKeyWord                = sys.argv[3]
-outputFolder                  = sys.argv[4]
+dateHeaderKey                 = sys.argv[4]
+outputFolder                  = sys.argv[5]
 
 
 
