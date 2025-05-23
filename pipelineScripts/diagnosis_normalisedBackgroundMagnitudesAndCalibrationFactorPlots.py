@@ -158,13 +158,13 @@ def calculateFreedmanBins(data, initialValue = None):
 
     return(bins)
 
-def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, title, imageName, valueForVerticalLine=None):
+def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, rejectedCalibrationFactorIndices, title, xLabel, imageName, valueForMeanVerticalLine=None, valueForStdVerticalLines=None):
     myBins = calculateFreedmanBins(values[~np.isnan(values)])
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.set_title(title, fontsize=22, pad=17)
-    plt.tight_layout(pad=7.0)
-    configureAxis(ax, 'Background (mag/arcsec^2)', '', logScale=False)
+    plt.tight_layout(pad=7.5)
+    configureAxis(ax, xLabel, '', logScale=False)
     counts, bins, patches = ax.hist(values, bins=myBins, color="teal")
 
     if (len(rejectedBackgroundIndices) > 0):
@@ -173,18 +173,24 @@ def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, reject
         ax.hist(values[rejectedFWHMIndices - 1], bins=myBins, color="mediumorchid", label="Rejected by fwhm")
     if (len(rejectedAstrometryIndices)):
         ax.hist(values[rejectedAstrometryIndices - 1], bins=myBins, color="blue", label="Rejected by astrometry")
+    if (len(rejectedCalibrationFactorIndices)):
+        ax.hist(values[rejectedCalibrationFactorIndices - 1], bins=myBins, color="orange", label="Rejected by calibration factor")
 
-    if (valueForVerticalLine):
-        plt.axvline(x=valueForVerticalLine, color='red', ls='--', lw=2.5, label="Common calibration factor")
+    if (valueForMeanVerticalLine):
+        plt.axvline(x=valueForMeanVerticalLine, color='blue', ls='--', lw=2.5, label="Common calibration factor")
+    if (valueForStdVerticalLines):
+            plt.axvline(x=valueForMeanVerticalLine + numberOfSigma*valueForStdVerticalLines, color='grey', ls='-.', lw=2, label=f'{numberOfSigma} sigma std')
+            plt.axvline(x=valueForMeanVerticalLine - numberOfSigma*valueForStdVerticalLines, color='grey', ls='-.', lw=2)
+
 
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
     plt.xticks(rotation=45)
-    ax.legend(fontsize=20, loc="upper right")
+    ax.legend(fontsize=18, loc="upper right")
     plt.savefig(imageName)
     return()
 
-def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder, commonCalibrationFactorValue):
+def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, rejectedCalibrationFactorIndices, title, imageName, folderWithFramesWithAirmasses, destinationFolder, commonCalibrationFactorValue):
     airMass  = []
     time     = []
     cfactors = []
@@ -244,10 +250,16 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
         timeMask = ~pd.isna(time[rejectedBackgroundIndices - 1]) & ~pd.isna(cfactors[rejectedBackgroundIndices - 1])
         ax[0].scatter(time[rejectedBackgroundIndices - 1][timeMask], cfactors[rejectedBackgroundIndices - 1][timeMask], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
         ax[1].scatter(airMass[rejectedBackgroundIndices - 1], cfactors[rejectedBackgroundIndices - 1], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
+    
+    if (len(rejectedCalibrationFactorIndices) > 0):
+        timeMask = ~pd.isna(time[rejectedCalibrationFactorIndices - 1]) & ~pd.isna(cfactors[rejectedCalibrationFactorIndices - 1])
+        ax[0].scatter(time[rejectedCalibrationFactorIndices - 1][timeMask], cfactors[rejectedCalibrationFactorIndices - 1][timeMask], marker='D',edgecolor='k',color='orange',s=120,zorder=1, label="Rejected by calibration factor")
+        ax[1].scatter(airMass[rejectedCalibrationFactorIndices - 1], cfactors[rejectedCalibrationFactorIndices - 1], marker='D',edgecolor='k',color='orange',s=120,zorder=1, label="Rejected by calibration factor")
 
 
-    ax[0].hlines(y=commonCalibrationFactorValue, xmin=time[0], xmax=time[-1], color="red", lw=2.5, ls="--", label="Common calibration factor")
-    ax[1].hlines(y=commonCalibrationFactorValue, xmin=airMass[0], xmax=airMass[-1], color="red", lw=2.5, ls="--", label="Common calibration factor")
+    if (commonCalibrationFactorValue):
+        ax[0].hlines(y=commonCalibrationFactorValue, xmin=time[0], xmax=time[-1], color="blue", lw=2.5, ls="--", label="Common calibration factor")
+        ax[1].hlines(y=commonCalibrationFactorValue, xmin=airMass[0], xmax=airMass[-1], color="blue", lw=2.5, ls="--", label="Common calibration factor")
 
     ax[0].legend(loc="upper right", fontsize=20)
     
@@ -261,7 +273,7 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
     plt.savefig(imageName)
     return()
 
-def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, title, imageName, folderWithFramesWithAirmasses, maxmimumBackgroundBrightness):
+def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, rejectedCalibrationFactorIndices, title, imageName, folderWithFramesWithAirmasses, maxmimumBackgroundBrightness):
     airMass  = []
     time     = []
     
@@ -308,6 +320,11 @@ def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejected
         timeMask = ~pd.isna(time[rejectedBackgroundIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedBackgroundIndices - 1])
         ax[0].scatter(time[rejectedBackgroundIndices - 1][timeMask], magnitudesPerArcSecSq[rejectedBackgroundIndices - 1][timeMask], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
         ax[1].scatter(airMass[rejectedBackgroundIndices - 1], magnitudesPerArcSecSq[rejectedBackgroundIndices - 1], marker='D',edgecolor='k',color='red',s=120,zorder=1, label="Rejected by background brightness")
+    
+    if (len(rejectedCalibrationFactorIndices) > 0):
+        timeMask = ~pd.isna(time[rejectedCalibrationFactorIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedCalibrationFactorIndices - 1])
+        ax[0].scatter(time[rejectedCalibrationFactorIndices - 1][timeMask], magnitudesPerArcSecSq[rejectedCalibrationFactorIndices - 1][timeMask], marker='D',edgecolor='k',color='orange',s=120,zorder=1, label="Rejected by calibration factors")
+        ax[1].scatter(airMass[rejectedCalibrationFactorIndices - 1], magnitudesPerArcSecSq[rejectedCalibrationFactorIndices - 1], marker='D',edgecolor='k',color='orange',s=120,zorder=1, label="Rejected by calibration factors")
 
 
     time = time[~pd.isna(time)]
@@ -423,7 +440,7 @@ def getIndicesOfRejectedFrames(normalisedBackgroundValuesArray, rejectedFrames):
 #     badValues=allBackValues[values_mask]
 #     return(badFiles,badValues)
 
-def identifyBadFrames(files, data, threshold):
+def identifyBadFramesBasedOnBackgroundBrightness(files, data, threshold):
     badFiles   = []
     badBackground = []
     for i in range(len(files)):
@@ -436,6 +453,29 @@ def identifyBadFrames(files, data, threshold):
     allTogether=pd.DataFrame({'File':files,'FWHM':data})
     return(badFiles,badBackground,allTogether)
 
+def identifyBadFramesBasedOnCalibrationFactors(data, meanCalibrationFactor, stdCalibrationFactors, numberOfSigma):
+    files = [x[0] for x in data]
+    calibrationFactors = [x[1] for x in data]
+    lowerLimit = meanCalibrationFactor - numberOfSigma*stdCalibrationFactors
+    upperLimit = meanCalibrationFactor + numberOfSigma*stdCalibrationFactors
+
+    badFiles = []
+    badFactors = []
+    for i in range(len(files)):
+        if ((calibrationFactors[i] < lowerLimit) or (calibrationFactors[i] > upperLimit)):
+            badFiles.append(files[i].split('.')[0].split('_')[3])
+            badFactors.append(calibrationFactors[i])
+    badFiles = np.array(badFiles)
+    badFactors = np.array(badFactors)
+
+    return(badFiles, badFactors)
+
+
+
+
+
+
+
 
 HDU_TO_FIND_AIRMASS = 1
 
@@ -446,9 +486,10 @@ folderWithCalibrationFactors  = sys.argv[4]
 arcsecPerPx                   = float(sys.argv[5])
 destinationFolder             = sys.argv[6]
 maxmimumBackgroundBrightness  = float(sys.argv[7])
-outputFile                    = sys.argv[8]
-useCommonCalibrationFactorFlag = str(sys.argv[9])
-commonCalibrationFactorFile   = sys.argv[10]
+outputFileBackground          = sys.argv[8]
+outputFileCalibrationFactors  = sys.argv[9]
+useCommonCalibrationFactorFlag = str(sys.argv[10])
+commonCalibrationFactorFile   = sys.argv[11]
 
 
 if (useCommonCalibrationFactorFlag.lower() == "true"):
@@ -495,7 +536,7 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
 
     match = re.search(r'_(\d+)\.', currentFile)
     if match:
-        number = int(match.group(1))  # or leave as string if needed
+        number = int(match.group(1))  
     else:
         raise Exception(f"Number not found in the file name ({currentFile}). Something went wrong here")
 
@@ -508,7 +549,7 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
 files = np.array(files)
 
 
-# 2.- Obtain the calibration factors
+# 2.- Retrieve the calibration factors
 totalCalibrationFactors = np.array([[np.nan, np.nan] for _ in range(totalNumberOfFrames)], dtype=object)
 
 for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt"):
@@ -522,28 +563,49 @@ for currentFile in glob.glob(folderWithCalibrationFactors + "/alpha_*Decals*.txt
     totalCalibrationFactors[number-1] = [currentFile.split('/')[-1], calibrationFactor]
 
 
-# Read common calibration Factor
-with open(commonCalibrationFactorFile) as f:
-    commonCalibrationFactorValue = float(f.read().strip())
 
+# 3.- Retrieve the common calibration factor (if using the common factor)
+commonCalibrationFactorValue=None
+calibrationFactorsStd=None
+rejectedFrames_CalibrationFactor=np.array([])
+if (useCommonCalibrationFactorFlag):
+    with open(commonCalibrationFactorFile) as f:
+        fileContent = f.read().split()
+        commonCalibrationFactorValue = float(fileContent[0])
+        calibrationFactorsStd = float(fileContent[1])
+
+        # 3.5.-  Identify frames that are outside the Nsigma limit of the dist
+        numberOfSigma = 3
+        badFilesCalibrationFactor, _ = identifyBadFramesBasedOnCalibrationFactors(totalCalibrationFactors, commonCalibrationFactorValue, calibrationFactorsStd, numberOfSigma)
+
+        pattern = r"\d+"
+        with open(destinationFolder + "/" + outputFileCalibrationFactors, 'w') as file:
+            for fileName in badFilesCalibrationFactor:
+                match = re.search(pattern, fileName)
+                result = match.group(0)
+                file.write(result + '\n')
+        rejectedFrames_CalibrationFactor = np.array(badFilesCalibrationFactor).astype(int)
+
+# 4.- Apply common/individual calibration factors
 if (useCommonCalibrationFactorFlag):
     arrayWithCommonFactor = [[x[0], commonCalibrationFactorValue] for x in totalCalibrationFactors]
-    valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, arrayWithCommonFactor)
+    valuesCalibratedOriginal = applyCalibrationFactorsToBackgroundValues(originalBackgroundValues, arrayWithCommonFactor)
+    valuesCalibratedNormalised = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, arrayWithCommonFactor)
 else:
-    valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
+    valuesCalibratedOriginal = applyCalibrationFactorsToBackgroundValues(originalBackgroundValues, totalCalibrationFactors)
+    valuesCalibratedNormalised = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
     
-magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
+magnitudesPerArcSecSqOriginal = countsToSurfaceBrightnessUnits(valuesCalibratedOriginal, arcsecPerPx)
+magnitudesPerArcSecSqNormalised = countsToSurfaceBrightnessUnits(valuesCalibratedNormalised, arcsecPerPx)
 
-# Saving background magnitudes
+# 5.- Saving background magnitudes
 with open(destinationFolder + "/backgroundMagnitudes.dat", 'w') as f:
-    for i in range(len(magnitudesPerArcSecSq)):
-        f.write(str(files[i]) + " " + str(magnitudesPerArcSecSq[i]) + ("\n"))
+    for i in range(len(magnitudesPerArcSecSqNormalised)):
+        f.write(str(files[i]) + " " + str(magnitudesPerArcSecSqNormalised[i]) + ("\n"))
+badFilesBackground, _, _ = identifyBadFramesBasedOnBackgroundBrightness(files, magnitudesPerArcSecSqNormalised, maxmimumBackgroundBrightness)
 
-badFilesBackground, _, _ = identifyBadFrames(files, magnitudesPerArcSecSq, maxmimumBackgroundBrightness)
-
-# Saving bad files
 pattern = r"\d+"
-with open(destinationFolder + "/" + outputFile, 'w') as file:
+with open(destinationFolder + "/" + outputFileBackground, 'w') as file:
     for fileName in badFilesBackground:
         match = re.search(pattern, fileName)
         result = match.group(0)
@@ -554,29 +616,23 @@ rejectedFrames_Background = np.array(badFilesBackground).astype(int)
 
 # PLOTS
 
-saveHistogram(np.array(magnitudesPerArcSecSq), rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, \
-                "Distribution of NORMALISED background magnitudes", destinationFolder + "/magnitudeHist.png")
+saveHistogram(np.array(magnitudesPerArcSecSqNormalised), rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
+                "Distribution of NORMALISED background magnitudes", 'Background (mag/arcsec^2)', destinationFolder + "/magnitudeHist.png")
 
 
-saveHistogram(np.array([x[1] for x in totalCalibrationFactors]), rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, \
-                "Distribution of calibration factors", destinationFolder + "/calibrationFactorsHist.png", commonCalibrationFactorValue)
+saveHistogram(np.array([x[1] for x in totalCalibrationFactors]), rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
+                "Distribution of calibration factors", 'Calibration factors', destinationFolder + "/calibrationFactorsHist.png", commonCalibrationFactorValue, calibrationFactorsStd)
 
 
-
-saveScatterFactors(totalCalibrationFactors, rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, \
+saveScatterFactors(totalCalibrationFactors, rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
                 "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses, destinationFolder, commonCalibrationFactorValue)
 
 
 
-originalValuesCalibrated = applyCalibrationFactorsToBackgroundValues(originalBackgroundValues, totalCalibrationFactors)
-valuesCalibrated = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, totalCalibrationFactors)
-
-originalMagnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(originalValuesCalibrated, arcsecPerPx)
-normMagnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valuesCalibrated, arcsecPerPx)
+saveBackEvolution(magnitudesPerArcSecSqNormalised,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
+    "Evolution of NORMALISED background magnitudes",destinationFolder+"/backgroundEvolution_normMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
 
 
-saveBackEvolution(originalMagnitudesPerArcSecSq,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background,\
+saveBackEvolution(magnitudesPerArcSecSqOriginal,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
     "Evolution of background magnitudes",destinationFolder+"/backgroundEvolution_originalMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
 
-saveBackEvolution(normMagnitudesPerArcSecSq,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background,\
-    "Evolution of NORMALISED background magnitudes",destinationFolder+"/backgroundEvolution_normMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)

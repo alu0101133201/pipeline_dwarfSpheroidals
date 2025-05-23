@@ -620,9 +620,9 @@ oneNightPreProcessing() {
       echo -e "\n\tFrames with strange background value and std values already cleaned\n"
   else
     computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
-    numberOfStdForBadFrames=5
-    python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $currentNight
-    echo "done" > $badFilesWarningsDone
+    # numberOfStdForBadFrames=5
+    # python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $currentNight
+    # echo "done" > $badFilesWarningsDone
   fi
 
   ########## Creating the it3 master flat image ##########
@@ -888,7 +888,6 @@ export -f oneNightPreProcessing
 
 writeTimeOfStepToFile "Process the individual nights" $fileForTimeStamps
 
-
 nights=()
 for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
@@ -898,6 +897,7 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
+
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
@@ -1039,6 +1039,8 @@ else
 fi
 
 
+
+
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1080,6 +1082,7 @@ else
 fi
 
 
+
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
@@ -1092,10 +1095,9 @@ else
   # I create the file because we need it even if empty (for future python scripts). 
   # If you use frames already astrometrised it won't be created if we do not do that explicitly with the touch commmand
   touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
-  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid_preAircorr
+  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid
   echo done > $badFilesWarningsDone
 fi
-
 
 # compute masks in the full grids in order to do the correction based on airmass maps
 echo -e "\n ${GREEN} ---Performing airmass map correction --- ${NOCOLOUR}"
@@ -1195,6 +1197,7 @@ fi
 ######
 
 
+
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter".txt
@@ -1202,10 +1205,10 @@ noiseskydone=$noiseskydir/done_"$filter".txt
 echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
 ringDir=$BDIR/ring
-
-sky_estimation_method=noisechisel # This is usually set to ring. Right now I'm working with fornax and some frames have the huge galaxy in the middle even on top of the ring so I use noisechisel
+sky_estimation_method=noisechisel
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+exit 0
 
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
@@ -1241,7 +1244,6 @@ subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
-
 toleranceForMatching=3 #arcsec
 sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
 export toleranceForMatching
@@ -1274,85 +1276,88 @@ else
 fi
 
 
-echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
-writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
-iteration=1
-h=0
-coaddDir=$BDIR/coadds-prephot
-coaddDone=$coaddDir/done.txt
-minRmsFileName=min_rms_prev_it$iteration.txt
-noisesky_prephot=$BDIR/noise-sky_prephot
-noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
-imagesAreMasked=false
-if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
-if [ -f $coaddDone ]; then
-	echo -e "\n Coadd pre-photometry already done\n"
-else
-	computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
-  subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
-  subskyfullGridDone=$subskyfullGrid_dir/done.txt
-  if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
-  smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
-
-  rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
-  echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-  
-  prefixOfTheFilesToRemove="entirecamera_"
-  rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-  removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-
-	python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
-  
-  echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
-  writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
-  sigmaForStdSigclip=3
-  clippingdir=$BDIR/clipping-outliers-prephot
-  clippingdone=$clippingdir/done.txt
-  buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $subskyfullGrid_dir $sigmaForStdSigclip
-
-  subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
-  subSkyNoOutliersPxDone=$subSkyNoOutliersPxDir/done.txt
-  if ! [ -d $subSkyNoOutliersPxDir ]; then mkdir $subSkyNoOutliersPxDir; fi
-  removeOutliersFromWeightedFrames $subskyfullGrid_dir $clippingdir $subSkyNoOutliersPxDir $subSkyNoOutliersPxDone
-
-  ### Calculate the weights for the images based on the minimum rms ###
-  echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-  writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
-  wdir=$BDIR/weight-dir_prephot
-  wonlydir=$BDIR/only-w-dir_prephot
-  wdone=$wdir/done.txt
-  wonlydone=$wonlydir/done.txt
-  if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-  if ! [ -d $wdir ]; then mkdir $wdir; fi
-  computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
- 
-	coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
-	buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
-  maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-  if [ -f $maskName ]; then
-    echo -e "\tThe mask of the weighted coadd is already done"
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
+  writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
+  iteration=1
+  h=0
+  coaddDir=$BDIR/coadds-prephot
+  coaddDone=$coaddDir/done.txt
+  minRmsFileName=min_rms_prev_it$iteration.txt
+  noisesky_prephot=$BDIR/noise-sky_prephot
+  noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
+  if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
+  if [ -f $coaddDone ]; then
+    echo -e "\n Coadd pre-photometry already done\n"
   else
-    astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+    imagesAreMasked=false
+    computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+
+    subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
+    subskyfullGridDone=$subskyfullGrid_dir/done.txt
+    if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
+    smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
+
+    rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
+    echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+    
+    prefixOfTheFilesToRemove="entirecamera_"
+    rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+
+    python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
+    
+    echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+    sigmaForStdSigclip=3
+    clippingdir=$BDIR/clipping-outliers-prephot
+    clippingdone=$clippingdir/done.txt
+    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $subskyfullGrid_dir $sigmaForStdSigclip
+
+    subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
+    subSkyNoOutliersPxDone=$subSkyNoOutliersPxDir/done.txt
+    if ! [ -d $subSkyNoOutliersPxDir ]; then mkdir $subSkyNoOutliersPxDir; fi
+    removeOutliersFromWeightedFrames $subskyfullGrid_dir $clippingdir $subSkyNoOutliersPxDir $subSkyNoOutliersPxDone
+
+    ### Calculate the weights for the images based on the minimum rms ###
+    echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+    wdir=$BDIR/weight-dir_prephot
+    wonlydir=$BDIR/only-w-dir_prephot
+    wdone=$wdir/done.txt
+    wonlydone=$wonlydir/done.txt
+    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+    if ! [ -d $wdir ]; then mkdir $wdir; fi
+    computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
+  
+    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
+    buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+
+    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+    if [ -f $maskName ]; then
+      echo -e "\tThe mask of the weighted coadd is already done"
+    else
+      astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+    fi
+
+    exposuremapDir=$coaddDir/"$objectName"_exposureMap
+    exposuremapdone=$coaddDir/done_exposureMap.txt
+    computeExposureMap $wdir $exposuremapDir $exposuremapdone
   fi
-
-  exposuremapDir=$coaddDir/"$objectName"_exposureMap
-  exposuremapdone=$coaddDir/done_exposureMap.txt
-  computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
-
 
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
+
 
 ### PREPARING DATA FOR CALIBRATION ###
 referenceImagesForMosaic=$entiredir_smallGrid
@@ -1376,28 +1381,30 @@ prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $apertureP
                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
 
 
-
 # Calibration of coadd prephot
-writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
-if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
-cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
+  if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
+  cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
 
-# Calibrate the coadd only in the high snr section 
-expMax=$(aststatistics $BDIR/coadds-prephot/exposureMap.fits --maximum -q)
-exp_fr=$(astarithmetic $expMax 0.5 x -q)
-astarithmetic $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits $BDIR/coadds-prephot/exposureMap.fits -g1 $exp_fr lt nan where --output=$BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-rm $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
+  # Calibrate the coadd only in the high snr section 
+  expMax=$(aststatistics $BDIR/coadds-prephot/exposureMap.fits --maximum -q)
+  exp_fr=$(astarithmetic $expMax 0.5 x -q)
+  astarithmetic $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits $BDIR/coadds-prephot/exposureMap.fits -g1 $exp_fr lt nan where --output=$BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+  rm $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
 
-iteration=1
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-matchdir=$BDIR/match-decals-myData_coaddPrephot_it$iteration
-ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration
-prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
-mycatdir=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
-calibratingMosaic=true
-imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
-computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
+  iteration=1
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  matchdir=$BDIR/match-decals-myData_coaddPrephot_it$iteration
+  ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration
+  prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
+  mycatdir=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
+  calibratingMosaic=true
+  imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
+  computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
+                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
+fi
+
 
 # Calibration of individual frames
 writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
@@ -1427,6 +1434,11 @@ else
 fi
 
 
+applyCommonCalibrationFactor=true
+if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
+  computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
+fi
+
 
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
@@ -1440,21 +1452,20 @@ backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness.done
 if [ -f $backgroundBrightnessDone ]; then
   echo -e "\nDiagnosis based on background brightness already done"
 else
-  badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
-  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
+  badFilesBackgroundWarningsFile=identifiedBadFrames_backgroundBrightness.txt
+  badFilesCalibrationFactorFile=identifiedBadFrames_calibrationFactor.txt
+  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudesAndCalibrationFactorPlots.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir \
+                                                                                                  $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesBackgroundWarningsFile \
+                                                                                                  $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt
   echo "done" > $backgroundBrightnessDone
 fi
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
-
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
+applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
 
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
 
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
@@ -1483,27 +1494,30 @@ else
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogues  
 fi
 
-
-
 # Calibration
-aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it1
-calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot.png
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-if [ -f $calibrationPlotName ]; then
-    echo -e "\nCalibration diagnosis plot for coadd prephot already done\n"
-else
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-      dirWithReferenceCat=$mosaicDir
-    else
-      dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it1
-    fi
-    mosaicPlot=true
-    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_coaddPrephot_it1 $photCorrPrePhotDir $aperturesFolder $dirWithReferenceCat \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_prehot
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
+
+  aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it1
+  calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot.png
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  if [ -f $calibrationPlotName ]; then
+      echo -e "\nCalibration diagnosis plot for coadd prephot already done\n"
+  else
+      if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+        dirWithReferenceCat=$mosaicDir
+      else
+        dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it1
+      fi
+      mosaicPlot=true
+      produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_coaddPrephot_it1 $photCorrPrePhotDir $aperturesFolder $dirWithReferenceCat \
+                                    $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_prehot
+  fi
 fi
 
-
-# # Half-Max-Radius vs magnitude plots of our calibrated data
+# Half-Max-Radius vs magnitude plots of our calibrated data
 halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
 halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
 if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
@@ -1515,68 +1529,69 @@ else
 fi
 
 
+
 # Getting depth, mask and adding keywords to the calibrated coadd prephot
 # ---------------------------------------------------
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  # Since we calibrated the coadd in the high snr region, we need to restore the whole image
+  # I don't do that before so the calibration plot is with the calibrated area
+  iteration=1
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  rm $photCorrPrePhotDir/*
+  rm $BDIR/coaddForCalibration_it$iteration/*
 
-# Since we calibrated the coadd in the high snr region, we need to restore the whole image
-# I don't do that before so the calibration plot is with the calibrated area
-iteration=1
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-rm $photCorrPrePhotDir/*
-rm $BDIR/coaddForCalibration_it$iteration/*
+  cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
 
-cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-echo cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+  coaddPrephotDir=$BDIR/coadds-prephot
+  coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated.fits
+  if [ ! -f "$coaddPrephotCalibratedName" ]; then
+    cp $BDIR/photCorr-coaddPrephot-dir_it$iteration/entirecamera_1.fits $coaddPrephotCalibratedName
+  fi
 
-coaddPrephotDir=$BDIR/coadds-prephot
-coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated.fits
-if [ ! -f "$coaddPrephotCalibratedName" ]; then
-  cp $BDIR/photCorr-coaddPrephot-dir_it$iteration/entirecamera_1.fits $coaddPrephotCalibratedName
-fi
-
-# Compute surface brightness limit
-sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
-exposuremapName=$coaddPrephotDir/exposureMap.fits
-if [ -f  $sblimitFile ]; then
-  echo -e "\n\tSurface brightness limit for coadd already measured\n"
-  surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
-else
-  maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-  surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddPrephotCalibratedName $maskName $exposuremapName $coaddPrephotDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
-fi
-
-times=($(getInitialMidAndFinalFrameTimes $INDIR))
-initialTime=$( TZ=UTC  date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
-meanTime=$( TZ=UTC  date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
-finalTime=$( TZ=UTC  date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+  # Compute surface brightness limit
+  sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
+  exposuremapName=$coaddPrephotDir/exposureMap.fits
+  if [ -f  $sblimitFile ]; then
+    echo -e "\n\tSurface brightness limit for coadd already measured\n"
+    surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
+  else
+    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddPrephotCalibratedName $maskName $exposuremapName $coaddPrephotDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+  fi
 
 
-keyWords=("FRAMES_COMBINED" \
-          "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS" \
-          "MEAN_DATE_OBS" \
-          "FINAL_DATE_OBS" \
-          "FILTER" \
-          "LOWER_VIGNETTING_THRESHOLD" \
-          "UPPER_VIGNETTING_THRESHOLD" \
-          "SATURATION_THRESHOLD" \
-          "CALIBRATED_USING" \
-          "CALIBRATION_BRIGHTLIMIT" \
-          "CALIBRATION_FAINTLIMIT" \
-          "RUNNING_FLAT" \
-          "WINDOW_SIZE" \
-          "SURFACE_BRIGHTNESS_LIMIT")
+  times=($(getInitialMidAndFinalFrameTimes $INDIR))
+  initialTime=$( TZ=UTC  date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+  meanTime=$( TZ=UTC  date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+  finalTime=$( TZ=UTC  date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
 
-numberOfFramesCombined=$(ls $BDIR/weight-dir_prephot/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitCoaddPrephot" "$calibrationFaintLimitCoaddPrephot" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 
-astfits $coaddPrephotCalibratedName --write=/,"Pipeline information"
-addkeywords $coaddPrephotCalibratedName keyWords values comments
+  keyWords=("FRAMES_COMBINED" \
+            "NUMBER_OF_DIFFERENT_NIGHTS" \
+            "INITIAL_DATE_OBS" \
+            "MEAN_DATE_OBS" \
+            "FINAL_DATE_OBS" \
+            "FILTER" \
+            "LOWER_VIGNETTING_THRESHOLD" \
+            "UPPER_VIGNETTING_THRESHOLD" \
+            "SATURATION_THRESHOLD" \
+            "CALIBRATED_USING" \
+            "CALIBRATION_BRIGHTLIMIT" \
+            "CALIBRATION_FAINTLIMIT" \
+            "RUNNING_FLAT" \
+            "WINDOW_SIZE" \
+            "SURFACE_BRIGHTNESS_LIMIT")
 
-# ------------------------------------------------------
+  numberOfFramesCombined=$(ls $BDIR/weight-dir_prephot/*.fits | wc -l)
+  values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitCoaddPrephot" "$calibrationFaintLimitCoaddPrephot" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
+  comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+
+  astfits $coaddPrephotCalibratedName --write=/,"Pipeline information"
+  addkeywords $coaddPrephotCalibratedName keyWords values comments
+fi # ------------------------------------------------------
+
 
 echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 # Compute rms and of the photometrized frames
@@ -1590,6 +1605,7 @@ photCorrfullGridDone=$photCorrfullGridDir/done.txt
 if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
 smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra $dec
 
+
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 rejectedFramesDir=$BDIR/rejectedFrames
@@ -1599,14 +1615,16 @@ prefixOfTheFilesToRemove="entirecamera_"
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-
 rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor.txt
+removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
+removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
+
 
 
 # Store the minimum standard deviation of the frames in order to compute the weights
@@ -1621,6 +1639,7 @@ sigmaForStdSigclip=3
 clippingdir=$BDIR/clipping-outliers
 clippingdone=$clippingdir/done.txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
+
 
 photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
 photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
@@ -1693,6 +1712,8 @@ else
   surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
+
+
 times=($(getInitialMidAndFinalFrameTimes $INDIR))
 initialTime=$( TZ=UTC date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
 meanTime=$( TZ=UTC date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
@@ -1720,6 +1741,8 @@ comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N fr
 
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
+
+
 
 halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
 if [ -f $halfMaxRadForCoaddName ]; then
@@ -1755,11 +1778,13 @@ else
 fi
 
 
+diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 fwhmPlotsWithCoadd=$diagnosis_and_badFilesDir/done_fwhmPlotswithCoadd.txt
-if [ -f $fwhmPlotsWithCoadd ]; then
+if ! [ -f $fwhmPlotsWithCoadd ]; then
   coaddFWHMDir=$BDIR/seeing_values_coadd
   if ! [ -d $coaddFWHMDir ]; then mkdir $coaddFWHMDir; fi
   computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds $coaddFWHMDir 1 "sextractor" $tileSize
+  # The name of the script is confusing because this was not planned, but this is for generating the fwhm plot with the coadd fwhm on top of it
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
 fi
@@ -1767,7 +1792,6 @@ fi
 
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/noise-sky_prephot -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
 # find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
 
@@ -1784,13 +1808,14 @@ find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtracted -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtractedTagged_it1 -type f ! -name 'done*' -exec rm {} \;
 
-find $BDIR/weight-dir_prephot -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/weight-dir -type f ! -name 'done*' -exec rm {} \;
-
-find $BDIR/only-w-dir_prephot -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/only-w-dir -type f ! -name 'done*' -exec rm {} \;
 
-
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  find $BDIR/weight-dir_prephot -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/only-w-dir_prephot -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/noise-sky_prephot -type f ! -name 'done*' -exec rm {} \;
+fi
 
 ## This code is used for manually adding the user-defined masks to the mask from the coadd
 # First we save the original mask that noisechisel produces
@@ -1816,7 +1841,6 @@ done
 
 ####### ITERATION 2 ######
 iteration=2
-
 entiredir_smallGrid=$BDIR/pointings_smallGrid
 
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
@@ -1829,7 +1853,7 @@ maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDon
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
-imagesAreMasked=true
+imagesAreMasked=false # They are masked, but we run and apply noisechisel mask anyway to improve it if possible
 computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
@@ -1837,129 +1861,134 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT 
 
 
-# MASK FROM THE COADD PREPHOT
-coaddDir=$BDIR/coadds-prephot
-maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-smallPointings_maskedDir=$BDIR/pointings_smallGrid_maskedPrephot_it$iteration
-maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
-
-noiseskydir=$BDIR/noise-sky_maskPrephot_it$iteration
-noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
-imagesAreMasked=true
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
-
-subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
-subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-
-
-### BUILD COADD PREPHOT IT2 ####
-echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
-writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
-iteration=2
-h=0
-minRmsFileName=min_rms_prev_it$iteration.txt
-noisesky_prephot=$BDIR/noise-sky_prephot_it$iteration
-noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
-coaddDir=$BDIR/coadds-prephot_it$iteration
-coaddDone=$coaddDir/done.txt
-imagesAreMasked=false
-if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
-if [ -f $coaddDone ]; then
-	echo -e "\n Coadd pre-photometry already done\n"
-else
-  maskName=$BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits
-  subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
-  subSkyPointings_maskedDir=$BDIR/sub-sky-smallGrid_maskPrephot_masked_it$iteration
-  maskedPointingsDone=$subSkyPointings_maskedDir/done_.txt
-  maskPointings $subskySmallGrid_dir $subSkyPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
-
-  imagesAreMasked=true
-	computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
-  
-  subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_maskPrephot_it$iteration
-  subskyfullGridDone=$subskyfullGrid_dir/done.txt
-  if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
-  smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
-
-  rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
-  echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  prefixOfTheFilesToRemove="entirecamera_"
-  rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-  removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-  removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
- 
-  python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
-
-
-	# Mask the outliers
-	sigmaForStdSigclip=3
-	clippingdir=$BDIR/clipping-outliers-prephot_it$iteration
-	clippingdone=$clippingdir/done.txt
-	buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $subskyfullGrid_dir $sigmaForStdSigclip
-	
-  subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
-  subSkyNoOutliersPxDone=$subSkyNoOutliersPxDir/done.txt
-  if ! [ -d $subSkyNoOutliersPxDir ]; then mkdir $subSkyNoOutliersPxDir; fi
-  removeOutliersFromWeightedFrames $subskyfullGrid_dir $clippingdir $subSkyNoOutliersPxDir $subSkyNoOutliersPxDone
-
-  wdir=$BDIR/weight-dir_prephot_it$iteration
-  wonlydir=$BDIR/only-w-dir_prephot_it$iteration
-  wdone=$wdir/done.txt
-  wonlydone=$wonlydir/done.txt
-  if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-  if ! [ -d $wdir ]; then mkdir $wdir; fi
-  echo computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
-  computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
-
-	# Make the coadd
-	coaddDone=$coaddDir/done.txt
-	coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
-	buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
-  coaddDir=$BDIR/coadds-prephot_it$iteration
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  # MASK FROM THE COADD PREPHOT
+  coaddDir=$BDIR/coadds-prephot
   maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-  if [ -f $maskName ]; then
-    echo -e "\tThe mask of the weighted coadd is already done"
+  smallPointings_maskedDir=$BDIR/pointings_smallGrid_maskedPrephot_it$iteration
+  maskedPointingsDone=$smallPointings_maskedDir/done_.txt
+  maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+
+  noiseskydir=$BDIR/noise-sky_maskPrephot_it$iteration
+  noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
+  imagesAreMasked=false
+  computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+
+  subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
+  subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
+  subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+
+  ### BUILD COADD PREPHOT IT2 ####
+  echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
+  writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
+  iteration=2
+  h=0
+  minRmsFileName=min_rms_prev_it$iteration.txt
+  noisesky_prephot=$BDIR/noise-sky_prephot_it$iteration
+  noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
+  coaddDir=$BDIR/coadds-prephot_it$iteration
+  coaddDone=$coaddDir/done.txt
+  imagesAreMasked=false
+  if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
+  if [ -f $coaddDone ]; then
+    echo -e "\n Coadd pre-photometry already done\n"
   else
-    astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+    maskName=$BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits
+    subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
+    subSkyPointings_maskedDir=$BDIR/sub-sky-smallGrid_maskPrephot_masked_it$iteration
+    maskedPointingsDone=$subSkyPointings_maskedDir/done_.txt
+    maskPointings $subskySmallGrid_dir $subSkyPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+
+    imagesAreMasked=false
+    computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+    
+    subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_maskPrephot_it$iteration
+    subskyfullGridDone=$subskyfullGrid_dir/done.txt
+    if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
+    smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
+
+    rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
+    echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    prefixOfTheFilesToRemove="entirecamera_"
+    rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+    rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+    rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor.txt
+    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
+
+    python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
+
+
+    # Mask the outliers
+    sigmaForStdSigclip=3
+    clippingdir=$BDIR/clipping-outliers-prephot_it$iteration
+    clippingdone=$clippingdir/done.txt
+    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $subskyfullGrid_dir $sigmaForStdSigclip
+    
+    subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
+    subSkyNoOutliersPxDone=$subSkyNoOutliersPxDir/done.txt
+    if ! [ -d $subSkyNoOutliersPxDir ]; then mkdir $subSkyNoOutliersPxDir; fi
+    removeOutliersFromWeightedFrames $subskyfullGrid_dir $clippingdir $subSkyNoOutliersPxDir $subSkyNoOutliersPxDone
+
+    wdir=$BDIR/weight-dir_prephot_it$iteration
+    wonlydir=$BDIR/only-w-dir_prephot_it$iteration
+    wdone=$wdir/done.txt
+    wonlydone=$wonlydir/done.txt
+    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+    if ! [ -d $wdir ]; then mkdir $wdir; fi
+    echo computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
+    computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
+
+    # Make the coadd
+    coaddDone=$coaddDir/done.txt
+    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
+    buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+
+    coaddDir=$BDIR/coadds-prephot_it$iteration
+    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+    if [ -f $maskName ]; then
+      echo -e "\tThe mask of the weighted coadd is already done"
+    else
+      astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+    fi
+
+    exposuremapDir=$coaddDir/"$objectName"_exposureMap
+    exposuremapdone=$coaddDir/done_exposureMap.txt
+    computeExposureMap $wdir $exposuremapDir $exposuremapdone
   fi
 
-  exposuremapDir=$coaddDir/"$objectName"_exposureMap
-  exposuremapdone=$coaddDir/done_exposureMap.txt
-  computeExposureMap $wdir $exposuremapDir $exposuremapdone
+  # Calibration of coadd prephot
+  if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
+  cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
+
+  # Calibrate the coadd only in the high snr section 
+  expMax=$(aststatistics $BDIR/coadds-prephot_it$iteration/exposureMap.fits --maximum -q)
+  exp_fr=$(astarithmetic $expMax 0.5 x -q)
+  astarithmetic $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits $BDIR/coadds-prephot_it$iteration/exposureMap.fits -g1 $exp_fr lt nan where --output=$BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+  rm $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
+
+  writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
+  iteration=2
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  matchdir=$BDIR/match-decals-myData_coaddPrephot_it$iteration
+  ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration
+  prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
+  mycatdir=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
+
+  calibratingMosaic=true
+  imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
+  computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
+                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 fi
-
-
-# Calibration of coadd prephot
-if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
-cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
-
-# Calibrate the coadd only in the high snr section 
-expMax=$(aststatistics $BDIR/coadds-prephot_it$iteration/exposureMap.fits --maximum -q)
-exp_fr=$(astarithmetic $expMax 0.5 x -q)
-astarithmetic $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits $BDIR/coadds-prephot_it$iteration/exposureMap.fits -g1 $exp_fr lt nan where --output=$BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-rm $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
-
-writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
-iteration=2
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-matchdir=$BDIR/match-decals-myData_coaddPrephot_it$iteration
-ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration
-prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
-mycatdir=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
-
-calibratingMosaic=true
-imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
-computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
-
 
 # Calibration of individual frames
 writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
@@ -1976,17 +2005,23 @@ computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration 
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 
 
+
+if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
+  computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
+fi
+
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
+applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
 
-
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
+fi
 
 # Calibration
 iteration=2
@@ -2005,88 +2040,90 @@ else
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_ind
 fi
 
-
-iteration=2
-aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
-calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot_it$iteration.png
-if [ -f $calibrationPlotName ]; then
-    echo -e "\nCalibration diagnosis plot for individual frames already done\n"
-else
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-      dirWithReferenceCat=$mosaicDir
-    else
-      dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
-    fi
-    mosaicPlot=true
-    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration $photCorrPrePhotDir $aperturesFolder $dirWithReferenceCat \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_prehot
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  iteration=2
+  aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
+  calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot_it$iteration.png
+  if [ -f $calibrationPlotName ]; then
+      echo -e "\nCalibration diagnosis plot for individual frames already done\n"
+  else
+      if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+        dirWithReferenceCat=$mosaicDir
+      else
+        dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
+      fi
+      mosaicPlot=true
+      produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration $photCorrPrePhotDir $aperturesFolder $dirWithReferenceCat \
+                                    $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_prehot
+  fi
 fi
 
 
-# Getting depth, mask and adding keywords to the calibrated coadd prephot
-# ---------------------------------------------------
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+  # Getting depth, mask and adding keywords to the calibrated coadd prephot
+  # ---------------------------------------------------
 
-# Since we calibrated the coadd in the high snr region, we need to restore the whole image
-# I don't do that before so the calibration plot is with the calibrated area
-iteration=2
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-rm $photCorrPrePhotDir/*
-rm $BDIR/coaddForCalibration_it$iteration/*
+  # Since we calibrated the coadd in the high snr region, we need to restore the whole image
+  # I don't do that before so the calibration plot is with the calibrated area
 
-cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+  iteration=2
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  rm $photCorrPrePhotDir/*
+  rm $BDIR/coaddForCalibration_it$iteration/*
 
-
-
-coaddPrephotDir=$BDIR/coadds-prephot_it$iteration
-coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated_it$iteration.fits
-if [ ! -f "$coaddPrephotCalibratedName" ]; then
-  cp $photCorrPrePhotDir/entirecamera_1.fits $coaddPrephotCalibratedName
-fi
-
-# Compute surface brightness limit
-sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
-exposuremapName=$coaddPrephotDir/exposureMap.fits
-if [ -f  $sblimitFile ]; then
-  echo -e "\n\tSurface brightness limit for coadd already measured\n"
-  surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
-else
-  coaddDir=$BDIR/coadds-prephot_it$iteration
-  maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-  surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddPrephotCalibratedName $maskName $exposuremapName $coaddPrephotDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
-fi
+  cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
 
 
-times=($(getInitialMidAndFinalFrameTimes $INDIR))
-initialTime=$( TZ=UTC  date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
-meanTime=$( TZ=UTC  date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
-finalTime=$( TZ=UTC  date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+  coaddPrephotDir=$BDIR/coadds-prephot_it$iteration
+  coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated_it$iteration.fits
+  if [ ! -f "$coaddPrephotCalibratedName" ]; then
+    cp $photCorrPrePhotDir/entirecamera_1.fits $coaddPrephotCalibratedName
+  fi
 
-keyWords=("FRAMES_COMBINED" \
-          "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS" \
-          "MEAN_DATE_OBS" \
-          "FINAL_DATE_OBS" \
-          "FILTER" \
-          "LOWER_VIGNETTING_THRESHOLD" \
-          "UPPER_VIGNETTING_THRESHOLD" \
-          "SATURATION_THRESHOLD" \
-          "CALIBRATED_USING" \
-          "CALIBRATION_BRIGHTLIMIT" \
-          "CALIBRATION_FAINTLIMIT" \
-          "RUNNING_FLAT" \
-          "WINDOW_SIZE" \
-          "SURFACE_BRIGHTNESS_LIMIT")
+  # Compute surface brightness limit
+  sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
+  exposuremapName=$coaddPrephotDir/exposureMap.fits
+  if [ -f  $sblimitFile ]; then
+    echo -e "\n\tSurface brightness limit for coadd already measured\n"
+    surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
+  else
+    coaddDir=$BDIR/coadds-prephot_it$iteration
+    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddPrephotCalibratedName $maskName $exposuremapName $coaddPrephotDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+  fi
 
-numberOfFramesCombined=$(ls $BDIR/weight-dir-prephot_it$iteration/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitCoaddPrephot" "$calibrationFaintLimitCoaddPrephot" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 
-astfits $coaddPrephotCalibratedName --write=/,"Pipeline information"
-addkeywords $coaddPrephotCalibratedName keyWords values comments
+  times=($(getInitialMidAndFinalFrameTimes $INDIR))
+  initialTime=$( TZ=UTC  date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+  meanTime=$( TZ=UTC  date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+  finalTime=$( TZ=UTC  date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
 
-# ---------------------------------------------------
+  keyWords=("FRAMES_COMBINED" \
+            "NUMBER_OF_DIFFERENT_NIGHTS" \
+            "INITIAL_DATE_OBS" \
+            "MEAN_DATE_OBS" \
+            "FINAL_DATE_OBS" \
+            "FILTER" \
+            "LOWER_VIGNETTING_THRESHOLD" \
+            "UPPER_VIGNETTING_THRESHOLD" \
+            "SATURATION_THRESHOLD" \
+            "CALIBRATED_USING" \
+            "CALIBRATION_BRIGHTLIMIT" \
+            "CALIBRATION_FAINTLIMIT" \
+            "RUNNING_FLAT" \
+            "WINDOW_SIZE" \
+            "SURFACE_BRIGHTNESS_LIMIT")
+
+  numberOfFramesCombined=$(ls $BDIR/weight-dir_prephot_it$iteration/*.fits | wc -l)
+  values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitCoaddPrephot" "$calibrationFaintLimitCoaddPrephot" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
+  comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+
+  astfits $coaddPrephotCalibratedName --write=/,"Pipeline information"
+  addkeywords $coaddPrephotCalibratedName keyWords values comments
+fi # ---------------------------------------------------
+
 
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
@@ -2094,15 +2131,17 @@ maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
 maskName=$BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $BDIR/pointings_smallGrid
 
+
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt
 if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
 smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra $dec
+
 
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -2118,11 +2157,13 @@ removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badF
 rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor.txt
+removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
+removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
-
 
 clippingdir=$BDIR/clipping-outliers_it$iteration
 clippingdone=$clippingdir/done_"$k".txt
@@ -2164,6 +2205,7 @@ fi
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap.txt
 computeExposureMap $wdir $exposuremapDir $exposuremapdone 
+
 
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
@@ -2217,19 +2259,9 @@ else
   photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
   subtractCoaddToFrames $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
 
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  prefixOfTheFilesToRemove="entirecamera_"
-  rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-  rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-  rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
-  rejectedFramesDir=$BDIR/rejectedFramesResiduals
-  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-  removeBadFramesFromReduction $framesWithCoaddSubtractedDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
   astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
   
+  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
   computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
   python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
 
