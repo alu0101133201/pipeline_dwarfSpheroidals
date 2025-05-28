@@ -10,14 +10,21 @@ img = sys.argv[1]
 datK = sys.argv[2]
 ra=float(sys.argv[3])
 dec=float(sys.argv[4])
+lat=float(sys.argv[5])
+long=float(sys.argv[6])
+elev=float(sys.argv[7])
 
 #Observing site: Izaña
-observing_location = EarthLocation(lat='28d18m04s', lon='-16d30m38s', height=2390*u.m)  
+observing_location = EarthLocation(lat=lat*u.deg, lon=long*u.deg, height=elev*u.m)  
 
 #Header
 hed = fits.open(img)[1].header
-date_obs = Time(hed[datK][:10]+' '+hed[datK][12:])
- 
+if datK.startswith("DATE"):
+    date_obs = Time(hed[datK],format='isot',scaleç='utc')
+elif datK.startswith("MJD"):
+    date_obs = Time(hed[datK],format='mjd',scale='utc')
+else:
+    raise Exception("Non supported Time format.") 
 aa = AltAz(location=observing_location, obstime=date_obs)
 
 coord = SkyCoord(ra=ra*u.deg, dec = dec*u.deg)

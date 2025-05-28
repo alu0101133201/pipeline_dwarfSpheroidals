@@ -109,17 +109,17 @@ export num_cpus
 
 # ****** Decision note *******
 # Rebinned data
-tileSize=35
-noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
+#tileSize=35
+#noisechisel_param="--tilesize=$tileSize,$tileSize \
+#                    --detgrowmaxholesize=5000 \
+#                    --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-# tileSize=90
-# noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                      --detgrowmaxholesize=5000 \
-#                      --rawoutput"
+ tileSize=90
+ noisechisel_param="--tilesize=$tileSize,$tileSize \
+                      --detgrowmaxholesize=5000 \
+                      --rawoutput"
 export noisechisel_param
 
 echo -e "\n-Noisechisel parameters used for masking:"
@@ -317,7 +317,7 @@ oneNightPreProcessing() {
     for i in $(ls -v $currentINDIR/*.fits ); do
       air=$(astfits $i -h1 --keyvalue=$airMassKeyWord 2>/dev/null | awk '{print $2}')
       if [[ $air == "n/a" ]]; then
- 		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal)
+ 		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal $telescopeLat $telescopeLong $telescopeElevation)
        	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
       fi
     	
