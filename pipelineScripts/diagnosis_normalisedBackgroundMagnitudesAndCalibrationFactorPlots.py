@@ -182,6 +182,7 @@ def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, reject
             plt.axvline(x=valueForMeanVerticalLine + numberOfSigma*valueForStdVerticalLines, color='grey', ls='-.', lw=2, label=f'{numberOfSigma} sigma std')
             plt.axvline(x=valueForMeanVerticalLine - numberOfSigma*valueForStdVerticalLines, color='grey', ls='-.', lw=2)
 
+    ax.set_xlim((np.nanmedian(values) - 3*np.nanstd(values)), (np.nanmedian(values) + 3*np.nanstd(values)))
 
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)

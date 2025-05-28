@@ -122,6 +122,7 @@ def saveHistogram(values, fwhmRejectedIndices, astrometryRejectedIndices, imageN
 def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmThreshold, imageName, addCoaddSeeing, dirWithFrameFWHM):
     
     fig, ax = plt.subplots(2, 1, figsize=(20,10))
+    plt.tight_layout(pad=8.0)
     configureAxis(ax[0], 'UTC', 'FWHM (arcsec)',logScale=False)
     configureAxis(ax[1], 'Airmass', 'FWHM (arcsec)',logScale=False)
     fig.suptitle('FWHM evolution',fontsize=22)
