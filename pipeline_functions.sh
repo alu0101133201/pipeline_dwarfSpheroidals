@@ -149,6 +149,8 @@ outputConfigurationVariablesInformation() {
         "Parameters for measuring the surface brightness limit"
         "·Exp map fraction:$fractionExpMap"
         "·Area of the SB limit metric:$areaSBlimit: [arcsec]"
+        " "
+        "·Produce coadd prephot:$produceCoaddPrephot"
     )
 
     echo -e "Summary of the configuration variables provided for the reduction\n"
@@ -251,8 +253,9 @@ checkIfAllVariablesAreSet() {
                 solve_field_u_Param \
                 maximumBackgroundBrightness \
                 maximumSeeing \
-                fractionExpMap\
-                areaSBlimit)
+                fractionExpMap \
+                areaSBlimit \
+                produceCoaddPrephot)
 
     echo -e "\n"
     for currentVar in ${variablesToCheck[@]}; do
@@ -522,11 +525,15 @@ getMedianValueInsideRing() {
     local keyWordThreshold=$7
     local keyWordValueForFirstRing=$8
     local keyWordValueForSecondRing=$9
+    local noiseskydir=${10}
 
     if [ "$useCommonRing" = true ]; then
-            # Case when we have one common normalisation ring
-            tmpName=$( basename $i ) 
-            me=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where medianvalue --quiet)
+        # Case when we have one common normalisation ring
+        tmpName=$( basename $i ) 
+        maskedImageUsingRing=$noiseskydir/maskedAllButRing$tmpName
+        astarithmetic $i -h1 $commonRing -h1 0 eq nan where -o $maskedImageUsingRing --quiet
+        me=$(aststatistics $maskedImageUsingRing -h1 --sclipparams=3,3 --sigclip-median --quiet)
+        rm $maskedImageUsingRing
     else
         # Case when we do NOT have one common normalisation ring
         # All the following logic is to decide which normalisation ring apply
@@ -537,9 +544,9 @@ getMedianValueInsideRing() {
         secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where medianvalue --quiet)
+            me=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where sigclip-median --quiet)
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where medianvalue --quiet)
+            me=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where sigclip-median --quiet)
         else
             errorNumber=4
             echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
@@ -561,10 +568,15 @@ getStdValueInsideRing() {
     local keyWordThreshold=$7
     local keyWordValueForFirstRing=$8
     local keyWordValueForSecondRing=$9
+    local noiseskydir=${10}
 
     if [ "$useCommonRing" = true ]; then
-            # Case when we have one common normalisation ring
-            std=$(astarithmetic $i -h1 $commonRing -h1 0 eq nan where stdvalue --quiet)
+        # Case when we have one common normalisation ring
+        tmpName=$( basename $i ) 
+        maskedImageUsingRing=$noiseskydir/maskedAllButRing$tmpName
+        astarithmetic $i -h1 $commonRing -h1 0 eq nan where -o $maskedImageUsingRing --quiet
+        std=$(aststatistics $maskedImageUsingRing -h1 --sclipparams=3,3 --sigclip-std --quiet)
+        rm $maskedImageUsingRing
     else
         # Case when we do NOT have one common normalisation ring
         # All the following logic is to decide which normalisation ring apply
@@ -574,10 +586,14 @@ getStdValueInsideRing() {
         secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
         secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
+        numOfOperands=1
+        sigma=3
+        iterations=3
+
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            std=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where stdvalue --quiet)
+            std=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where $numOfOperands $sigma $iterations sigclip-std --quiet)
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            std=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where stdvalue --quiet)
+            std=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where $numOfOperands $sigma $iterations sigclip-std --quiet)
         else
             errorNumber=5
             echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
@@ -632,10 +648,12 @@ getSkewKurtoValueFromSkyPixels(){
                 exit $errorNumber
             fi
         fi
-
+    elif [ "$constantSkyMethod" == "wholeImage" ]; then
+        skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS)
+        kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS)
     elif [ "$constantSkyMethod" == "noisechisel" ]; then
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS)
+        skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS)
+        kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS)
     else
         errorNumber=555
         echo -e "\nIn Function getSkewKurtoValueFromSkyPixels. Not identified the "constantSkyMethod" variable  value" >&2
@@ -663,7 +681,7 @@ normaliseImagesWithRing() {
         i=$imageDir/$base
         out=$outputDir/$base
 
-        me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+        me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $outputDir)
         astarithmetic $i -h1 $me / -o $out
 
         propagateKeyword $i $dateHeaderKey $out
@@ -836,7 +854,7 @@ warpImage() {
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
     # Resample into the final grid
-    # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "SWarp"
+    # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
     swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
 
     # Mask bad pixels
@@ -884,7 +902,7 @@ smallGridtoFullGrid(){
     
 
     if [ -f $fullGridDone ]; then
-        echo -e "\n\tFrames from {$smallGridDir} have been already pased into the full grid\n"
+        echo -e "\n\tFrames from $smallGridDir have been already pased into the full grid\n"
     else
         framesToGrid=()
         for frame in $smallGridDir/*.fits; do
@@ -1004,14 +1022,21 @@ computeSkyForFrame(){
             ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
             echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
             astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
-           
-            me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
-            std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            
+            me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
+            std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
             read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
 
             echo "$base $me $std $skew $kurto" > $noiseskydir/$out
             rm $ringDir/$tmpRingDefinition
             rm $ringDir/$tmpRingFits
+
+        elif [ "$constantSkyMethod" = "wholeImage" ]; then
+            me=$(aststatistics $imageToUse -h1 --sclipparams=3,3 --sigclip-median --quiet)
+            std=$(aststatistics $imageToUse -h1 --sclipparams=3,3 --sigclip-std --quiet)
+            read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
+            echo "$base $me $std $skew $kurto" > $noiseskydir/$out
+       
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
             sky=$(echo $base | sed 's/.fits/_sky.fits/')
             astnoisechisel $imageToUse --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
@@ -1020,8 +1045,8 @@ computeSkyForFrame(){
 
             read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
             echo "$base $mean $std $skew $kurto" > $noiseskydir/$out
-            
             rm -f $noiseskydir/$sky
+        
         else
             errorNumber=6
             echo -e "\nAn invalid value for the sky_estimation_method was provided" >&2
@@ -1058,7 +1083,6 @@ computeSky() {
     local ringWidth=${14}
     local noisechisel_param=${15}
     local maskParams=${16}
-
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -2477,6 +2501,28 @@ combineDecalsBricksCataloguesForEachFrame() {
 }
 export -f combineDecalsBricksCataloguesForEachFrame
 
+computeCommonCalibrationFactor() {
+  local calibrationFactorsDir=$1
+  local iteration=$2
+  local objectName=$3
+  local BDIR=$4 
+  
+  calibrationFactors=()
+  for i in $( ls $calibrationFactorsDir/alpha_"$objectName"*.txt); do
+    read currentCalibrationFactor currentStd < $i
+    calibrationFactors+=("$currentCalibrationFactor")
+  done
+
+  tmpTableFits=$BDIR/tableTest.fits
+  printf "%s\n" "${calibrationFactors[@]}" | asttable -o "$tmpTableFits"
+  commonCalibrationFactor=$( aststatistics $tmpTableFits --sigclip-median)
+  calibrationFactorsStd=$( asttable $tmpTableFits | aststatistics --sclipparams=3,3 --sigclip-std)
+
+  echo $commonCalibrationFactor $calibrationFactorsStd > $BDIR/commonCalibrationFactor_it$iteration.txt
+  rm $tmpTableFits
+}
+export -f computeCommonCalibrationFactor
+
 computeCalibrationFactors() {
     local surveyForCalibration=$1
     local iteration=$2
@@ -2524,15 +2570,43 @@ computeCalibrationFactors() {
 }
 export -f computeCalibrationFactors
 
+getCalibrationFactorForIndividualFrame() {
+    local a=$1
+    local alphatruedir=$2
+
+    alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
+    alpha=$(awk 'NR=='1'{print $1}' $alpha_cat)
+    echo $alpha
+}
+export -f getCalibrationFactorForIndividualFrame
+
+getCommonCalibrationFactor() {
+    local iteration=$1
+
+    commonFactorFile=$BDIR/commonCalibrationFactor_it$iteration.txt
+    alpha=$(awk 'NR=='1'{print $1}' $commonFactorFile)
+    echo $alpha
+}   
+export -f getCommonCalibrationFactor
+
 applyCalibrationFactorsToFrame() {
     local a=$1
     local imagesForCalibration=$2
     local alphatruedir=$3
     local photCorrDir=$4
+    local iteration=$5
+    local applyCommonCalibrationFactor=$6
 
     f=$imagesForCalibration/entirecamera_"$a".fits
-    alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
-    alpha=$(awk 'NR=='1'{print $1}' $alpha_cat)
+
+    if [[ "$applyCommonCalibrationFactor" == "true" || "$applyCommonCalibrationFactor" == "True" ]]; then
+        alpha=$( getCommonCalibrationFactor $iteration )
+    elif  [[ "$applyCommonCalibrationFactor" == "false" || "$applyCommonCalibrationFactor" == "False" ]]; then
+        alpha=$( getCalibrationFactorForIndividualFrame $a $alphatruedir )
+    else
+        echo "Value of variable applyCommonCalibrationFactor ($applyCommonCalibrationFactor) not recognised"
+        exit 55
+    fi
     astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/entirecamera_"$a".fits
 }
 export -f applyCalibrationFactorsToFrame
@@ -2541,6 +2615,8 @@ applyCalibrationFactors() {
     local imagesForCalibration=$1
     local alphatruedir=$2
     local photCorrDir=$3
+    local iteration=$4
+    local applyCommonCalibrationFactor=$5
 
     muldone=$photCorrDir/done_calibration.txt
     if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
@@ -2548,14 +2624,13 @@ applyCalibrationFactors() {
             echo -e "\n\tMultiplication for alpha in the pointings (huge grid) is done for extension $h\n"
     else
         framesToApplyFactor=()
-
         for a in $(ls $imagesForCalibration/*.fits); do
             frameName=$( basename $a )
             frameNumber=$( echo $frameName | grep -oP '(?<=_)\d+(?=\.fits)' )
             framesToApplyFactor+=("$frameNumber")
         done
 
-        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir
+        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir $iteration $applyCommonCalibrationFactor
         echo done > $muldone
     fi
 }
@@ -2964,16 +3039,17 @@ tagIndividualResidualsBasedOnApertures() {
     local segmentation=$7
     local residualCatalogue=$8
 
-    fileWithFWHM=$fwhmDir/fwhm_$frameNumber.fits.txt
+    fileWithFWHM=$fwhmDir/fwhm_entirecamera_$frameNumber.fits.txt
     read fwhmValue < $fileWithFWHM
-    formattedValue=$(printf "%f" "$fwhmValue") # To get rid of scientific notation
+    # formattedValue=$(printf "%f" "$fwhmValue") # To get rid of scientific notation
+    formattedValue=$( awk -v v="$fwhmValue" 'BEGIN {printf "%f", v}' )
     aperturePx=$( echo "$formattedValue * $numberOfFWHMusedForApertures" | bc -l )
 
     # gnuastro code for obtaining the upper limit using the apertures
     echo "1 100 100 5 $aperturePx 0 0 1 1 1" | astmkprof --background=$individualResidual --clearcanvas --mforflatpix --type=uint8 --output=$residualFramesTaggedDir/tmp_aperture_$frameNumber.fits
     astmkcatalog $residualFramesTaggedDir/tmp_aperture_$frameNumber.fits -h1 --zeropoint=22.5 -o$residualFramesTaggedDir/sbl_$frameNumber.fits \
                     --valuesfile=$individualResidual --valueshdu=1 --upmaskfile=$residualFramesTaggedDir/$residualMask --upmaskhdu=DETECTIONS\
-                    --upnsigma=3 --checkuplim=1 --upnum=1000 --ids --upperlimit-sb
+                    --upnsigma=5 --checkuplim=1 --upnum=1000 --ids --upperlimit-sb
     upperLimitMag=$( asttable $residualFramesTaggedDir/sbl_$frameNumber.fits -cUPPERLIMIT_SB )
 
     taggedResidual_tmp=$residualFramesTaggedDir/tmp_apertureTagged_$base
@@ -3301,6 +3377,7 @@ limitingSurfaceBrightness() {
 }
 export -f limitingSurfaceBrightness
 
+
 computeFWHMSingleFrame(){
     local a=$1
     local framesForFWHMDir=$2
@@ -3309,7 +3386,7 @@ computeFWHMSingleFrame(){
     local methodToUse=$5
     local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
     
-    i=$framesForFWHMDir/entirecamera_"$a"
+    i=$framesForFWHMDir/$a
 
     # In the case of using it for Decals or Panstarrs, we need the variable survey
     if [[ "$methodToUse" == "sextractor" ]]; then
@@ -3329,12 +3406,13 @@ computeFWHMSingleFrame(){
     std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
     minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
     maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
-    asttable $fwhmdir/match_"$a"_my_gaia.txt --noblank=MAGNITUDE --range=HALF_MAX_RADIUS,$minr:$maxr -c'arith $6 2 x' -o$fwhmdir/fwhm_"$a"_cat.txt
+    asttable $fwhmdir/match_"$a"_my_gaia.txt --noblank=MAGNITUDE --range=HALF_MAX_RADIUS,$minr:$maxr -c3,4,6 -c'arith $6 2 x' -o$fwhmdir/cat_fwhm_"$a".txt
+    
     
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
-    FWHM=$(asttable $fwhmdir/fwhm_"$a"_cat.txt -c1  | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    FWHM=$(asttable $fwhmdir/cat_fwhm_"$a".txt  -c4 | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
     echo $FWHM > $fwhmdir/fwhm_"$a".txt
-    rm $fwhmdir/match_"$a"_my_gaia.txt $fwhmdir/fwhm_"$a"_cat.txt $outputCatalogue
+    rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue 
 }
 export -f computeFWHMSingleFrame
