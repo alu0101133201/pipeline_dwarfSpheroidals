@@ -1359,7 +1359,6 @@ else
   echo "done" > $backgroundBrightnessDone
 fi
 
-exit 0
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -1683,7 +1682,6 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   echo "done" > $fwhmPlotsWithCoadd
 fi
 
-exit 0
 
 
 # # Remove intermediate folders to save some space
@@ -1725,14 +1723,14 @@ astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x floa
 valueToPut=1
 read -r -a maskArray <<< "$maskParams"
 for ((i=0; i<${#maskArray[@]}; i+=5)); do
-	ra="${maskArray[i]}"
-	dec="${maskArray[i+1]}"
+	ra_mask="${maskArray[i]}"
+	dec_mask="${maskArray[i+1]}"
 	r="${maskArray[i+2]}"
 	axisRatio="${maskArray[i+3]}"
 	pa="${maskArray[i+4]}"
 
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_mask $dec_mask $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_mask $dec_mask $r $axisRatio $pa
 done
 
 ####### ITERATION 2 ######

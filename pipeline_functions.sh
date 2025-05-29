@@ -982,13 +982,13 @@ computeSkyForFrame(){
             valueToPut=nan
             read -r -a maskArray <<< "$manualMaskParams"
             for ((i=0; i<${#maskArray[@]}; i+=5)); do
-                ra="${maskArray[i]}"
-                dec="${maskArray[i+1]}"
+                ra_mask="${maskArray[i]}"
+                dec_mask="${maskArray[i+1]}"
                 r="${maskArray[i+2]}"
                 axisRatio="${maskArray[i+3]}"
                 pa="${maskArray[i+4]}"
 
-                python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
+                python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra_mask $dec_mask $r $axisRatio $pa
             done
         else    
             imageToUse=$i
