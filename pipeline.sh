@@ -899,6 +899,7 @@ totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
 
+
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
@@ -1039,7 +1040,6 @@ else
 fi
 
 
-
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1119,7 +1119,6 @@ if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
 fi
 
-
 # Checking and removing bad frames based on the background value ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_backgroundProperties.txt
@@ -1137,6 +1136,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir
   echo done > $badFilesWarningsDone
 fi
+
 
 echo -e "\n·Subtracting background"
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
@@ -1318,6 +1318,7 @@ calibratingMosaic=false
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 
+
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
@@ -1358,11 +1359,13 @@ else
   echo "done" > $backgroundBrightnessDone
 fi
 
+exit 0
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
+
 
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
@@ -1680,9 +1683,7 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   echo "done" > $fwhmPlotsWithCoadd
 fi
 
-
 exit 0
-
 
 
 # # Remove intermediate folders to save some space

@@ -117,7 +117,6 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
         else:
             raise Exception("Wrong number of fields in the file of background estimation. Expected 5 (constant estimation of the background), got " + str(numberOfFields))
 
-    # Then we read the airmass
     try:
         airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
     except:
@@ -344,7 +343,7 @@ def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejected
     return()
 
 def filesMatch(file1, file2):
-    calibrationPattern = r"_(\d+)."
+    calibrationPattern = r"_(\d+)\."
     match = re.search(calibrationPattern, file1)
     calibrationNumber = match.group(1)
 
@@ -359,12 +358,13 @@ def filesMatch(file1, file2):
 def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFactors):
     calibratedValues = []
     
+
     for j in backgroundValues:
         backgroundFile = j[0]
+
         found=False
         for i in calibrationFactors:
             calibrationFile = i[0]
-            
             if ((not pd.isna(calibrationFile)) and (not pd.isna(backgroundFile))):
                 if (filesMatch(calibrationFile, backgroundFile)):
                     calibratedValues.append(i[1] * j[1])
@@ -418,29 +418,6 @@ def getIndicesOfRejectedFrames(normalisedBackgroundValuesArray, rejectedFrames):
         rejectedFrames
     return(indices)
 
-# def identifyBadFrames(folderWithFrames,folderWithAirmasses,airMassKeyWord,folderWithCalibrationFactors):
-    
-#     allFiles=[]
-#     allBackValues=[]
-#     for currentFile in glob.glob(folderWithFrames + "/*.txt"):
-#         if fnmatch.fnmatch(currentFile,'*done*.txt'):
-#             continue
-#         currentValue = obtainNormalisedBackground(currentFile, folderWithAirmasses, airMassKeyWord)
-#         matchID=re.search(r'_(\d+).',currentFile).group(1)
-#         calFactorFile=glob.glob(f"{folderWithCalibrationFactors}/alpha*Decals*{matchID}.txt")[0]
-#         calFactor=retrieveCalibrationFactors(calFactorFile)
-#         valueCalibrated = currentValue*calFactor
-
-#         magnitudesPerArcSecSq = countsToSurfaceBrightnessUnits(valueCalibrated, arcsecPerPx)
-#         allFiles.append(currentFile)
-#         allBackValues.append(magnitudesPerArcSecSq)
-#     allFiles=np.array(allFiles)
-#     allBackValues=np.array(allBackValues)
-#     values_mask=allBackValues<20.5
-#     badFiles=allFiles[values_mask]
-#     badValues=allBackValues[values_mask]
-#     return(badFiles,badValues)
-
 def identifyBadFramesBasedOnBackgroundBrightness(files, data, threshold):
     badFiles   = []
     badBackground = []
@@ -474,10 +451,6 @@ def identifyBadFramesBasedOnCalibrationFactors(data, meanCalibrationFactor, stdC
 
 
 
-
-
-
-
 HDU_TO_FIND_AIRMASS = 1
 
 folderWithSkyEstimations      = sys.argv[1]
@@ -491,7 +464,6 @@ outputFileBackground          = sys.argv[8]
 outputFileCalibrationFactors  = sys.argv[9]
 useCommonCalibrationFactorFlag = str(sys.argv[10])
 commonCalibrationFactorFile   = sys.argv[11]
-
 
 if (useCommonCalibrationFactorFlag.lower() == "true"):
     useCommonCalibrationFactorFlag = True
@@ -547,6 +519,7 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     normalisedBackgroundValues[number-1] = [currentFile.split('/')[-1], normalisedBackground]
     originalBackgroundValues[number-1] = [currentFile.split('/')[-1], originalBackground]
 
+
 files = np.array(files)
 
 
@@ -578,7 +551,7 @@ if (useCommonCalibrationFactorFlag):
         # 3.5.-  Identify frames that are outside the Nsigma limit of the dist
         numberOfSigma = 3
         badFilesCalibrationFactor, _ = identifyBadFramesBasedOnCalibrationFactors(totalCalibrationFactors, commonCalibrationFactorValue, calibrationFactorsStd, numberOfSigma)
-
+        
         pattern = r"\d+"
         with open(destinationFolder + "/" + outputFileCalibrationFactors, 'w') as file:
             for fileName in badFilesCalibrationFactor:
@@ -586,6 +559,7 @@ if (useCommonCalibrationFactorFlag):
                 result = match.group(0)
                 file.write(result + '\n')
         rejectedFrames_CalibrationFactor = np.array(badFilesCalibrationFactor).astype(int)
+
 
 # 4.- Apply common/individual calibration factors
 if (useCommonCalibrationFactorFlag):
@@ -599,6 +573,7 @@ else:
 magnitudesPerArcSecSqOriginal = countsToSurfaceBrightnessUnits(valuesCalibratedOriginal, arcsecPerPx)
 magnitudesPerArcSecSqNormalised = countsToSurfaceBrightnessUnits(valuesCalibratedNormalised, arcsecPerPx)
 
+
 # 5.- Saving background magnitudes
 with open(destinationFolder + "/backgroundMagnitudes.dat", 'w') as f:
     for i in range(len(magnitudesPerArcSecSqNormalised)):
@@ -611,8 +586,8 @@ with open(destinationFolder + "/" + outputFileBackground, 'w') as file:
         match = re.search(pattern, fileName)
         result = match.group(0)
         file.write(result + '\n')
-
 rejectedFrames_Background = np.array(badFilesBackground).astype(int)
+
 
 
 # PLOTS

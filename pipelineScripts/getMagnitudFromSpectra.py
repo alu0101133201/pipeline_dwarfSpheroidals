@@ -134,8 +134,6 @@ DESIRED_ZP = 22.5
 
 ra, dec, magnitudes = getMagnitudesFromSpectra(spectraDir, transmittanceFile, transmittanceUnits, surveyForSpectra)
 
-
 equivalentcountsInZP = getCountsFromMagnitude(magnitudes, DESIRED_ZP)
-
 createCatalogueFromTable(catalogueName, ra, dec, magnitudes, equivalentcountsInZP)
 
