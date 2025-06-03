@@ -238,7 +238,8 @@ oneNightPreProcessing() {
       checkIfExist_DATEOBS $DATEOBS
       if [[ $dateHeaderKey =~ ^MJD ]]; then
         unixTimeInSeconds=$(astarithmetic $DATEOBS 40587 - 86400 x -q)
-        unixTimeInSeconds=$(printf "%.0f" "$unixTimeInSeconds")
+        unixTimeInSeconds=$(awk "BEGIN {printf \"%.0f\", $unixTimeInSeconds}")
+
       else
 
         ## MACOS does not support -d in date, so it is better to use coreutils:gdata
@@ -1076,40 +1077,54 @@ echo autoindex >> $astrocfg
 ###Astrometry on hipercam is a bit tricky, we are gonna force two things:
   # 1. Convolve images with a kernel to enhance the sources
   # 2. solve-field will also be changed respect to the standard pipelines to be more restrictive
+#If you prefer to use already astrometrized frames, we also add this solution
 astroimadir=$BDIR/astro-ima
-astroimacondir=$BDIR/astro-ima-convolved
-convolimadir=$BDIR/frames-convolved
-if ! [ -d $convolimadir ]; then mkdir $convolimadir; fi
-kernel_astro=$BDIR/kernel_astro.fits
-if ! [ -f $kernel_astro ]; then 
-  astmkprof --kernel=moffat,3,2.8,5 --oversample=5 -o $kernel_astro
-fi
-convolimadone=$convolimadir/done.txt
-if [ -f $convolimadone ]; then
-  echo -e "\n\t Images are already convolved with astrometry kernel"
-else
-  for file in $stitchdir/*.fits; do
-    base=$( basename $file )
-    astconvolve $file --kernel=$kernel_astro --type=float32 --domain=spatial --khdu=1 -o $convolimadir/$base
-  done
-  echo done > $convolimadone
-fi
-
 astroimadone=$astroimadir/done_"$filter".txt
 if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
-if ! [ -d $astroimacondir ]; then mkdir $astroimacondir; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
-  frameNames=()
-  for a in $(seq 1 $totalNumberOfFrames); do
+  if [ "$astrometrizedFolder" = "NONE" ]; then
+    astroimacondir=$BDIR/astro-ima-convolved
+    convolimadir=$BDIR/frames-convolved
+    if ! [ -d $convolimadir ]; then mkdir $convolimadir; fi
+    kernel_astro=$BDIR/kernel_astro.fits
+    if ! [ -f $kernel_astro ]; then 
+      astmkprof --kernel=moffat,3,2.8,5 --oversample=5 -o $kernel_astro
+    fi
+    convolimadone=$convolimadir/done.txt
+    if [ -f $convolimadone ]; then
+      echo -e "\n\t Images are already convolved with astrometry kernel"
+    else
+      for file in $stitchdir/*.fits; do
+        base=$( basename $file )
+        astconvolve $file --kernel=$kernel_astro --type=float32 --domain=spatial --khdu=1 -o $convolimadir/$base
+      done
+      echo done > $convolimadone
+    fi
+
+
+    if ! [ -d $astroimacondir ]; then mkdir $astroimacondir; fi
+
+    frameNames=()
+    for a in $(seq 1 $totalNumberOfFrames); do
       base=$a.fits
       i=$convolimadir/$base
       frameNames+=("$i")
-  done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir $stitchdir
+    done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir $stitchdir
+  else
+    #Use already astrometrized images for making the astrometry
+    frameNames=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+      base=$a.fits
+      frameNames+=("$base")
+    done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" copyAstrometry {} $stitchdir $astrometrizedFolder $astroimadir
+  fi
   echo done > $astroimadone
 fi
+
 
 
 
@@ -1374,7 +1389,7 @@ else
   exposuremapdone=$coaddDir/done_exposureMap.txt
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
-exit 0
+
 
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
@@ -1572,6 +1587,7 @@ else
   maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
   surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddPrephotCalibratedName $maskName $exposuremapName $coaddPrephotDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
+
 
 times=($(getInitialMidAndFinalFrameTimes $INDIR))
 if [[ "$OSTYPE" == "darwin"* ]]; then

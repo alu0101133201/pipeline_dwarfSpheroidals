@@ -130,6 +130,7 @@ outputConfigurationVariablesInformation() {
         "·Indices scales for astrometrisation"
         "  Lowest index:$lowestScaleForIndex"
         "  Highest index:$highestScaleForIndex"
+        "·Folder with astrometrized frames:$astrometrizedFolder"
         " "
         "·Scale-low parameters for solve-field (astrometry.net):$solve_field_L_Param"
         "·Scale-high parameters for solve-field (astrometry.net):$solve_field_H_Param"
@@ -244,6 +245,7 @@ checkIfAllVariablesAreSet() {
                 detectorHeight \
                 overscan \
                 trimsecKey \
+                astrometrizedFolder \
                 lowestScaleForIndex \
                 highestScaleForIndex \
                 solve_field_L_Param \
@@ -954,10 +956,22 @@ warpImage() {
     currentIndex=$(basename $imageToSwarp .fits)
     tmpFile1=$entiredir"/$currentIndex"_temp1.fits
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
+    # We first see which is the swarp program
+    detect_swarp() {
+        for cmd in swarp SWarp; do
+            if command -v "$cmd" >/dev/null 2>&1; then
+                echo "$cmd"
+                return
+            fi
+        done
+        echo "Error: SWarp not found" >&2
+        exit 1
+    }
 
+    SWARP_CMD=$(detect_swarp)
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "SWarp"
-    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
 
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
@@ -1589,6 +1603,19 @@ solveField() {
 }
 export -f solveField
 
+copyAstrometry() {
+    local base=$1
+    local inputFolder=$2
+    local astroFolder=$3 
+    local outputDir=$4
+
+    inputImage=$inputFolder/$base
+    wcsImage=$astroFolder/$base
+    output=$outputDir/$base
+    astarithmetic $inputImage --wcsfile=$wcsImage -o $output
+}
+export -f copyAstrometry
+
 runSextractorOnImage() {
     local a=$1
     local sexcfg=$2
@@ -2149,6 +2176,7 @@ prepareSurveyDataForPhotometricCalibration() {
     performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration_g $selectedSurveyStarsDir"ForGAIACalibration_g" $aperturePhotDir"ForGAIACalibration_g" "g" $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDir_r "$selectedSurveyStarsDir"_r "$aperturePhotDir"_r "r" $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration_r $selectedSurveyStarsDir"ForGAIACalibration_r" $aperturePhotDir"ForGAIACalibration_r" "r" $survey $numberOfApertureForRecuperateGAIA
+   
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         [ -L $aperturePhotDir ] || ln -s "$aperturePhotDir"_$filter $aperturePhotDir
         [ -L $aperturePhotDir"ForGAIACalibration" ] || ln -s $aperturePhotDir"ForGAIACalibration_"$filter $aperturePhotDir"ForGAIACalibration"
@@ -2272,7 +2300,8 @@ getColourCorrectionFromPolynomial() {
     local result=0
 
     IFS=',' read -r -a coeffs_array <<< "$coeffs"
-    x=$(printf "%f" "$x") # This is needed in case $x is given for transforming $x from scientific notation to normal, so bc can handle it
+    x=$(awk "BEGIN {printf \"%f\", $x}")
+ # This is needed in case $x is given for transforming $x from scientific notation to normal, so bc can handle it
 
     for ((i=${#coeffs_array[@]}-1; i>=0; i--)); do
         coeff=${coeffs_array[i]}
@@ -3536,6 +3565,7 @@ limitingSurfaceBrightness() {
     astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
     out_maskexp_tmp=$directoryOfImages/mask_exp_tmp.fits
     astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp_tmp >/dev/null 2>&1
+    
 
     # We run again noisechisel because we need the SKY_STD header. We need it because we want to use MEDSTD, it is said
     # in gnuastro documentation that it is more reliable than simply using the std of the background px of the image.

@@ -12,7 +12,7 @@ from packaging import version
 import matplotlib.pyplot as plt
 
 ##First step: deal with integration function
-if version.parse(np.__version__) >= version.parse("1.20"):
+if version.parse(np.__version__) >= version.parse("2.0"):
     integrate=np.trapezoid
 else:
     integrate=np.trapz
