@@ -337,6 +337,7 @@ export -f checkIfNeededFilterCorrectionIsGiven
 
 # In this function we check the transmittances given. Just for having everything in the same units
 # We place everything into Angstroms and transmittances from 0 to 1.
+
 checkUnitsAndConvertToCommonUnitsIfNeeded() {
     local filterFile=$1
     errorCode=12
@@ -372,8 +373,11 @@ checkUnitsAndConvertToCommonUnitsIfNeeded() {
             cat  # Keep as is
         fi
     } > "$filterFile"
-
-    sed -i '1s/^/A normalised\n/' "$filterFile"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' '1s/^/A normalised\n/' "$filterFile"
+    else
+        sed -i '1s/^/A normalised\n/' "$filterFile"
+    fi
 }
 export -f checkUnitsAndConvertToCommonUnitsIfNeeded
 
@@ -477,9 +481,18 @@ getInitialMidAndFinalFrameTimes() {
   declare -a date_obs_array
 
   while IFS= read -r -d '' file; do
-    currentDateObs=$( gethead $file DATE-OBS)
+    currentDateObs=$( gethead $file $dateHeaderKey )
     if [[ -n "$currentDateObs" ]]; then
-        unixTime=$( TZ=UTC date -d "$currentDateObs" +"%s" )
+        if [[ $dateHeaderKey =~ ^MJD ]]; then
+            unixTime=$(astarithmetic $currentDateObs 40587 - 86400 x -q)
+            unixTime=$(printf "%.0f" "$unixTimeInSeconds")
+        else
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                unixTime=$( TZ=UTC gdate -d "$currentDateObs" +"%s" )
+            else
+                unixTime=$( TZ=UTC date -d "$currentDateObs" +"%s" )
+            fi
+        fi
         date_obs_array+=("$unixTime")
     fi
   done < <(find "$directoryWithNights" -type f -name "*.fits" -print0)
@@ -501,8 +514,8 @@ writeKeywordToFits() {
     local keyWord=$3
     local value=$4
     local comment=$5
-
-    astfits --write=$keyWord,$value,"$comment" $fitsFile -h$header
+    
+    astfits $fitsFile --write=$keyWord,$value,"$comment"  -h$header
 }
 export -f writeKeywordToFits
 
@@ -512,7 +525,8 @@ propagateKeyword() {
     local out=$3
     local h=$4
 
-    variableToDecideRingToNormalise=$(gethead $image $keyWordToPropagate -x $h)
+    valueToPropagate=$(gethead $image $keyWordToPropagate -x $h)
+
     eval "astfits --delete=$keyWordToPropagate $out -h$h 2&>/dev/null" # I redirect the error descriptor so I avoid the error message if the keyword didn't exist
     eval "astfits --write=$keyWordToPropagate,$valueToPropagate $out -h$h"
 }
@@ -521,9 +535,16 @@ export -f propagateKeyword
 addkeywords() {
     local fits_file=$1
     shift
-    local -n keys_array=$1
-    local -n values_array=$2
-    local -n comments_array=$3
+    local keys_array_name=$1
+    local values_array_name=$2
+    local comments_array_name=$3
+
+    eval "keys_array=(\"\${${keys_array_name}[@]}\")"
+    eval "values_array=(\"\${${values_array_name}[@]}\")"
+    eval "comments_array=(\"\${${comments_array_name}[@]}\")"
+    
+    
+
 
     if [[ -z "$fits_file" || ${#keys_array[@]} -eq 0 || ${#values_array[@]} -eq 0 ]]; then
         errorNumber=7
@@ -542,7 +563,8 @@ addkeywords() {
         local key="${keys_array[$i]}"
         local value="${values_array[$i]}"
         local comment="${comments_array[$i]}"
-
+        value=$( escapeSpacesFromString $value ) 
+        
         writeKeywordToFits $fits_file 1 "$key" "$value" "$comment"
     done
 }
@@ -920,6 +942,7 @@ warpImage() {
     local ra=$4
     local dec=$5
     local coaddSizePx=$6
+    local headersDir=$7
 
     # ****** Decision note *******
     # We need to regrid the frames into the final coadd grid. But if we do this right now we will be processing
@@ -948,7 +971,12 @@ warpImage() {
     rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 $frameFullGrid
 
     # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but  swarp for some reason propagates it incorrectly
-    propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 1
+    ####Since astro-ima are not keeping the keywords, we propagate them
+    propagateKeyword $headersDir/"$currentIndex".fits $airMassKeyWord $entiredir/entirecamera_"$currentIndex".fits 1
+    propagateKeyword $headersDir/"$currentIndex".fits $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 1
+    propagateKeyword $headersDir/"$currentIndex".fits $pointingRA $entiredir/entirecamera_"$currentIndex".fits 1
+    propagateKeyword $headersDir/"$currentIndex".fits $pointingDEC $entiredir/entirecamera_"$currentIndex".fits 1
+
 }
 export -f warpImage
 
@@ -1371,6 +1399,7 @@ downloadSurveyData() {
     local fieldSizeDeg=$7
     local gaiaCatalogue=$8
     local survey=$9
+    local sizeOfBrick=${10}
     
 
     echo -e "\n·Downloading ${survey} bricks"
@@ -1383,7 +1412,7 @@ downloadSurveyData() {
     else
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions
         echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
-        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey
+        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey $sizeOfBrick
 
         echo "done" > $donwloadMosaicDone
     fi
@@ -1432,19 +1461,55 @@ addTwoFiltersAndDivideByTwo() {
 export -f addTwoFiltersAndDivideByTwo
 
 
+downloadPanstarrsCatalogue() {
+    local query=$1
+    local catdir=$2
+    local catName=$3
+
+    astquery $query -o $catdir/"$objectName"_Panstarrs_S1_tmp.fits
+    asttable $catdir/"$objectName"_Panstarrs_S1_tmp.fits -c1,2,3  --colmetadata=1,RA,deg --colmetadata=2,DEC,deg --colmetadata=3,phot_g_mean_mag,mag -o$catName
+
+    # We are downloading Panstarrs for hipercam, this will stay as it is. We change the metadata to mimic that of 
+
+    rm $catdir/"$objectName"_Panstarrs_S1_tmp.fits 
+}
+export -f downloadPanstarrsCatalogue
+
 downloadGaiaCatalogue() {
     local query=$1
     local catdir=$2
     local catName=$3
 
     astquery $query -o $catdir/"$objectName"_Gaia_DR3_tmp.fits
-    asttable $catdir/"$objectName"_Gaia_DR3_tmp.fits -c1,2,3  --colmetadata=1,RA,deg --colmetadata=2,DEC,deg --colmetadata=3,phot_g_mean_mag,mag -o$catName
+    asttable $catdir/"$objectName"_Gaia_DR3_tmp.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -o$catdir/tmp.txt
 
-    # We are downloading Panstarrs for hipercam, this will stay as it is. We change the metadata to mimic that of 
+    # I have explored 3 different ways of selecting good stars.
+    # From the most restrictive to the less restrictive:
 
-    rm $catdir/"$objectName"_Gaia_DR3_tmp.fits 
+    # # Here I demand that the gaia object fulfills simultaneously that:
+    # # 1.- Parallax > 3 times its error
+    # # 2.- Proper motion (ra) > 3 times its error
+    # # 3.- Proper motion (dec) > 3 times its error
+    # asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
+    # asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
+    # asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $catName
+
+    # # Here I only demand that the parallax is > 3 times its error
+    # asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -o$catdir/test_.txt
+    # asttable $catdir/test_.txt -c1,2,3 --range=ARITH_2,999,1001 -o $catName
+
+    # Here I  demand that the parallax OR a proper motion is > 3 times its error
+    asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
+    asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
+    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName
+
+    # # Here we don't demand any condition
+    # asttable $catdir/tmp.txt -o $catName
+
+    rm $catdir/test1.txt $catdir/tmp.txt $catdir/"$objectName"_Gaia_DR3_tmp.fits $catdir/test_.txt
 }
 export -f downloadGaiaCatalogue
+
 
 downloadIndex() {
     local re=$1
@@ -1870,6 +1935,7 @@ prepareCalibrationData() {
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
     local mosaicDone=${19}
+    local sizeOfBrick=${20}
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
     if [ -f $mosaicDone ]; then 
@@ -1891,7 +1957,8 @@ prepareCalibrationData() {
 
             prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
                                                 $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                                $calibrationBrightLimit $calibrationFaintLimit
+                                                $calibrationBrightLimit $calibrationFaintLimit $sizeOfBrick 
+            
         fi
         echo done > $mosaicDone
     fi
@@ -1950,7 +2017,8 @@ prepareSurveyDataForPhotometricCalibration() {
     local filterCorrectionCoeff=${16}
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
-
+    local sizeOfBrick=${19}
+    echo $apertureUnits
     sizeOfFieldForCalibratingPANSTARRStoGAIA=1.5
 
     echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
@@ -1977,10 +2045,12 @@ prepareSurveyDataForPhotometricCalibration() {
     bricksIdentificationFile_r=$surveyImagesDir_r/brickIdentification.txt
     bricksIdentificationFileForGaiaCalibration_r=$surveyImagesDirForGaiaCalibration_r/brickIdentification.txt
 
-    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey    
-    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
-    downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
-    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
+    sizeOfBrick_gaia=3600
+
+    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick    
+    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
+    downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
+    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
 
 
    
@@ -2007,8 +2077,8 @@ prepareSurveyDataForPhotometricCalibration() {
             [ -L $surveyImagesDir  ] || ln -s "$surveyImagesDir"_$filter $surveyImagesDir
             [ -L $surveyImagesDirForGaiaCalibration  ] || ln -s "$surveyImagesDirForGaiaCalibration"_$filter $surveyImagesDirForGaiaCalibration
         else
-            downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFileForGaiaCalibration $filter $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
-            downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filter $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
+            downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFileForGaiaCalibration $filter $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
+            downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filter $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
         fi
     fi
 
@@ -2044,6 +2114,7 @@ prepareSurveyDataForPhotometricCalibration() {
     selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration_g $selectedSurveyStarsDir"ForGAIACalibration_g" $methodToUse $survey $apertureUnits
     selectStarsAndSelectionRangeSurvey $surveyImagesDir_r "$selectedSurveyStarsDir"_r $methodToUse $survey $apertureUnits
     selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration_r $selectedSurveyStarsDir"ForGAIACalibration_r" $methodToUse $survey $apertureUnits
+    
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         [ -L $selectedSurveyStarsDir ] || ln -s "$selectedSurveyStarsDir"_$filter $selectedSurveyStarsDir
         [ -L $selectedSurveyStarsDir"ForGAIACalibration"  ] || ln -s $selectedSurveyStarsDir"ForGAIACalibration_"$filter $selectedSurveyStarsDir"ForGAIACalibration"
@@ -2101,7 +2172,7 @@ prepareSurveyDataForPhotometricCalibration() {
     # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
     calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5
     calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15
-
+    
     
     read offset_g factorToApplyToCounts_g < "$mosaicDir/offsetToCorrectSurveyToGaia_g.txt"
     read offset_r factorToApplyToCounts_r < "$mosaicDir/offsetToCorrectSurveyToGaia_r.txt"
@@ -2341,7 +2412,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
     local apertureUnits=$7
 
-
+    
     i=$framesForCalibrationDir/$a
     ##In the case of using it for Decals or Panstarrs, we need the variable survey
 
@@ -2355,10 +2426,9 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         echo "Exiting with error number: $erroNumber"
         exit $erroNumber
     fi
-
     
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
-
+    
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
     s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
@@ -2723,7 +2793,11 @@ applyCalibrationFactors() {
 
         for a in $(ls $imagesForCalibration/*.fits); do
             frameName=$( basename $a )
-            frameNumber=$( echo $frameName | grep -oP '(?<=_)\d+(?=\.fits)' )
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                frameNumber=$(perl -nE 'say $1 if /_(\d+)\.fits/' <<< "$frameName")
+            else
+                frameNumber=$( echo $frameName | grep -oP '(?<=_)\d+(?=\.fits)' )
+            fi
             framesToApplyFactor+=("$frameNumber")
         done
 
@@ -3316,7 +3390,7 @@ generateCatalogueFromImage_sextractor(){
     # I specify the configuration path here because in the photometric calibration the working directory changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII_HEAD 1>/dev/null 2>&1
-
+    
     # The following code is to identify the FWHM and Re columns numbers. This is needed because it is dependant
     # on the order of the parameters in the .param file.
     headerLines=$( grep '^#' "$outputDir/"$a"_tmp.cat")
@@ -3333,11 +3407,15 @@ generateCatalogueFromImage_sextractor(){
     # We divide the fwhm by 2 so we have a radius
     # this is done here even if Re is chosen because then, when a column is removed, the column number changes and it's simpler to do it here
     awk -v col="$fwhmCol" '{ $col = $col / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a"_tmp2.cat
-
+    
     # Remove the sextractor headers to add later the noisechisel equivalents (for consistency)
     numberOfHeaders=$( grep '^#' $outputDir/"$a"_tmp2.cat | wc -l)
-    sed -i "1,${numberOfHeaders}d" "$outputDir/"$a"_tmp2.cat"
-
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "1,${numberOfHeaders}d" "$outputDir/$a"_tmp2.cat
+    else
+        sed -i "1,${numberOfHeaders}d" "$outputDir/"$a"_tmp2.cat"
+    fi
+    
     # Note. It seems like reCol and fwhmCol should go the other way around, but the awk command REMOVES the column that receives. So this is not a mistake
     if [ $apertureUnitsToCalculate == "FWHM" ]; then
         awk -v col="$reCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
@@ -3346,7 +3424,7 @@ generateCatalogueFromImage_sextractor(){
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
-
+    
     # Headers to mimic the noisechisel format. Change between MacOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS (BSD sed)

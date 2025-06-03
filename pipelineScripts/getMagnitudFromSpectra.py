@@ -7,10 +7,16 @@ import numpy as np
 
 from astropy.io import fits
 from scipy.interpolate import interp1d
-
+from packaging import version
 
 import matplotlib.pyplot as plt
 
+##First step: deal with integration function
+if version.parse(np.__version__) >= version.parse("1.20"):
+    integrate=np.trapezoid
+else:
+    integrate=np.trapz
+    
 def getRaAndDecFromSpectrum(spectrumFile, surveyForSpectra):
     with fits.open(spectrumFile) as hdul:
         if (surveyForSpectra == "SDSS"):
@@ -61,9 +67,13 @@ def obtainFluxFromSpectrumAndFilter(wavelengths, spectrumF,  filterT, plot=False
     convolvedSpec = []
     for i in range(len(spectrumF)):
         convolvedSpec.append(spectrumF[i] * filterT[i])
-
-    total_flux = np.trapz(convolvedSpec, wavelengths)
-    dividedFlux = total_flux / np.trapz(filterT, wavelengths)
+   
+    
+    total_flux = integrate(convolvedSpec, wavelengths)
+    dividedFlux = total_flux / integrate(filterT, wavelengths)
+    
+            
+        
     return(-2.5*np.log10(dividedFlux / 3631))
 
 def extractInstrumentAndObjectType(path):
