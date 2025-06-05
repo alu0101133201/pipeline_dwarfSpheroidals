@@ -859,6 +859,7 @@ oneNightPreProcessing() {
     exec 200>&- 
   fi
   
+  
 
   # # Removing intermediate information to save space - We maintain the final flats for checking them
   # rm -rf $BDIR/masked-corner_n$currentNight
@@ -1447,15 +1448,15 @@ else
   tmpDir=$noiseskyctedir
 fi
 
-backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness.done
+backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness_it$iteration.done
 if [ -f $backgroundBrightnessDone ]; then
   echo -e "\nDiagnosis based on background brightness already done"
 else
-  badFilesBackgroundWarningsFile=identifiedBadFrames_backgroundBrightness.txt
-  badFilesCalibrationFactorFile=identifiedBadFrames_calibrationFactor.txt
+  badFilesBackgroundWarningsFile=identifiedBadFrames_backgroundBrightness_it$iteration.txt
+  badFilesCalibrationFactorFile=identifiedBadFrames_calibrationFactor_it$iteration.txt
   python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudesAndCalibrationFactorPlots.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $alphatruedir \
                                                                                                   $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesBackgroundWarningsFile \
-                                                                                                  $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt
+                                                                                                  $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt 1
   echo "done" > $backgroundBrightnessDone
 fi
 
@@ -1617,10 +1618,10 @@ removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badF
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness_it$iteration.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
-rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor.txt
+rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor_it$iteration.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 
@@ -1769,7 +1770,6 @@ else
 
 
   # This takes a long time, only doing it in the second iteration
-  
   # sumMosaicAfterCoaddSubtractionPxTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubPxTagged_"$filter"_it$iteration.fits
   # sumMosaicAfterCoaddSubtractionAperTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubAperTagged_"$filter"_it$iteration.fits
   # framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
@@ -1794,16 +1794,12 @@ fi
 
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-fullGrid_noOutliersPx_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/photCorrFullGrid-dir_noOutliersPx_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/photCorrSmallGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
-# find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1920,10 +1916,10 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
     removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
     removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-    rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+    rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness_it$iteration.txt
     removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
     removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
-    rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor.txt
+    rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor_it$iteration.txt
     removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
     removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 
@@ -2006,11 +2002,25 @@ calibratingMosaic=false
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 
-
-
 if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
   computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
 fi
+
+# DIAGNOSIS PLOT
+# Histogram of the background values on magnitudes / arcsec²
+backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness_it$iteration.done
+if [ -f $backgroundBrightnessDone ]; then
+  echo -e "\nDiagnosis based on background brightness already done"
+else
+  badFilesBackgroundWarningsFile=identifiedBadFrames_backgroundBrightness_it$iteration.txt
+  badFilesCalibrationFactorFile=identifiedBadFrames_calibrationFactor_it$iteration.txt
+  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudesAndCalibrationFactorPlots.py $noiseskydir $framesForCommonReductionDir $airMassKeyWord $alphatruedir \
+                                                                                                  $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesBackgroundWarningsFile \
+                                                                                                  $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt $iteration
+  echo "done" > $backgroundBrightnessDone
+fi
+
+
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 
@@ -2024,6 +2034,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
   applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
 fi
+
 
 # Calibration
 iteration=2
@@ -2156,10 +2167,10 @@ removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badF
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness.txt
+rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness_it$iteration.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
-rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor.txt
+rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor_it$iteration.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 

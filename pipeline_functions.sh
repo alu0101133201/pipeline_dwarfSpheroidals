@@ -834,6 +834,18 @@ getCentralCoordinate(){
 }
 export -f getCentralCoordinate
 
+detect_swarp() {
+    for cmd in swarp SWarp; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            echo "$cmd"
+            return
+        fi
+    done
+    echo "Error: SWarp not found" >&2
+    exit 1
+}
+export -f detect_swarp
+
 warpImage() {
     local imageToSwarp=$1
     local entireDir_fullGrid=$2
@@ -854,8 +866,8 @@ warpImage() {
     frameFullGrid=$entireDir_fullGrid/entirecamera_$currentIndex.fits
 
     # Resample into the final grid
-    # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    SWARP_CMD=$( detect_swarp )
+    $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
 
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
@@ -1053,7 +1065,8 @@ computeSkyForFrame(){
             echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
             exit $errorNumber
         fi
-
+        
+        rm $imageToUse
     else
         # Case when we fit a plane
         planeOutput=$(echo $base | sed 's/.fits/_poly.fits/')
@@ -1357,13 +1370,14 @@ solveField() {
     # Maybe a bug? I have not managed to make it work
     max_attempts=4
     attempt=1
+    sex_path=$( which source-extractor )
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
         solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees\
         -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
-        --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
+        --use-source-extractor --source-extractor-path=$sex_path \
         --source-extractor-config=$sexcfg_sf --x-column X_IMAGE --y-column Y_IMAGE \
         --sort-column MAG_AUTO --sort-ascending  \
         -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
@@ -2927,7 +2941,7 @@ produceHalfMaxRadVsMagForSingleImage() {
     plotYLowerLimit=12
     plotYHigherLimit=22
     python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png  \
-        $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit
+        $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit $apertureUnits
 
     rm $catalogueName $outputDir/match_decals_gaia_$a.txt
 }
@@ -2948,8 +2962,6 @@ produceHalfMaxRadVsMagForOurData() {
     for i in $imagesDir/*.fits; do
         images+=("$i")
     done
-
-    # images=("/home/sguerra/NGC598/build/photCorrSmallGrid-dir_it1/entirecamera_1.fits")
     printf "%s\n" "${images[@]}" | parallel --line-buffer -j "$num_cpus" produceHalfMaxRadVsMagForSingleImage {} $outputDir $gaiaCat $toleranceForMatching $pythonScriptsPath "-" $tileSize $apertureUnits
 }
 export -f produceHalfMaxRadVsMagForOurData

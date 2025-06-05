@@ -65,7 +65,7 @@ plotXLowerLimit  = float(sys.argv[7])
 plotXHigherLimit = float(sys.argv[8])
 plotYLowerLimit  = float(sys.argv[9])
 plotYHigherLimit = float(sys.argv[10])
-
+apertureUnits    = sys.argv[11]
 
 
 setMatplotlibConf()
@@ -76,7 +76,7 @@ x, y =  readHalfMaxRadAndMag(matchedtableFile, 0, 1)
 
 fig, ax = plt.subplots(1, 1, figsize=(12, 12))
 plt.tight_layout(pad=7.0)
-configureAxis(ax, 'HALF_MAX_RADIUS (px)', 'Magnitude (mag)', logScale=False)
+configureAxis(ax, f'{apertureUnits} (px)', 'Magnitude (mag)', logScale=False)
 ax.set_xscale('log')
 ax.set_xlim(plotXLowerLimit, plotXHigherLimit)
 ax.set_ylim(plotYLowerLimit, plotYHigherLimit)
