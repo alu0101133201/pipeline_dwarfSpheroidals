@@ -514,7 +514,6 @@ addkeywords() {
 }
 export -f addkeywords
 
-
 getMedianValueInsideRing() {
     local i=$1
     local commonRing=$2
@@ -526,6 +525,7 @@ getMedianValueInsideRing() {
     local keyWordValueForFirstRing=$8
     local keyWordValueForSecondRing=$9
     local noiseskydir=${10}
+
 
     if [ "$useCommonRing" = true ]; then
         # Case when we have one common normalisation ring
@@ -543,10 +543,15 @@ getMedianValueInsideRing() {
         secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
         secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
+        tmpName=$( basename $i ) 
+        maskedImageUsingRing=$noiseskydir/maskedAllButRing$tmpName
+
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where sigclip-median --quiet)
+            astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -o $maskedImageUsingRing --quiet
+            me=$(aststatistics $maskedImageUsingRing -h1 --sclipparams=3,3 --sigclip-median --quiet)
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            me=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where sigclip-median --quiet)
+            astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -o $maskedImageUsingRing --quiet
+            me=$(aststatistics $maskedImageUsingRing -h1 --sclipparams=3,3 --sigclip-median --quiet)
         else
             errorNumber=4
             echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
@@ -586,14 +591,15 @@ getStdValueInsideRing() {
         secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
         secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
 
-        numOfOperands=1
-        sigma=3
-        iterations=3
+        tmpName=$( basename $i ) 
+        maskedImageUsingRing=$noiseskydir/maskedAllButRing$tmpName
 
         if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-            std=$(astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where $numOfOperands $sigma $iterations sigclip-std --quiet)
+            astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -o $maskedImageUsingRing --quiet
+            std=$(aststatistics $maskedImageUsingRing -h1 --sclipparams=3,3 --sigclip-std --quiet)
         elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-            std=$(astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where $numOfOperands $sigma $iterations sigclip-std --quiet)
+            astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -o $maskedImageUsingRing --quiet
+            std=$(aststatistics $maskedImageUsingRing -h1 --sclipparams=3,3 --sigclip-std --quiet)
         else
             errorNumber=5
             echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
