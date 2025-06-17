@@ -1577,6 +1577,7 @@ if [ ! -f "$coaddPrephotCalibratedName" ]; then
   cp $BDIR/photCorr-coaddPrephot-dir_it$iteration/entirecamera_1.fits $coaddPrephotCalibratedName
 fi
 
+
 # Compute surface brightness limit
 sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddPrephotDir/exposureMap.fits
@@ -1920,7 +1921,7 @@ else
   subskyfullGridDone=$subskyfullGrid_dir/done.txt
   if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
   smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
-
+  
   rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
   echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -2082,7 +2083,6 @@ coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated_it$
 if [ ! -f "$coaddPrephotCalibratedName" ]; then
   cp $photCorrPrePhotDir/entirecamera_1.fits $coaddPrephotCalibratedName
 fi
-
 # Compute surface brightness limit
 sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddPrephotDir/exposureMap.fits

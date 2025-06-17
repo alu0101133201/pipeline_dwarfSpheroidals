@@ -422,18 +422,22 @@ prepareRingTemplate(){
     local filter=$4
 
     oneImage=$(ls $imageDir/*.fits | head -1)
+    xbin=$(astfits $oneImage -h0 --keyvalue=XBIN -q)
+    ybin=$(astfits $oneImage -h0 --keyvalue=YBIN -q)
+    dx=$((1024/xbin))
+    dy=$((512/ybin))
     ringRadius=$(awk '{print $5}' $template)
     x_camera=$(awk '{print $2}' $template)
     y_camera=$(awk '{print $3}' $template)
     base="${template%.txt}"
-    x_h1=$((x_camera-1024))
+    x_h1=$((x_camera-dx))
     y_h1=$((y_camera))
     x_h2=$((x_camera))
     y_h2=$((y_camera))
     x_h3=$((x_camera))
-    y_h3=$((y_camera-512))
-    x_h4=$((x_camera-1024))
-    y_h4=$((y_camera-512))
+    y_h3=$((y_camera-dy))
+    x_h4=$((x_camera-dx))
+    y_h4=$((y_camera-dy))
     if [[ "$filter" = "g" || "$filter" = "z" ]]; then
         echo "1 $x_h1 $y_h1 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd1.txt
         echo "1 $x_h2 $y_h2 6 $ringRadius 1 1 1 1 1" > $ringDir/"$base"_ccd2.txt
@@ -1584,15 +1588,16 @@ solveField() {
     # Maybe a bug? I have not managed to make it work
     max_attempts=4
     attempt=1
+    sex_path=$(which source-extractor)
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
         solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius 0.1 \
         -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
-        --use-source-extractor --source-extractor-path=/usr/local/bin/source-extractor \
+        --use-source-extractor --source-extractor-path=$sex_path \
         -E 3 -c 0.03 --odds-to-solve 1e3 \
-        -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone --no-tweak -N$astroimacondir/$base ;
+        -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone -N$astroimacondir/$base ;
         if [ -s "$layer_temp" ]; then
             attempt=$max_attempts
         fi
