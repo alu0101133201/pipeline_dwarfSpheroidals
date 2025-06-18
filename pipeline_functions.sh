@@ -1519,7 +1519,7 @@ downloadGaiaCatalogue() {
     # Here I  demand that the parallax OR a proper motion is > 3 times its error
     asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
     asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
-    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName
+    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName --colmetadata=1,RA --colmetadata=2,DEC --colmetadata=3,phot_g_mean_mag
 
     # # Here we don't demand any condition
     # asttable $catdir/tmp.txt -o $catName
@@ -1597,7 +1597,7 @@ solveField() {
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
         --use-source-extractor --source-extractor-path=$sex_path \
         -E 3 -c 0.03 --odds-to-solve 1e3 \
-        -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone -N$astroimacondir/$base ;
+        -Unone --temp-axy --no-tweak -Snone -Mnone -Rnone -Bnone -N$astroimacondir/$base ;
         if [ -s "$layer_temp" ]; then
             attempt=$max_attempts
         fi
@@ -2775,7 +2775,7 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
-
+    
 
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
