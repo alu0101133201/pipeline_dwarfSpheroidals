@@ -1982,7 +1982,6 @@ prepareSurveyDataForPhotometricCalibration() {
     correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration_g" $offset_g $factorToApplyToCounts_g "beforeCorrectingPanstarrsGAIAOffset"
     correctOffsetFromCatalogues $aperturePhotDir"_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
     correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
-
     
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         : # Since the correct offset happens in the aperturePhotDir, this soft link has already been done
@@ -1994,7 +1993,6 @@ prepareSurveyDataForPhotometricCalibration() {
         correctOffsetFromCatalogues $aperturePhotDir $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
         correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration" $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
     fi
-    
     
     computeColoursAndAddThemToCatalogues $aperturePhotDir $aperturePhotDir"_g" $aperturePhotDir"_r" $filter
     applyColourcorrectionToAllCatalogues $aperturePhotDir "$filterCorrectionCoeff"

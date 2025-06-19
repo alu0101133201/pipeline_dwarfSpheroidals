@@ -1361,12 +1361,10 @@ else
   echo "done" > $backgroundBrightnessDone
 fi
 
-
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
-
 
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
@@ -1691,6 +1689,7 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
 fi
+
 
 
 # # Remove intermediate folders to save some space
