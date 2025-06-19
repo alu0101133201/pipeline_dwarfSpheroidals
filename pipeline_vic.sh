@@ -923,20 +923,18 @@ else
   radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 fi
 
-query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
-catName=$catdir/"$objectName"_Gaia_DR3.fits
-catRegionName=$catdir/"$objectName"_Gaia_DR3_regions.reg
+catName=$catdir/"$objectName"_"$surveyToUseInSolveField"_DR3.fits
+catRegionName=$catdir/"$objectName"_"$surveyToUseInSolveField"_DR3_regions.reg
 catdone=$catdir/done.txt
 if ! [ -d $catdir ]; then mkdir $catdir; fi
 if [ -f $catdone ]; then
   echo -e "\n\tCatalogue is already downloaded\n"
 else
-  downloadGaiaCatalogue "$query_param" $catdir $catName
+  downloadCatalogue $surveyToUseInSolveField $ra_gal $dec_gal $radiusToDownloadCatalogue $catdir $catName
   python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py $catName $catRegionName "fits"
   echo "done" > $catdone
 fi
-
 
 # # Making the indexes
 # writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps

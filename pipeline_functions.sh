@@ -134,6 +134,7 @@ outputConfigurationVariablesInformation() {
         "·Scale-low parameters for solve-field (astrometry.net):$solve_field_L_Param"
         "·Scale-high parameters for solve-field (astrometry.net):$solve_field_H_Param"
         "·Scale units for parameters for solve-field (astrometry.net):$solve_field_u_Param"
+        "·Survey for building the catalogue introduced to solvefield:$surveyToUseInSolveField"
         " "
         "·Filter:$filter"
         "·Pixel scale:$pixelScale:[arcsec/px]"
@@ -251,6 +252,7 @@ checkIfAllVariablesAreSet() {
                 solve_field_L_Param \
                 solve_field_H_Param \
                 solve_field_u_Param \
+                surveyToUseInSolveField \
                 maximumBackgroundBrightness \
                 maximumSeeing \
                 fractionExpMap \
@@ -1284,6 +1286,33 @@ addTwoFiltersAndDivideByTwo() {
 export -f addTwoFiltersAndDivideByTwo
 
 
+downloadCatalogue() {
+    local surveyToUse=$1
+    local ra=$2
+    local dec=$3
+    local radius=$4
+    local catDir=$5
+    local catName=$6
+
+    case "$surveyToUse" in
+        gaia)
+            query_param="gaia --dataset=dr3 --center=$ra,$dec --radius=$radius --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
+            downloadGaiaCatalogue "$query_param" "$catDir" "$catName"
+            ;;
+        panstarrs)
+            query_param="vizier --dataset=panstarrs1 --center=$ra,$dec --radius=$radius --column=RAJ2000,DEJ2000,gmag"
+            downloadPanstarrsCatalogue "$query_param" "$catDir" "$catName"
+            ;;
+        *)
+            echo "Unknown catalog source: $surveyToUse"
+            exit 222
+            ;;
+    esac
+
+}
+export -f downloadCatalogue
+
+
 downloadGaiaCatalogue() {
     local query=$1
     local catdir=$2
@@ -1318,6 +1347,17 @@ downloadGaiaCatalogue() {
     rm $catdir/test1.txt $catdir/tmp.txt $catdir/"$objectName"_Gaia_DR3_tmp.fits $catdir/test_.txt
 }
 export -f downloadGaiaCatalogue
+
+downloadPanstarrsCatalogue() {
+    local query=$1
+    local catdir=$2
+    local catName=$3
+
+    astquery $query -o $catdir/"$objectName"_Panstarrs_S1_tmp.fits
+    asttable $catdir/"$objectName"_Panstarrs_S1_tmp.fits -c1,2,3  --colmetadata=1,RA,deg --colmetadata=2,DEC,deg --colmetadata=3,phot_g_mean_mag,mag -o$catName
+    rm $catdir/"$objectName"_Panstarrs_S1_tmp.fits 
+}
+export -f downloadPanstarrsCatalogue
 
 downloadIndex() {
     local re=$1

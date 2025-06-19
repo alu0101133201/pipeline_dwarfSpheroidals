@@ -363,6 +363,7 @@ oneNightPreProcessing() {
     echo done > $mbiascorrdone
   fi
   
+ 
   
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
   echo -e "${GREEN} --- Flat iteration 1 --- ${NOCOLOUR}"
@@ -461,6 +462,7 @@ oneNightPreProcessing() {
   
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
+ 
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
@@ -627,7 +629,6 @@ oneNightPreProcessing() {
 
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
-
 
   # Obtain a mask using noisechisel on the running flat images
   if $RUNNING_FLAT; then
@@ -835,7 +836,7 @@ oneNightPreProcessing() {
     echo done > $maskedcornerdone
   fi
 
-  
+ 
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
   if [ -f $framesForCommonReductionDone ]; then
@@ -895,6 +896,7 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
+
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
@@ -923,16 +925,15 @@ else
   radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 fi
 
-query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
 catdir=$BDIR/catalogs
-catName=$catdir/"$objectName"_Gaia_DR3.fits
-catRegionName=$catdir/"$objectName"_Gaia_DR3_regions.reg
+catName=$catdir/"$objectName"_"$surveyToUseInSolveField"_DR3.fits
+catRegionName=$catdir/"$objectName"_"$surveyToUseInSolveField"_DR3_regions.reg
 catdone=$catdir/done.txt
 if ! [ -d $catdir ]; then mkdir $catdir; fi
 if [ -f $catdone ]; then
   echo -e "\n\tCatalogue is already downloaded\n"
 else
-  downloadGaiaCatalogue "$query_param" $catdir $catName
+  downloadCatalogue $surveyToUseInSolveField $ra_gal $dec_gal $radiusToDownloadCatalogue $catdir $catName
   python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py $catName $catRegionName "fits"
   echo "done" > $catdone
 fi
@@ -988,7 +989,7 @@ else
   echo done > $astroimadone
 fi
 
-
+exit 0
 
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
