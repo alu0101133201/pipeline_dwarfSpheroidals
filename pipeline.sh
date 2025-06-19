@@ -926,8 +926,8 @@ else
 fi
 
 catdir=$BDIR/catalogs
-catName=$catdir/"$objectName"_"$surveyToUseInSolveField"_DR3.fits
-catRegionName=$catdir/"$objectName"_"$surveyToUseInSolveField"_DR3_regions.reg
+catName=$catdir/"$objectName"_"$surveyToUseInSolveField".fits
+catRegionName=$catdir/"$objectName"_"$surveyToUseInSolveField"_regions.reg
 catdone=$catdir/done.txt
 if ! [ -d $catdir ]; then mkdir $catdir; fi
 if [ -f $catdone ]; then
@@ -959,7 +959,6 @@ else
   printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catName $indexdir
   echo done > $indexdone
 fi
-
 
 sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
@@ -1424,7 +1423,7 @@ if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagn
 if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
    echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
 else
-  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits
+  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits
   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
 fi
 
@@ -1648,7 +1647,7 @@ halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
 if [ -f $halfMaxRadForCoaddName ]; then
   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
 else
-  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1" $tileSize $apertureUnits
+  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath "coadd_it1" $tileSize $apertureUnits
 fi
 
 
@@ -2161,7 +2160,7 @@ halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it2.png
 if [ -f $halfMaxRadForCoaddName ]; then
   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
 else
-  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2" $tileSize $apertureUnits
+  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath "coadd_it2" $tileSize $apertureUnits
 fi
 
 
