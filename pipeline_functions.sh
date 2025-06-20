@@ -1420,6 +1420,7 @@ solveField() {
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
+        echo solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees
         solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees\
         -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
@@ -1431,6 +1432,7 @@ solveField() {
             attempt=$max_attempts
         fi
             
+
         ((attempt++))
     done
 }
