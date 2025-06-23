@@ -1225,6 +1225,7 @@ downloadSurveyData() {
     local fieldSizeDeg=$7
     local gaiaCatalogue=$8
     local survey=$9
+    local sizeOfBrick=${10}
     
 
     echo -e "\n·Downloading ${survey} bricks"
@@ -1237,7 +1238,7 @@ downloadSurveyData() {
     else
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions
         echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
-        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey
+        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey $sizeOfBrick
 
         echo "done" > $donwloadMosaicDone
     fi
@@ -1784,6 +1785,7 @@ prepareCalibrationData() {
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
     local mosaicDone=${19}
+    local sizeOfBrick=${20}
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
     if [ -f $mosaicDone ]; then 
@@ -1805,7 +1807,7 @@ prepareCalibrationData() {
 
             prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
                                                 $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                                $calibrationBrightLimit $calibrationFaintLimit
+                                                $calibrationBrightLimit $calibrationFaintLimit $sizeOfBrick
         fi
         echo done > $mosaicDone
     fi
@@ -1864,6 +1866,7 @@ prepareSurveyDataForPhotometricCalibration() {
     local filterCorrectionCoeff=${16}
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
+    local sizeOfBrick=${19}
 
     sizeOfFieldForCalibratingPANSTARRStoGAIA=1.5
 
@@ -1891,10 +1894,11 @@ prepareSurveyDataForPhotometricCalibration() {
     bricksIdentificationFile_r=$surveyImagesDir_r/brickIdentification.txt
     bricksIdentificationFileForGaiaCalibration_r=$surveyImagesDirForGaiaCalibration_r/brickIdentification.txt
 
-    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey    
-    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
-    downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
-    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
+    sizeOfBrick_gaia=3600 #3600 is the default value because the pipeline originally worked with DECaLS and it used this brick-size. We try to keep it to 3600 when possible
+    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick    
+    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
+    downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
+    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
 
 
    
@@ -1921,8 +1925,8 @@ prepareSurveyDataForPhotometricCalibration() {
             [ -L $surveyImagesDir  ] || ln -s "$surveyImagesDir"_$filter $surveyImagesDir
             [ -L $surveyImagesDirForGaiaCalibration  ] || ln -s "$surveyImagesDirForGaiaCalibration"_$filter $surveyImagesDirForGaiaCalibration
         else
-            downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFileForGaiaCalibration $filter $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
-            downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filter $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
+            downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFileForGaiaCalibration $filter $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
+            downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filter $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
         fi
     fi
 

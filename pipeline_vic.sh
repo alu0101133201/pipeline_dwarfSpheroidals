@@ -917,10 +917,10 @@ echo -e "·Downloading Gaia Catalogue"
 # 2.- This gaia catalogue is used to match the survey data for calibration to gaia, calibrating thus the survey to our photometric framework
 # of gaia. It has to be large enough to be to perform this calibration process
 
-if (( sizeOfOurFieldDegrees > 1 )); then
-  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+if ((  $(echo "$sizeOfOurFieldDegrees > 1.0" | bc -l) )); then
+  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.25" | bc -l | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 else
-  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 1" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc -l | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 fi
 
 catdir=$BDIR/catalogs
@@ -1365,6 +1365,18 @@ rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
 aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
 mosaicDone=$mosaicDir/done_prep.txt
 
+# ****** Decision note *******
+# The pipeline originally worked only with decals, which downloads always bricks of 3600x3600 pixels. Then the option of using PANSTARRS was added, and we tried to keep things
+# similar by downloading bricks of 3600. The thing (unkown reason for me at least) is that if you download panstarrs bricks of 3600x3600px, it has gaps. That's not an issue with 
+# large fields (the gaps are not big compared with TST field for example) but it is with small cameras (hipercam, osiris etc...). So, if you download the bricks of 1000x1000px you get 
+# rid of the gaps. That's why we define a threshold above which we keep going with bricks of 3600x3600px, otherwise we assume that we are with a small FOV and go for a compact small-brick download
+# (take into account that using always 1000 is not viable for large fields, since the number of bricks increases A LOT)
+
+if (( $(echo "$sizeOfOurFieldDegrees > 0.5" | bc -l) )); then
+  sizeOfBrick=3600
+else
+  sizeOfBrick=1000
+fi
 
 # ****** Decision note *******
 # Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
@@ -1376,7 +1388,9 @@ mosaicDone=$mosaicDir/done_prep.txt
 # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
 # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
 prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone
+                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
+                                            $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
+
 
 
 # Calibration of coadd prephot

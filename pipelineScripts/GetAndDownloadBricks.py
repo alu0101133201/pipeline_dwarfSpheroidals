@@ -241,8 +241,8 @@ def getPanstarrsQuery(tra, tdec, size=3600, filters="grizy", format="fits", imag
     return tab
 
 
-def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filters):
-    #We want panstarrs bricks of 3600 pix = 900 arcsec = 0.25deg. Field of fiew is up to now square
+def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filters,size):
+    #We want panstarrs bricks of 1000 pix = 250 arcsec = 0.07deg. Field of fiew is up to now square
     isRaList = isinstance(firstPoint, (list, np.ndarray, tuple))
     isDecList = isinstance(secondPoint, (list, np.ndarray, tuple))
     if ((not isRaList) and (not isDecList)):
@@ -255,19 +255,20 @@ def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filter
     raMin, raMax = (firstPointRa, secondPointRa) if (firstPointRa < secondPointRa) else (secondPointRa, firstPointRa)
     decMin, decMax = (firstPointDec, secondPointDec) if (firstPointDec < secondPointDec) else (secondPointDec, firstPointDec)
     dRA=raMax-raMin #Field of fiew is up to now square
-    nBricks=dRA // 0.25 #Number of bricks per row
-    if dRA % 0.25 >0:
+    size_deg=float(size)*0.25/3600
+    nBricks=dRA // size_deg #Number of bricks per row
+    if dRA % size_deg >0:
         nBricks+=1
-    overlap_factor=(0.25*nBricks-dRA)/(nBricks-1) #In a world where dRA//0.25!=0 we need to overlap in order to end in the raMax
+    overlap_factor=(size_deg*nBricks-dRA)/(nBricks-1) #In a world where dRA//0.25!=0 we need to overlap in order to end in the raMax
     tra=[]; tdec=[]
     for brick in range(int(nBricks)):
         #initial position will be raMin or decMin+(0.25-overlap_factor)*brick
-        iniRa=raMin+(0.25-overlap_factor)*brick
+        iniRa=raMin+(size_deg-overlap_factor)*brick
         for brick in range(int(nBricks)):
-            iniDec=decMin+(0.25-overlap_factor)*brick
+            iniDec=decMin+(size_deg-overlap_factor)*brick
         #We want to store the central position: ini+0.25/2=ini+0.125
-            tra.append(iniRa+0.125); tdec.append(iniDec+0.125)
-    tab_panstarrs=getPanstarrsQuery(tra,tdec,filters="".join(filters))
+            tra.append(iniRa+size_deg/2); tdec.append(iniDec+size_deg/2)
+    tab_panstarrs=getPanstarrsQuery(tra,tdec,size,filters="".join(filters))
     bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
     bricksRA=[ra for ra in tab_panstarrs['ra']]
     bricksDec=[dec for dec in tab_panstarrs['dec']]
@@ -278,10 +279,10 @@ def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filter
     
     return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
 
-def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters):
+def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters,size):
     if isinstance(raCen,np.floating):
         raCen=[raCen]; decCen=[decCen]
-    tab_panstarrs=getPanstarrsQuery(raCen,decCen,filters="".join(filters))
+    tab_panstarrs=getPanstarrsQuery(raCen,decCen,size,filters="".join(filters))
     bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
     bricksRA=[ra for ra in tab_panstarrs['ra']]
     bricksDec=[dec for dec in tab_panstarrs['dec']]
@@ -293,10 +294,10 @@ def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters):
     return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
 
 
-def downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDEC,destinationFolder,overwrite=True):
+def downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDEC,destinationFolder,size,overwrite=True):
     
     fitscut="https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
-    size=3600
+    
     urlbase="{}?size={}&format={}".format(fitscut,size,"fits")
     url="{}&ra={}&dec={}&red={}".format(urlbase,brickRA,brickDEC,brick_fullName)
     #r=requests.get(url)
