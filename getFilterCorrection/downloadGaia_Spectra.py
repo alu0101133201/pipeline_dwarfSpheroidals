@@ -15,11 +15,13 @@ def chunks(lst, n):
 # ra          = 149.8528
 # dec         = 30.7493
 
-fieldName   = "Malin2"
-ra          = 159.9688
-dec         = 20.8473
+# fieldName   = "Malin2"
+# ra          = 159.9688
+# dec         = 20.8473
 
-
+fieldName   = "Matlas2019"
+ra          = 226.3343
+dec         = 1.8122
 
 sizeOfField = 1.5
 halfSizeOfFild = sizeOfField / 2

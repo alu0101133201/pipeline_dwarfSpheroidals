@@ -1688,7 +1688,7 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   echo "done" > $fwhmPlotsWithCoadd
 fi
 
-
+exit 0
 
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;

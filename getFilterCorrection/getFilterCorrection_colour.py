@@ -161,10 +161,10 @@ def comparisonPlot(mag1, mag2, colours, waveUnits1, transmittanceUnits1, filter1
     ax1.legend(fontsize=20, loc="upper right")
     plt.savefig(figName)
 
-def colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coeffs):
+def colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coeffs, currentInstrument, comparisonSurvey, bandToStudy):
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     plt.tight_layout(pad=7.0)
-    configureAxis(ax, 'g-r', 'g_panstarrs - g_tst', logScale=False)
+    configureAxis(ax, 'g-r', f'{bandToStudy}_{comparisonSurvey} - {bandToStudy}_{currentInstrument}', logScale=False)
     ax.set_xlim(0, 1)
     ax.set_ylim(-0.15, 0.15)
     ax.scatter(g_r_colour, magnitudes1-magnitudes2, s=80, edgecolors="black", linewidths=1.75, label="Gaia stars")
@@ -172,7 +172,7 @@ def colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coe
     
     ax.text(0.1, 0.1, "({:.2}".format(coeffs[0]) + r")$x^2$ +" + "({:.2}".format(coeffs[1]) + r")x + " + "({:.2}".format(coeffs[2]) + ")" , fontsize=22, color="blue")
     ax.legend(fontsize=18)
-    plt.savefig(f"./images/{field}_{bandToStudy}_colourDependencePlot.png")
+    plt.savefig(f"./images/{field}_{bandToStudy}_{comparisonSurvey}_colourDependencePlot.png")
     return()
 
 def magInRange(mag, brighLimit, faintLimit):
@@ -184,9 +184,9 @@ def getStd(data):
     clippedData = sigma_clip(data, sigma=3, masked=False)
     return(np.nanstd(clippedData))
 
-def plotTSTDirectVsTSTProxy(magnitudesDirect, magnitudesProxy, fileName):
+def plotTSTDirectVsTSTProxy(magnitudesDirect, magnitudesProxy, fileName, currentInstrument, comparisonSurvey):
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
-    configureAxis(ax, r'mag $TST_{GAIA}$', r'mag $TST_{GAIA}$ - mag $TST_{PANSTARRS_proxy}$', logScale=False)
+    configureAxis(ax, rf'mag ${currentInstrument}(GAIA)$', rf'mag ${currentInstrument}(GAIA)$ - mag ${currentInstrument}({comparisonSurvey}-proxy)$', logScale=False)
     plt.tight_layout(pad=7.0)
     ax.text(7.5, 0.3, f"std: " + "{:.2}".format(getStd(magnitudesDirect - magnitudesProxy)), fontsize=22, color="blue")
     ax.set_ylim(-0.5, 0.5)
@@ -197,28 +197,29 @@ def plotTSTDirectVsTSTProxy(magnitudesDirect, magnitudesProxy, fileName):
 
 setMatplotlibConf()
 
-if (len(sys.argv) == 3):
+if (len(sys.argv) == 5):
     field = sys.argv[1]
-    bandToStudy = sys.argv[2]
+    currentInstrument = sys.argv[2]
+    bandToStudy = sys.argv[3]
+    comparisonSurvey = sys.argv[4]
 else:
-    field="Malin2"
-    bandToStudy = "i"
+    field="Matlas2019"
+    currentInstrument = "OSIRIS"
+    bandToStudy = "g"
+    comparisonSurvey = "DECaLS"
 
-<<<<<<< HEAD
-filterName1 = f"./filters/DECaLS_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/tst_{bandToStudy}.dat";       waveUnits2 = "nm"; transmittanceUnits2 = "percentage"
-=======
-filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/WHT_TWFC_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
->>>>>>> 0f51e74e67c2ba70a17137a1144663682b19b493
+
+
+filterName1 = f"./filters/{comparisonSurvey}_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
+filterName2 = f"./filters/{currentInstrument}_{bandToStudy}.dat"; waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra
 
 # Compute colour g-r, always used for computing the offset
 
-filterName_g = "./filters/DECaLS_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
-filterName_r = "./filters/DECaLS_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
+filterName_g = f"./filters/{comparisonSurvey}_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
+filterName_r = f"./filters/{comparisonSurvey}_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
 
 
 wavelengths_g, transmittance_g = readFilterTransmittance(filterName_g, waveUnits_g, transmittanceUnits_g)
@@ -238,7 +239,7 @@ ra1, dec1, magnitudes1 = getMagnitudesFromSpectra(spectraFolder, wavelengths1, t
 ra2, dec2, magnitudes2 = getMagnitudesFromSpectra(spectraFolder, wavelengths2, transmittance2)
 
 # First this plot has no correction
-comparisonPlot(magnitudes1, magnitudes2, g_r_colour, wavelengths1, transmittance1, filterName1, wavelengths2, transmittance2, filterName2, field, f"./images/{field}_{bandToStudy}_initialComparison.png", std=getStd(magnitudes1 - magnitudes2))
+comparisonPlot(magnitudes1, magnitudes2, g_r_colour, wavelengths1, transmittance1, filterName1, wavelengths2, transmittance2, filterName2, field, f"./images/{field}_{bandToStudy}_{comparisonSurvey}_initialComparison.png", std=getStd(magnitudes1 - magnitudes2))
 
 # Now we obtain a colour correction and apply it
 ##x y for fit
@@ -246,11 +247,11 @@ indexes=np.where((g_r_colour>0.4)&(g_r_colour<1))
 coeffs = np.polyfit(g_r_colour[indexes], (magnitudes1-magnitudes2)[indexes], 2)
 x_fit = np.linspace(-1, 1, 500)
 y_fit = np.polyval(coeffs, x_fit)
-colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coeffs)
+colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coeffs, currentInstrument, comparisonSurvey, bandToStudy)
 
 mag2FinalCorr = magnitudes2 + (coeffs[0] * g_r_colour**2 + coeffs[1] * g_r_colour + coeffs[2])
-comparisonPlot(magnitudes1, mag2FinalCorr, g_r_colour, wavelengths1, transmittance1, filterName1, wavelengths2, transmittance2, filterName2, field, f"./images/{field}_{bandToStudy}_afterCorrection.png", std=getStd(magnitudes1 - mag2FinalCorr))
+comparisonPlot(magnitudes1, mag2FinalCorr, g_r_colour, wavelengths1, transmittance1, filterName1, wavelengths2, transmittance2, filterName2, field, f"./images/{field}_{bandToStudy}_{comparisonSurvey}_afterCorrection.png", std=getStd(magnitudes1 - mag2FinalCorr))
 
 # Now we try to recover the tst_mag from the panstarrs_mag applying what we have inferred
 inferredTSTMag = magnitudes1 - (coeffs[0] * g_r_colour**2 + coeffs[1] * g_r_colour + coeffs[2])
-plotTSTDirectVsTSTProxy(magnitudes2, inferredTSTMag, f"./images/{field}_{bandToStudy}_directMagVsWithProxy.png")
+plotTSTDirectVsTSTProxy(magnitudes2, inferredTSTMag, f"./images/{field}_{bandToStudy}_{comparisonSurvey}_directMagVsWithProxy.png", currentInstrument, comparisonSurvey)
