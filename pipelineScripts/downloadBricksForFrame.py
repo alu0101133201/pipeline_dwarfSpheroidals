@@ -143,9 +143,10 @@ mosaicDir                       = sys.argv[6]
 bricksIdentificationFile        = sys.argv[7]
 gaiaCatalogue                   = sys.argv[8]
 survey                          = sys.argv[9]
+sizeOfBrick                     = int(sys.argv[10])
 setMatplotlibConf()
 decalsBrickWidthDeg = 15.5 / 60 
-panstarrsBrickWidthDeg=15.0 / 60
+panstarrsBrickWidthDeg=0.25*float(sizeOfBrick)/3600
 
 # These parameters were used when we were rejecting decals bricks that were on top of the galaxy or with bright stars
 # Now we are not using them, so we hide them from the user and just let them here (just in case)
@@ -172,14 +173,14 @@ if survey=='DECaLS':
     for i in threadList:
         i.join()
 elif survey=='PANSTARRS':
-    bricks_fullNames,bricksRA,bricksDec,bricksNames = getPanstarrsBricksFromRegionDefinedByTwoPoints(cornersWCSCoords[0],cornersWCSCoords[1],filters)
+    bricks_fullNames,bricksRA,bricksDec,bricksNames = getPanstarrsBricksFromRegionDefinedByTwoPoints(cornersWCSCoords[0],cornersWCSCoords[1],filters,sizeOfBrick)
     threadList = []
     for i in range(len(bricks_fullNames)):
         b_fname=bricks_fullNames[i]
         b_ra=bricksRA[i]
         b_dec=bricksDec[i]
         b_name=bricksNames[i]
-        threadList.append(threading.Thread(target=downloadBrickPanstarrs,args=(b_fname,b_name,b_ra,b_dec,downloadDestination,False)))
+        threadList.append(threading.Thread(target=downloadBrickPanstarrs,args=(b_fname,b_name,b_ra,b_dec,downloadDestination,sizeOfBrick,False)))
     for i in threadList:
         i.start()
     for i in threadList:
@@ -211,26 +212,26 @@ we directly remove the brick from the IdentificationFile and the folder.
 """
 if survey=='PANSTARRS':
     bricksIdFile=pd.read_csv(bricksIdentificationFile,sep='\t')
-    #250x250 pix panstarrs brick has a size of ~4Mb
+    brickSize_mb=float(sizeOfBrick)*float(sizeOfBrick)*50/(3600*3600)
     badRows=[]
     for row in range(len(bricksIdFile)):
         fname=downloadDestination+'/'+bricksIdFile.loc[row]['BrickName']+'.fits'
         fsize=os.stat(fname).st_size/1e6
-        if fsize>5:
+        if fsize>0.2*brickSize_mb:
             continue
         else:
             #We are assuming a reasonable fit has a size >5Mb
             ra_brick=bricksIdFile.loc[row]['RA_centre']
             dec_brick=bricksIdFile.loc[row]['Dec_centre']
-            brick_fullName,brickRA,brickDec,brickName=getPanstarrsBricksFromCentralPoint(ra_brick,dec_brick,filters)
+            brick_fullName,brickRA,brickDec,brickName=getPanstarrsBricksFromCentralPoint(ra_brick,dec_brick,filters,sizeOfBrick)
             brick_fullName=brick_fullName[0]; brickRA=brickRA[0]; brickDec=brickDec[0]
             brickName=brickName[0]
-            downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDec,downloadDestination,overwrite=True)
+            downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDec,downloadDestination,sizeOfBrick,overwrite=True)
             #We check again the download
             fname=downloadDestination+'/'+brickName
             fsize=os.stat(fname).st_size/1e6
             #Decission: if download is ok, we change the dataframe and store, if not, we remove the row
-            if fsize>5:
+            if fsize>0.2*brickSize_mb:
                 bricksIdFile.loc[row,'BrickName']=brickName[:-5]
                 bricksIdFile.loc[row,'RA_centre']=brickRA
                 bricksIdFile.loc[row,'Dec_centre']=brickDec

@@ -784,7 +784,7 @@ runNoiseChiselOnFrame() {
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
     for h in $(seq 1 $num_ccd); do
-        astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$num_cpus -o $outputDir/temp_"$baseName"
+        astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$num_threads -o $outputDir/temp_"$baseName"
         astfits $outputDir/temp_"$baseName" --copy=1 -o $output
         rm $outputDir/temp_"$baseName"
     done
@@ -1295,6 +1295,7 @@ downloadSurveyData() {
     local fieldSizeDeg=$7
     local gaiaCatalogue=$8
     local survey=$9
+    local sizeOfBrick=${10}
     
     echo -e "\n·Downloading ${survey} bricks"
     donwloadMosaicDone=$surveyImagesDir/done_downloads.txt
@@ -1306,7 +1307,7 @@ downloadSurveyData() {
     else
         rm $bricksIdentificationFile # Remove the brick indentification file. This is done to avoid problems with files of previous executions        
         echo "Downloading $survey bricks for field centered at ($ra, $dec) and size $fieldSizeDeg deg; filters: " $filters
-        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey
+        python3 $pythonScriptsPath/downloadBricksForFrame.py $filters $surveyImagesDir $ra $dec $fieldSizeDeg $mosaicDir $bricksIdentificationFile $gaiaCatalogue $survey $sizeOfBrick
         echo "done" > $donwloadMosaicDone
     fi
 }
@@ -1353,6 +1354,37 @@ addTwoFiltersAndDivideByTwo() {
 }
 export -f addTwoFiltersAndDivideByTwo
 
+gainCorrection() {
+    local image=$1
+    local ringDir=$2
+    local noisechisel_param=$3
+    local outDir=$4
+    
+    base=$( basename $image )
+    output=$outDir/$base
+    astfits $image --copy=0 --primaryimghdu -o$output
+    ringFile=$ringDir/ring.fits
+    noiseOut=$outDir/noise_$base
+    maskOut=$outDir/mask_$base
+    gainOut=$outDir/gain_$base
+    for h in $(seq 1 $num_ccd); do
+        astnoisechisel $image -h$h $noisechisel_param --numthreads=$num_threads -o $noiseOut
+        astarithmetic $image -h$h $noiseOut -h1 0 ne nan where -q -o$outDir/temp_$base
+        astarithmetic $outDir/temp_$base -h1 $ringFile -h$h 0 eq nan where -q -o$maskOut
+        gain_h=$(aststatistics $maskOut --sigclip-median -q)
+        if [ $h -eq 1 ]; then
+            gain_ref=$gain_h
+            astfits $image --copy=$h -o $output
+        else
+            astarithmetic $image -h$h $gain_ref x $gain_h / -o$gainOut
+            astfits $gainOut --copy=1 -o$output
+            rm $gainOut
+        fi
+        rm $outDir/temp_$base $noiseOut $maskOut
+    done
+
+}
+export -f gainCorrection
 
 downloadGaiaCatalogue() {
     local query=$1
@@ -1386,13 +1418,26 @@ downloadGaiaCatalogue() {
 }
 export -f downloadGaiaCatalogue
 
+downloadPanstarrsCatalogue() {
+    local query=$1
+    local catdir=$2
+    local catName=$3
+
+    astquery $query -o $catdir/"$objectName"_Panstarrs_S1_tmp.fits
+    asttable $catdir/"$objectName"_Panstarrs_S1_tmp.fits -c1,2,3  --colmetadata=1,RA,deg --colmetadata=2,DEC,deg --colmetadata=3,phot_g_mean_mag,mag -o$catName
+
+    # We are downloading Panstarrs for hipercam, this will stay as it is. We change the metadata to mimic that of 
+
+    rm $catdir/"$objectName"_Panstarrs_S1_tmp.fits 
+}
+export -f downloadPanstarrsCatalogue
+
 downloadIndex() {
     local re=$1
-    local catdir=$2
-    local objectName=$3
-    local indexdir=$4
+    local catName=$2
+    local indexdir=$3
 
-    build-astrometry-index -i $catdir/"$objectName"_Gaia_eDR3.fits -e1 \
+    build-astrometry-index -i $catName -e1 \
                             -P $re \
                             -S phot_g_mean_mag \
                             -E -A RA -D  DEC \
@@ -1410,8 +1455,31 @@ solveField() {
     local confFile=$7
     local astroimadir_layer=$8
     local sexcfg_sf=$9
+    local sizeOfOurFieldDegrees=${10}
     base=$( basename $i)
+    LC_NUMERIC=C  # Format to get rid of scientific notation if needed
 
+    pointingRAValue=$( astfits $i -h0 --keyvalue=$pointingRA --quiet)
+    pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
+    if [[ "$pointingRAUnits" == "hours" ]]; then
+        pointRA=$(echo "$pointingRAValue * 15" | bc -l)
+    elif [[ "$pointingRAUnits" == "deg" || "$pointingRAUnits" == "degrees" ]]; then
+        pointRA="$pointingRAValue"
+    else
+        echo "Error: Unsupported RA units: $pointingRAUnits"
+        exit 888
+    fi
+
+    pointingDecValue=$( astfits $i -h0 --keyvalue=$pointingDEC --quiet)
+    pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
+    if [[ "$pointingDECUnits" == "hours" ]]; then
+        pointDec=$(echo "$pointingDecValue * 15" | bc -l)
+    elif [[ "$pointingDECUnits" == "deg" || "$pointingDECUnits" == "degrees" ]]; then
+        pointDec="$pointingDecValue"
+    else
+        echo "Error: Unsupported RA units: $pointingDECUnits"
+        exit 888
+    fi
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
@@ -1427,7 +1495,7 @@ solveField() {
         while [ $attempt -le $max_attempts ]; do
             #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
             #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
-            solve-field $image_temp --no-plots \
+            solve-field $image_temp --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees \
             -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
             --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
             --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
@@ -1793,6 +1861,7 @@ prepareCalibrationData() {
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
     local mosaicDone=${19}
+    local sizeOfBrick=${20}
 
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
@@ -1812,7 +1881,7 @@ prepareCalibrationData() {
 
             prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
                                                 $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                                $calibrationBrightLimit $calibrationFaintLimit
+                                                $calibrationBrightLimit $calibrationFaintLimit $sizeOfBrick
         fi
         
         echo done > $mosaicDone
@@ -1874,8 +1943,10 @@ prepareSurveyDataForPhotometricCalibration() {
     local filterCorrectionCoeff=${16}
     local calibrationBrightLimit=${17}
     local calibrationFaintLimit=${18}
+    local sizeOfBrick=${19}
    
     sizeOfFieldForCalibratingPANSTARRStoGAIA=1.5
+    sizeOfBrick_gaia=3600
 
     echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
     bricksIdentificationFile=$surveyImagesDir/brickIdentification.txt
@@ -1902,10 +1973,10 @@ prepareSurveyDataForPhotometricCalibration() {
     bricksIdentificationFile_r=$surveyImagesDir_r/brickIdentification.txt
     bricksIdentificationFileForGaiaCalibration_r=$surveyImagesDirForGaiaCalibration_r/brickIdentification.txt
 
-    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
-    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
-    downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
-    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
+    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
+    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
+    downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
+    downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
 
     
     # If the images are donwloaded but the done.txt file is no present, the images won't be donwloaded again but
@@ -1934,8 +2005,8 @@ prepareSurveyDataForPhotometricCalibration() {
             [ -L $surveyImagesDir  ] || ln -s "$surveyImagesDir"_$filter $surveyImagesDir
             [ -L $surveyImagesDirForGaiaCalibration  ] || ln -s "$surveyImagesDirForGaiaCalibration"_$filter $surveyImagesDirForGaiaCalibration
         else
-            downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFileForGaiaCalibration $filter $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey
-            downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filter $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey
+            downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration $bricksIdentificationFileForGaiaCalibration $filter $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
+            downloadSurveyData $mosaicDir $surveyImagesDir $bricksIdentificationFile $filter $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
         fi
     fi
 
@@ -2309,9 +2380,10 @@ matchDecalsAndSingleFrame() {
     local calibrationCatalogues=$3
     local matchdir=$4
     local surveyForCalibration=$5
+    local calibratingMosaic=$6
     
-    base="entirecamera_$a.fits"
-    ourDataCatalogue=$myCatalogues/entirecamera_$a.fits.cat
+    base=${a%.cat}
+    ourDataCatalogue=$myCatalogues/$a
     out_cat=$matchdir/match-"$base".cat
     out_fits=$matchdir/match-"$base".fits
     
@@ -2319,13 +2391,13 @@ matchDecalsAndSingleFrame() {
     for h in $(seq 1 $num_ccd); do
         tmpCatalogue=$matchdir/match-$base-tmp_ccd"$h".cat
         out_ccd=$matchdir/match-"$base"_ccd"$h".fits
-        if [ $surveyForCalibration = "SPECTRA" ]; then
+        if [[ ($surveyForCalibration = "SPECTRA") || ("$calibratingMosaic" == true) ]]; then
             calibrationCatalogue=$calibrationCatalogues/wholeFieldPhotometricCatalogue.cat
             astmatch $ourDataCatalogue --hdu=$h $calibrationCatalogue --hdu2=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
                 --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
 
         else
-            calibrationCatalogue=$calibrationCatalogues/entirecamera_$a.cat
+            calibrationCatalogue=$calibrationCatalogues/"${base%%.*}".cat
     
             astmatch $ourDataCatalogue --hdu=$h $calibrationCatalogue --hdu2=$h --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
                 --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
@@ -2352,6 +2424,7 @@ matchDecalsAndOurData() {
     local calibrationCatalogues=$2
     local matchdir=$3
     local surveyForCalibration=$4 
+    local calibratingMosaic=$5
     
     matchdirdone=$matchdir/done_automatic.txt
     if ! [ -d $matchdir ]; then mkdir $matchdir; fi
@@ -2359,10 +2432,11 @@ matchDecalsAndOurData() {
         echo -e "\n\tMatch between decals (aperture) catalog and my (aperture) catalogs already done\n"
     else
         frameNumber=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            frameNumber+=("$a")
+        for a in $( ls $myCatalogues/*.cat ); do
+            frameName=$( basename $a )
+            frameNumber+=("$frameName")
         done
-        printf "%s\n" "${frameNumber[@]}" | parallel -j "$num_cpus" matchDecalsAndSingleFrame {} $myCatalogues $calibrationCatalogues $matchdir $surveyForCalibration
+        printf "%s\n" "${frameNumber[@]}" | parallel -j "$num_cpus" matchDecalsAndSingleFrame {} $myCatalogues $calibrationCatalogues $matchdir $surveyForCalibration $calibratingMosaic
         echo done > $matchdirdone
     fi
 }
@@ -2583,43 +2657,71 @@ combineDecalsBricksCataloguesForEachFrame() {
 }
 export -f combineDecalsBricksCataloguesForEachFrame
 
+computeCommonCalibrationFactor() {
+  local calibrationFactorsDir=$1
+  local iteration=$2
+  local objectName=$3
+  local BDIR=$4 
+  
+  for h in $(seq 1 $num_ccd); do
+    calibrationFactors=()
+    for i in $( ls $calibrationFactorsDir/alpha_"$objectName"*.txt); do
+        alpha=$(awk 'NR=='$h'{print $1}' $i)
+        calibrationFactors+=("$currentCalibrationFactor")
+    done
+
+    tmpTableFits=$BDIR/tableTest.fits
+    printf "%s\n" "${calibrationFactors[@]}" | asttable -o "$tmpTableFits"
+    commonCalibrationFactor=$( aststatistics $tmpTableFits --sigclip-median)
+    calibrationFactorsStd=$( asttable $tmpTableFits | aststatistics --sclipparams=3,3 --sigclip-std)
+
+    echo $commonCalibrationFactor $calibrationFactorsStd >> $BDIR/commonCalibrationFactor_it$iteration.txt
+    rm $tmpTableFits
+  done
+}
+export -f computeCommonCalibrationFactor
+
 computeCalibrationFactors() {
     local surveyForCalibration=$1
     local iteration=$2
     local imagesForCalibration=$3
     local selectedDecalsStarsDir=$4
     local matchdir=$5
-    local rangeUsedDecalsDir=$6
-    local mosaicDir=$7
-    local alphatruedir=$8
-    local brightLimit=$9
-    local faintLimit=${10}
-    local tileSize=${11}
-    local apertureUnits=${12}
-    local numberOfApertureUnitsForCalibration=${13}
+    local ourDataCatalogueDir=$6
+    local prepareCalibrationCataloguePerFrame=$7
+    local mycatdir=$8
+    local rangeUsedDecalsDir=$9
+    local mosaicDir=${10}
+    local alphatruedir=${11}
+    local brightLimit=${12}
+    local faintLimit=${13}
+    local tileSize=${14}
+    local apertureUnits=${15}
+    local numberOfApertureUnitsForCalibration=${16}
+    local calibratingMosaic=${17}
 
-    mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
+    
 
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
    
-    ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
+    
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
    
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-        prepareCalibrationCataloguePerFrame=$mosaicDir/aperturePhotometryCatalogues
+    if ! [ -d $prepareCalibrationCataloguePerFrame ]; then mkdir $prepareCalibrationCataloguePerFrame; fi
+    if [[ ("$surveyForCalibration" == "SPECTRA") || ( "$calibratingMosaic" == true) ]]; then
+        cp $mosaicDir/wholeFieldPhotometricCatalogue.cat $prepareCalibrationCataloguePerFrame
     else
-        prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association $mosaicDir/aperturePhotometryCatalogues
     fi
     
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
-    matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration 
+    matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic
     
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
@@ -2795,12 +2897,12 @@ removeOutliersFromFrame(){
     local clippingdir=$3
     local wdir=$4
 
-    base=entirecamera_"$a".fits
+    base=$( basename $a )
     tmp_ab=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_maskabove.fits
     wom=$mowdir/$base
     
     for h in $(seq 1 $num_ccd); do
-        wom_ccd=$mowdir/entirecamera_"$a"_ccd"$h".fits
+        wom_ccd=$mowdir/${base%.fits}_ccd"$h".fits
         astarithmetic $wdir/$base -h$h set-i i i $clippingdir/upperlim.fits -h1 gt nan where float32 -q -o $tmp_ab
         astarithmetic $tmp_ab -h1 set-i i i $clippingdir/lowerlim.fits -h1 lt nan where float32 -q -o$wom_ccd
         astfits $wom_ccd --copy=1 -o$wom
@@ -2823,16 +2925,15 @@ export -f removeOutliersFromFrame
 
 removeOutliersFromWeightedFrames () {
   local mowdone=$1
-  local totalNumberOfFrames=$2
-  local mowdir=$3
-  local clippingdir=$4
-  local wdir=$5
+  local mowdir=$2
+  local clippingdir=$3
+  local wdir=$4
 
   if [ -f $mowdone ]; then
       echo -e "\n\tOutliers of the weighted images already masked\n"
   else
       framesToRemoveOutliers=()
-      for a in $(seq 1 $totalNumberOfFrames); do
+      for a in $wdir/*.fits; do
           framesToRemoveOutliers+=("$a")
       done
       printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $clippingdir $wdir
@@ -3504,63 +3605,6 @@ computeGainCorrection(){
 }
 export -f computeGainCorrection
 
-normaliseGainSingleFrame(){
-    local a=$1
-    local inputDir=$2
-    local gainDir=$3
-    local outputDir=$4
-    local num_ccd=$5
-    local ccd_ref=$6
-    
-    image=$inputDir/entirecamera_"$a".fits
-    gainFile=$gainDir/entirecamera_"$a".txt
-    me_ref=$(awk 'NR=='$ccd_ref'{print $1}' $gainFile)
-    output=$outputDir/entirecamera_"$a".fits
-    astfits $image --copy=0 --primaryimghdu -o$output
-    for h in $(seq 1 $num_ccd); do
-        if [ "$h" == "$ccd_ref" ]; then
-            astfits $image --copy=$h -o$output
-        else
-            me=$(awk 'NR=='$h'{print $1}' $gainFile)
-            astarithmetic $image -h$h $me_ref x $me / -o$outputDir/tmp_"$a".fits
-            astfits $outputDir/tmp_"$a".fits --copy=1 -o$output
-            gain_h=$(astfits $image -h$ccd_ref --keyvalue=$gain -q)
-            astfits $output -h$h --write=$gain,$gain_h
-            rm $outputDir/tmp_"$a".fits
-        fi
-    done
-}
-export -f normaliseGainSingleFrame
-
-normaliseGainImages(){
-    local smallGrid=$1
-    local num_ccd=$2
-    local ringDir=$3
-    local ccd_ref=$4
-    local outputDir_small=$5
-    
-
-    outputDir_done=$outputDir_small/done.txt
-    if ! [ -d $outputDir_small ]; then mkdir $outputDir_small; fi
-    #if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
-    
-    echo -e "\n·Computing Gain Correction and normalising images"
-    if [ -f $outputDir_done ]; then 
-        echo -e "\n\tImages already normalized from gain"
-    else
-        computeGainCorrection $smallGrid $outputDir_small $num_ccd $ringDir
-        
-        imagesToNormalise=()
-        for a in $(seq 1 $totalNumberOfFrames); do
-            imagesToNormalise+=("$a")
-        done
-        printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseGainSingleFrame {} $smallGrid $outputDir_small $outputDir_small $num_ccd $ccd_ref
-        #printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseGainSingleFrame {} $fullGrid $outputDir_small $outputDir_full $num_ccd $ccd_ref
-        echo done > $outputDir_done
-    fi
-
-}
-export -f normaliseGainImages
 
 subtractStars(){
     local inputFolder_small=$1
@@ -3702,3 +3746,4 @@ subtractStarFromFrame() {
     fi
 }
 export -f subtractStarFromFrame
+
