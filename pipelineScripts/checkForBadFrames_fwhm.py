@@ -208,7 +208,7 @@ def getIndicesOfFiles(allData, filesNames):
     return(indices)
 
 
-def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
+def identifyBadFrames(folderWithFWHM, fwhmToReject):
     badFiles   = []
     allFiles   = []
     allFWHM     = []
@@ -226,8 +226,7 @@ def identifyBadFrames(folderWithFWHM, numberOfStdForRejecting):
 
     allFWHM = np.array(allFWHM)
 
-    mask = sigma_clip(allFWHM, sigma=numberOfStdForRejecting, cenfunc='median', stdfunc='std', maxiters=5, masked=True).mask
-
+    mask = allFWHM>fwhmToReject
     allFiles = np.array(allFiles)
     allTogether=pd.DataFrame({'File':allFiles,'FWHM':allFWHM})
     badFiles = allFiles[mask]
@@ -248,7 +247,7 @@ HDU_TO_FIND_AIRMASS_DATE = 0
 folderWithFWHM            = sys.argv[1]
 outputFolder              = sys.argv[2]
 outputFile                = sys.argv[3]
-numberOfStdForRejecting    = float(sys.argv[4])
+fwhmToReject    = float(sys.argv[4])
 folderWithFramesWithAirmasses = sys.argv[5]
 h=int(sys.argv[6])
 airMassKey=sys.argv[7]
@@ -273,7 +272,7 @@ for currentFile in glob.glob(folderWithFWHM + "/fwhm_*.txt"):
 
  
 # 2.- Identify what frames are outside the acceptance region -----------------------
-badFilesFWHM, badFWHM, allData = identifyBadFrames(folderWithFWHM, numberOfStdForRejecting)
+badFilesFWHM, badFWHM, allData = identifyBadFrames(folderWithFWHM, fwhmToReject)
 allData.to_csv(outputFolder_ccd+"/FileFWHMtable.csv")
 
 fwhmRejectedIndices            = getIndicesOfFiles(allData, badFilesFWHM)
@@ -290,4 +289,4 @@ with open(outputFolder_ccd + "/" + outputFile, 'w') as file:
 
 # 3.- Obtain the median and std and do teh histogram -------------------------------------
 fwhmValueMean, fwhmValueStd = computeMedianAndStd(fwhmValues)
-saveHistogram(allData, fwhmValueMean, fwhmValueStd, fwhmRejectedIndices, astrometryRejectedIndices,  outputFolder_ccd + "/fwhmHist.png", numberOfStdForRejecting, "FWHM of frames")
+saveHistogram(allData, fwhmValueMean, fwhmValueStd, fwhmRejectedIndices, astrometryRejectedIndices,  outputFolder_ccd + "/fwhmHist.png", fwhmToReject, "FWHM of frames")
