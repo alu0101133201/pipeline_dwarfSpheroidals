@@ -206,15 +206,15 @@ else:
     field="ngc598"
     bandToStudy = "g"
 
-filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
+filterName1 = f"./filters/SLOAN_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
 filterName2 = f"./filters/LBT_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra
 
 # Compute colour g-r, always used for computing the offset
 
-filterName_g = "./filters/panstarrs_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
-filterName_r = "./filters/panstarrs_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
+filterName_g = "./filters/SLOAN_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
+filterName_r = "./filters/SLOAN_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
 
 wavelengths_g, transmittance_g = readFilterTransmittance(filterName_g, waveUnits_g, transmittanceUnits_g)
 wavelengths_r, transmittance_r = readFilterTransmittance(filterName_r, waveUnits_r, transmittanceUnits_r)
