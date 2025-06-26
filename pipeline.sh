@@ -931,7 +931,7 @@ oneNightPreProcessing() {
       tempStep=$maskedcornerdir/temp_$base
       astfits $i --copy=0 --primaryimghdu -o $out
       for h in $(seq 1 $num_ccd); do
-        astarithmetic $i -h$h set-m $currentFlatImage -h$h set-f m f $vignettingThreshold lt  nan where set-n n f 2. gt nan where -o $tempStep
+        astarithmetic $i -h$h set-m $currentFlatImage -h$h set-f m f $lowerVignettingThreshold lt  nan where set-n n f $upperVignettingThreshold gt nan where -o $tempStep
         astfits $tempStep --copy=1 -o $out
         rm -f $tempStep
       done
@@ -1313,7 +1313,7 @@ else
 
   printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 0 $methodToUse $tileSize "NO"
   for h in $(seq 1 $num_ccd); do  
-    python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $framesForCommonReductionDir $h $airMassKeyWord $dateHeaderKey $pixelScale
+    python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $maximumSeeing $framesForCommonReductionDir $h $airMassKeyWord $dateHeaderKey $pixelScale
   done
   echo done > $badFilesWarningsDone
 fi
