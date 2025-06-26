@@ -10,7 +10,7 @@ def getDataFromFitsCatalogue(cat):
     hdul.close()
     return(data)
 
-def getDataFromPlainCatalogue(cat):
+def getDataFromPlainCatalogue(cat, raCol, decCol):
     ra = []
     dec = []
 
@@ -22,8 +22,8 @@ def getDataFromPlainCatalogue(cat):
             if (splittedLine[0] == "#"):
                 continue
 
-            ra.append(float(splittedLine[3]))
-            dec.append(float(splittedLine[4]))
+            ra.append(float(splittedLine[raCol]))
+            dec.append(float(splittedLine[decCol]))
 
     dtype = [('ra', float), ('dec', float)]
     data = np.array(list(zip(ra, dec)), dtype=dtype)
@@ -42,12 +42,13 @@ def createDS9RegionFile(data, outputFile):
 catalogue        = sys.argv[1]
 outputRegionFile = sys.argv[2]
 catalogueFormat  = sys.argv[3]
-
+raCol            = int(sys.argv[4])   
+decCol           = int(sys.argv[5])
 
 if (catalogueFormat == "fits"):
     data = getDataFromFitsCatalogue(catalogue)
 elif (catalogueFormat == "plain"):
-    data = getDataFromPlainCatalogue(catalogue)
+    data = getDataFromPlainCatalogue(catalogue, raCol, decCol)
 else:
     raise Exception(f"Catalofue format {catalogueFormat} not supported")
     exit()

@@ -66,7 +66,10 @@ plotXHigherLimit = float(sys.argv[8])
 plotYLowerLimit  = float(sys.argv[9])
 plotYHigherLimit = float(sys.argv[10])
 apertureUnits    = sys.argv[11]
-
+minRange         = float(sys.argv[12])
+maxRange         = float(sys.argv[13])
+brightCalLimit   = float(sys.argv[14])
+faintCalLimit    = float(sys.argv[15])
 
 setMatplotlibConf()
 halfMaxRadAll, magnitudeAll = readHalfMaxRadAndMag(wholeTableFile, 5, 4)
@@ -82,6 +85,14 @@ ax.set_xlim(plotXLowerLimit, plotXHigherLimit)
 ax.set_ylim(plotYLowerLimit, plotYHigherLimit)
 ax.scatter(halfMaxRadAll, magnitudeAll, s=30, color="crimson", alpha=0.85, linewidths=1.5, edgecolor="black", label="All sources")
 ax.scatter(halfMaxRadMatched, magnitudeMatched, s=40, color="blue", linewidths=1.5, edgecolor="black", label="Matched Gaia")
+
+if (minRange and maxRange):
+    ax.vlines(minRange, lw=2.5, color="black", ymin=plotYLowerLimit, ymax=plotYHigherLimit)
+    ax.vlines(maxRange, lw=2.5, color="black", ymin=plotYLowerLimit, ymax=plotYHigherLimit)
+
+if (brightCalLimit and faintCalLimit):
+    ax.hlines(brightCalLimit, lw=2.5, color="grey", xmin=plotXLowerLimit, xmax=plotXHigherLimit)
+    ax.hlines(faintCalLimit, lw=2.5, color="grey", xmin=plotXLowerLimit, xmax=plotXHigherLimit)
 
 if (meanRad > 0): 
     ax.vlines(x=meanRad, ymin = 10, ymax = 26, color="black", lw=2.5, ls="--")

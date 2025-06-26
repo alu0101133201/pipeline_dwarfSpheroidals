@@ -2257,9 +2257,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
     local apertureUnits=$7
 
-
     i=$framesForCalibrationDir/$a
-    ##In the case of using it for Decals or Panstarrs, we need the variable survey
 
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a $apertureUnits )
@@ -2271,16 +2269,16 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         echo "Exiting with error number: $erroNumber"
         exit $erroNumber
     fi
-
     
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_"$surveyToUseInSolveField".fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
-
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o$mycatdir/match_"$a"_my_gaia.txt
+    
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
-    s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-    std=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+    s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c5 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    std=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c5 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
     minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
     maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
+
 
     echo $s $std $minr $maxr > $mycatdir/range_"$a".txt
     asttable $outputCatalogue --range=HALF_MAX_RADIUS,$minr,$maxr -o $mycatdir/selected_"$a"_automatic.txt
@@ -2498,12 +2496,20 @@ computeAndStoreFactors() {
 
             alphatruet=$alphatruedir/"$objectName"_"$filter"_"$a".txt
             asttable $f -h1 --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
+            raCol=0
+            decCol=1
+            python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py "$alphatruet" "$alphatruedir/"$objectName"_"$filter"_"$a"_starsUsedForCalibrate.reg" "plain" $raCol $decCol
             asttable $alphatruet -h1 -c1,2,'arith $6 $8 /' -o$alphatruedir/$alphaFile
 
             # python3 /home/sguerra/pipeline/pipelineScripts/tmp_diagnosis_distributionOfCalibrationFactorsInFrame.py $alphatruedir/$alphaFile $a
 
-            # This mean was obtained with "median" before. But Right now I'm doing some tests and sometimes it gives nan even if all the input values exist (gnuastro/0.22 bug ?)
-            mean=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --mean)
+            # This was done because if we use sigclipmean or median with only 3 stars it gives nan. But if we use mean always it gives wrong values when we have more stars
+            if [ "$(asttable "$alphatruedir/$alphaFile" | wc -l)" -eq 3 ]; then
+                mean=$(asttable "$alphatruedir/$alphaFile" -c3 | aststatistics --mean)
+            else
+                mean=$(asttable "$alphatruedir/$alphaFile" -c3 | aststatistics --sigclip-median)
+            fi
+            
             std=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --std)
             echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
             count=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
@@ -2532,7 +2538,9 @@ combineCatalogues() {
     done
 
     $asttablePrompt
-    python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py "$outputDir/$catalogueName.cat" "$outputDir/$catalogueName.reg" "plain"
+    raCol=3
+    decCol=4
+    python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py "$outputDir/$catalogueName.cat" "$outputDir/$catalogueName.reg" "plain" $raCol $decCol
 }
 export -f combineCatalogues
 
@@ -2605,7 +2613,7 @@ computeCalibrationFactors() {
     local apertureUnits=${15}
     local numberOfApertureUnitsForCalibration=${16}
     local calibratingMosaic=${17}
-
+  
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
@@ -2912,7 +2920,7 @@ produceCalibrationCheckPlot() {
     local BDIR=${12}
     local mosaicPlot=${13}
     local calibratedCataloguesDir=${14}
-
+    local onlyPointLikeDir=${15}
 
     if ! [ -d $calibratedCataloguesDir ]; then mkdir $calibratedCataloguesDir; fi
 
@@ -2952,14 +2960,18 @@ produceCalibrationCheckPlot() {
             columnWithXCoordForOutDataWCS=3
             columnWithYCoordForOutDataWCS=4
 
-
+            onlyPointLikeCat=$onlyPointLikeDir/selected_entirecamera_"$frameNumber".fits_automatic.txt
             photometryOnImage_photutils -1 $calibratedCataloguesDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $calibratedCataloguesDir/$frameNumber.cat 22.5 $dataHdu \
                                         $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
 
-            astmatch $referenceCatalogue --hdu=1 $calibratedCataloguesDir/$frameNumber.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=3/3600 --outcols=aRA,aDEC,aMAGNITUDE,bMAGNITUDE -o$calibratedCataloguesDir/"$frameNumber"_matched.cat
-            rm $calibratedCataloguesDir/$frameNumber.cat
+            # Catalogue that contains only stars in the point-like region
+            astmatch $calibratedCataloguesDir/$frameNumber.cat --hdu=1 $onlyPointLikeCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=3/3600 --outcols=aRA,aDEC,aMAGNITUDE -o$calibratedCataloguesDir/"$frameNumber"_pointLike.cat
+            astmatch $referenceCatalogue --hdu=1 $calibratedCataloguesDir/"$frameNumber"_pointLike.cat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=3/3600 --outcols=aRA,aDEC,aMAGNITUDE,bMAGNITUDE -o$calibratedCataloguesDir/"$frameNumber"_matched.cat
+            rm $calibratedCataloguesDir/$frameNumber.cat $calibratedCataloguesDir/"$frameNumber"_pointLike.cat
         fi
     done
+
+
     python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibratedCataloguesDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey
     # rm $calibratedCataloguesDir/*.cat 
 }
@@ -2974,6 +2986,10 @@ produceHalfMaxRadVsMagForSingleImage() {
     local alternativeIdentifier=$6 # Applied when there is no number in the name
     local tileSize=$7
     local apertureUnits=$8
+    local myCatDir=$9
+    local brightCalibrationLimit=${10}
+    local faintCalibrationLimit=${11}
+
 
     a=$( echo $image | grep -oP '\d+(?=\.fits)' )
     if ! [[ -n "$a" ]]; then
@@ -2986,12 +3002,17 @@ produceHalfMaxRadVsMagForSingleImage() {
 
     astmatch $catalogueName --hdu=1 $gaiaCat --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $outputDir/match_decals_gaia_$a.txt
 
+    # We get the detected point-like range so we can plot it and check if everything's fine
+    rangeFile=$myCatDir/"range_"$(basename $image)".txt"
+    minRange=$(awk '{print $3}' $rangeFile)
+    maxRange=$(awk '{print $4}' $rangeFile)
+
     plotXLowerLimit=0.5
     plotXHigherLimit=10
-    plotYLowerLimit=12
-    plotYHigherLimit=22
+    plotYLowerLimit=14
+    plotYHigherLimit=27
     python3 $pythonScriptsPath/diagnosis_halfMaxRadVsMag.py $catalogueName $outputDir/match_decals_gaia_$a.txt -1 -1 -1 $outputDir/$a.png  \
-        $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit $apertureUnits
+        $plotXLowerLimit $plotXHigherLimit $plotYLowerLimit $plotYHigherLimit $apertureUnits $minRange $maxRange $brightCalibrationLimit $faintCalibrationLimit
 
     rm $catalogueName $outputDir/match_decals_gaia_$a.txt
 }
@@ -3007,12 +3028,16 @@ produceHalfMaxRadVsMagForOurData() {
     local num_cpus=$6
     local tileSize=$7
     local apertureUnits=$8
+    local myCatDir=$9
+    local brightestMagForCalibration=${10}
+    local faintestMagForCalibration=${11}
 
     images=()
     for i in $imagesDir/*.fits; do
         images+=("$i")
     done
-    printf "%s\n" "${images[@]}" | parallel --line-buffer -j "$num_cpus" produceHalfMaxRadVsMagForSingleImage {} $outputDir $gaiaCat $toleranceForMatching $pythonScriptsPath "-" $tileSize $apertureUnits
+
+    printf "%s\n" "${images[@]}" | parallel --line-buffer -j "$num_cpus" produceHalfMaxRadVsMagForSingleImage {} $outputDir $gaiaCat $toleranceForMatching $pythonScriptsPath "-" $tileSize $apertureUnits $myCatDir $brightestMagForCalibration $faintestMagForCalibration
 }
 export -f produceHalfMaxRadVsMagForOurData
 
@@ -3425,7 +3450,7 @@ limitingSurfaceBrightness() {
     # We run again noisechisel because we need the SKY_STD header. We need it because we want to use MEDSTD, it is said
     # in gnuastro documentation that it is more reliable than simply using the std of the background px of the image.
     out_maskexp=$directoryOfImages/mask_exp.fits
-    astnoisechisel $out_maskexp_tmp -o$out_maskexp >/dev/null 2>&1
+    astnoisechisel $out_maskexp_tmp --tilesize=20,20 -o$out_maskexp  # >/dev/null 2>&1
     sigma=$( astfits $out_maskexp --hdu=SKY_STD --keyvalue='MEDSTD' --quiet )
 
     sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
@@ -3459,7 +3484,7 @@ computeFWHMSingleFrame(){
         exit $erroNumber
     fi
 
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_"$surveyToUseInSolveField".fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
     # Now we select the stars as we do for the photometry
     s=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
     std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)

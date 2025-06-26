@@ -126,6 +126,7 @@ frameNumber = np.array([])
 
 # Calibration plot for all the frames
 for index, file in enumerate(glob.glob(directoryWithTheCatalogues + "/*.cat")):
+    print("Reading: ", file)
     mag1, mag2 = read_columns_from_file(file)
     mag1Total = np.append(mag1Total, mag1)
     magDiff = np.append(magDiff, np.array((mag1 - mag2)))
