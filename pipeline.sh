@@ -1421,6 +1421,7 @@ fi
 
 # Calibration
 aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
+onlyPointLikeCat=$BDIR/my-catalog-halfmaxradius_it$iteration
 calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_individualFrames.png
 if [ -f $calibrationPlotName ]; then
     echo -e "\nCalibration diagnosis plot for individual frames already done\n"
