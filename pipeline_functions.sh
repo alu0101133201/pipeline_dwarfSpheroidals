@@ -207,12 +207,18 @@ checkIfAllVariablesAreSet() {
                 gain \
                 sizeOfOurFieldDegrees \
                 coaddSizePx \
-                vignettingThreshold \
-                calibrationBrightLimit \
-                calibrationFaintLimit \
+                lowerVignettingThreshold \
+		upperVignettingThreshold \
+                calibrationBrightLimitIndividualFrames \
+                calibrationFaintLimitIndividualFrames \
+                calibrationBrightLimitCoaddPrephot \
+                calibrationFaintLimitCoaddPrephot \
+                apertureUnits \
                 numberOfApertureUnitsForCalibration \
                 surveyForPhotometry \
                 folderWithTransmittances \
+		surveyCalibrationToGaiaBrightLimit \
+                surveyCalibrationToGaiaFaintLimit \
                 surveyForSpectra \
                 ringWidth \
                 USE_COMMON_RING \
@@ -224,7 +230,6 @@ checkIfAllVariablesAreSet() {
                 secondRingDefinitionFile
                 keyWordValueForSecondRing
                 RUNNING_FLAT \
-                windowSize \
                 halfWindowSize \
                 MODEL_SKY_AS_CONSTANT \
                 sky_estimation_method \
@@ -241,9 +246,11 @@ checkIfAllVariablesAreSet() {
                 solve_field_L_Param \
                 solve_field_H_Param \
                 solve_field_u_Param \ 
-                numberOfStdForBadFrames
+                maximumBackgroundBrightness \
+                maximumSeeing \
                 fractionExpMap\
-                areaSBlimit)
+                areaSBlimit \
+		produceCoaddPrephot)
 
     echo -e "\n"
     for currentVar in ${variablesToCheck[@]}; do
@@ -877,7 +884,7 @@ warpImage() {
     frameSmallGrid=$entiredir/entirecamera_$currentIndex.fits
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
+    SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
     
     # Mask bad pixels
 

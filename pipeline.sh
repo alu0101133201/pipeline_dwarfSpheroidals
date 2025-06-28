@@ -48,7 +48,7 @@ export pipelinePath
 export pythonScriptsPath
 
 # Load the file with all the needed functions
-source "$pipelinePath/pipeline_TST_functions.sh"
+source "$pipelinePath/pipeline_functions.sh"
 
 echo -e "\n ${GREEN} ---Loading Modules--- ${NOCOLOUR}"
 
