@@ -727,7 +727,7 @@ calculateRunningFlat() {
     local outputDir=$2
     local doneFile=$3
     local iteration=$4
-
+    windowSize=$(( (halfWindowSize * 2) + 1 ))
     fileArray=()
     fileArray=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*.fits) )
     fileArrayLength=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*.fits | wc -l) )
