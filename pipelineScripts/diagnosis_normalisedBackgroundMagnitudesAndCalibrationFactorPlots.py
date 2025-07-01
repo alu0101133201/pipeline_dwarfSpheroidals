@@ -510,7 +510,7 @@ else:
     exit()
 
 setMatplotlibConf()
-
+destinationFolder_h=destinationFolder+'/CCD'+str(h)
 
 
 pattern = os.path.join(folderWithFramesWithAirmasses, "*.fits")
@@ -529,7 +529,7 @@ rejectedFrames_astrometry = np.array(rejectedFrames_astrometry)
 
 
 rejectedFrames_FWHM = []
-with open(destinationFolder + "/identifiedBadFrames_fwhm.txt", 'r') as f:
+with open(destinationFolder_h + "/identifiedBadFrames_fwhm.txt", 'r') as f:
     for line in f:
         rejectedFrames_FWHM.append(int(line.strip()))
 rejectedFrames_FWHM = np.array(rejectedFrames_FWHM)
@@ -626,22 +626,22 @@ rejectedFrames_Background = np.array(badFilesBackground).astype(int)
 # PLOTS
 
 saveHistogram(np.array(magnitudesPerArcSecSqNormalised), rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
-                "Distribution of NORMALISED background magnitudes", 'Background (mag/arcsec^2)', destinationFolder + "/magnitudeHist.png")
+                "Distribution of NORMALISED background magnitudes", 'Background (mag/arcsec^2)', destinationFolder_h + "/magnitudeHist.png")
 
 
 saveHistogram(np.array([x[1] for x in totalCalibrationFactors]), rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
-                "Distribution of calibration factors", 'Calibration factors', destinationFolder + "/calibrationFactorsHist.png", commonCalibrationFactorValue, calibrationFactorsStd)
+                "Distribution of calibration factors", 'Calibration factors', destinationFolder_h + "/calibrationFactorsHist.png", commonCalibrationFactorValue, calibrationFactorsStd)
 
 
 saveScatterFactors(totalCalibrationFactors, rejectedFrames_astrometry, rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
-                "Evolution of calibration factors",destinationFolder + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses, destinationFolder, commonCalibrationFactorValue,dateKey)
+                "Evolution of calibration factors",destinationFolder_h + "/calibrationFactorEvolution.png", folderWithFramesWithAirmasses, destinationFolder, commonCalibrationFactorValue,dateKey)
 
 
 
 saveBackEvolution(magnitudesPerArcSecSqNormalised,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
-    "Evolution of NORMALISED background magnitudes",destinationFolder+"/backgroundEvolution_normMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
+    "Evolution of NORMALISED background magnitudes",destinationFolder_h+"/backgroundEvolution_normMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
 
 
 saveBackEvolution(magnitudesPerArcSecSqOriginal,rejectedFrames_astrometry,rejectedFrames_FWHM, rejectedFrames_Background, rejectedFrames_CalibrationFactor, \
-    "Evolution of background magnitudes",destinationFolder+"/backgroundEvolution_originalMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
+    "Evolution of background magnitudes",destinationFolder_h+"/backgroundEvolution_originalMag",folderWithFramesWithAirmasses, maxmimumBackgroundBrightness)
 

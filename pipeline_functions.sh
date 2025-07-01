@@ -656,9 +656,9 @@ normaliseImagesWithRing() {
         for h in $(seq 1 $num_ccd); do
 
             me=$(getMedianValueInsideRing $i $commonRing $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
-            astarithmetic $i -h$h $me / -o $outputDir/temp.fits
-            astfits $outputDir/temp.fits --copy=1 -o $out
-            rm $outputDir/temp.fits
+            astarithmetic $i -h$h $me / -o $outputDir/temp_$base
+            astfits $outputDir/temp_$base --copy=1 -o $out
+            rm $outputDir/temp_$base
             propagateKeyword $i $gain $out $h
         done
     done
@@ -733,8 +733,10 @@ calculateRunningFlat() {
     fileArrayLength=( $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*.fits | wc -l) )
 
     lefFlatFiles=("${fileArray[@]:0:$windowSize}")
+    
     echo "Computing left flat - iteration $iteration"
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left.fits" "$iteration" "${lefFlatFiles[@]}"
+    
     rightFlatFiles=("${fileArray[@]:(fileArrayLength-$windowSize):fileArrayLength}")
     echo "Computing right flat - iteration $iteration"
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right.fits" "$iteration" "${rightFlatFiles[@]}"
@@ -769,9 +771,9 @@ divideImagesByRunningFlats(){
             flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a".fits
         fi
         for h in $(seq 1 $num_ccd); do
-            astarithmetic $i -h$h $flatToUse -h$h / -o temp.fits
-            astfits temp.fits --copy=1 -o$out
-            rm temp.fits
+            astarithmetic $i -h$h $flatToUse -h$h / -o $outputDir/temp_$base
+            astfits $outputDir/temp_$base --copy=1 -o$out
+            rm $outputDir/temp_$base
             propagateKeyword $i $gain $out $h
         done
     done
@@ -791,9 +793,9 @@ divideImagesByWholeNightFlat(){
         out=$outputDir/$base
         astfits $i --copy=0 --primaryimghdu -o $out
         for h in $(seq 1 $num_ccd); do
-            astarithmetic $i -h$h $flatToUse -h$h / -o temp.fits
-            astfits temp.fits --copy=1 -o$out
-            rm temp.fits
+            astarithmetic $i -h$h $flatToUse -h$h / -o $outputDir/temp_$base
+            astfits $outputDir/temp_$base --copy=1 -o$out
+            rm $outputDir/temp_$base
             propagateKeyword $i $gain $out $h
         done
     done
@@ -853,7 +855,18 @@ warpImage() {
     # Parameters for identifing our frame in the full grid
     currentIndex=$(basename $imageToSwarp .fits)
 
-    
+    detect_swarp() {
+        for cmd in swarp SWarp; do
+            if command -v "$cmd" >/dev/null 2>&1; then
+                echo "$cmd"
+                return
+            fi
+        done
+        echo "Error: SWarp not found" >&2
+        exit 1
+    }
+
+    SWARP_CMD=$(detect_swarp)
     
 
     ##Multiple layers treatement: we want to preserve the multi-layer structure of the .fits file in the output, something swarp apparently doesn't like. 
@@ -884,7 +897,7 @@ warpImage() {
     frameSmallGrid=$entiredir/entirecamera_$currentIndex.fits
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    SWarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
+    $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
     
     # Mask bad pixels
 
@@ -944,10 +957,21 @@ removeBadFramesFromReduction() {
 
     while IFS= read -r file_name; do
         file_name=$(basename "$file_name")
-        fileName="entirecamera_${file_name%.*}".fits
+        fileName=$prefixOfFilesToRemove"${file_name%.*}".fits
         if [ -f $sourceToRemoveFiles/$fileName ]; then
             mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
         fi
+
+        txtFileName=$prefixOfFilesToRemove"${file_name%.*}".txt
+        if [ -f $sourceToRemoveFiles/$txtFileName ]; then
+            mv $sourceToRemoveFiles/$txtFileName $destinationDir/$txtFileName
+        fi
+
+        maskFileName=$prefixOfFilesToRemove"${file_name%.*}"_masked.fits
+        if [ -f $sourceToRemoveFiles/$maskFileName ]; then
+            mv $sourceToRemoveFiles/$maskFileName $destinationDir/$maskFileName
+        fi
+
     done < "$filePath"
 }
 export -f removeBadFramesFromReduction
@@ -1522,7 +1546,7 @@ solveField() {
         while [ $attempt -le $max_attempts ]; do
             #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
             #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
-            solve-field $image_temp --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees \
+            solve-field $image_temp --no-plots \
             -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
             --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
             --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
@@ -1535,7 +1559,7 @@ solveField() {
             
             ((attempt++))
         done
-
+        
         rm $image_temp image"$h"_*.wcs
         #rm $layer_temp
     done
@@ -2073,7 +2097,7 @@ prepareSurveyDataForPhotometricCalibration() {
         selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey $apertureUnits
         selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $methodToUse $survey $apertureUnits
     fi
-
+    
     #halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     #if [ "$survey" = "DECalS" ]; then
     #    produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
@@ -2099,6 +2123,7 @@ prepareSurveyDataForPhotometricCalibration() {
         performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
         performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
     fi
+    
     # As mentioned in other comments and in the README, our reference framework is gaia, so I compute any offset to the 
     # photometry of PANSTARRS and GAIA magnitudes (from spectra) and correct it
     spectraDir=$mosaicDir/gaiaSpectra
@@ -2108,7 +2133,7 @@ prepareSurveyDataForPhotometricCalibration() {
     # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
     calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5
     calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15
- 
+    
     read offset_g factorToApplyToCounts_g < "$mosaicDir/offsetToCorrectSurveyToGaia_g.txt"
     read offset_r factorToApplyToCounts_r < "$mosaicDir/offsetToCorrectSurveyToGaia_r.txt"
 
@@ -2342,7 +2367,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     fi
     
     if [[ "$survey" == "YES" ]]; then
-        astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,a$apertureUnits -o$mycatdir/match_"$a"_my_gaia.txt
+        astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,a$apertureUnits -o$mycatdir/match_"$a"_my_gaia.txt
         s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
         std=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
         minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
@@ -2352,7 +2377,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     else
         for h in $(seq 1 $num_ccd); do
             tmp_cat=$mycatdir/match_"$a"_ccd"$h"_my_gaia.fits
-            astmatch $outputCatalogue --hdu=$h $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu2=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,a$apertureUnits -o$tmp_cat
+            astmatch $outputCatalogue --hdu=$h $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu2=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,a$apertureUnits -o$tmp_cat
             astfits $tmp_cat --copy=1 -o $mycatdir/match_"$a"_my_gaia.fits
             rm $tmp_cat
         done
@@ -2694,9 +2719,8 @@ computeCommonCalibrationFactor() {
     calibrationFactors=()
     for i in $( ls $calibrationFactorsDir/alpha_"$objectName"*.txt); do
         alpha=$(awk 'NR=='$h'{print $1}' $i)
-        calibrationFactors+=("$currentCalibrationFactor")
+        calibrationFactors+=("$alpha")
     done
-
     tmpTableFits=$BDIR/tableTest.fits
     printf "%s\n" "${calibrationFactors[@]}" | asttable -o "$tmpTableFits"
     commonCalibrationFactor=$( aststatistics $tmpTableFits --sigclip-median)
@@ -2925,7 +2949,7 @@ removeOutliersFromFrame(){
     local wdir=$4
 
     base=$( basename $a )
-    tmp_ab=$mowdir/"$objectName"_Decals-"$filter"_"$a"_ccd"$h"_maskabove.fits
+    tmp_ab=$mowdir/${base%.fits}_maskabove.fits
     wom=$mowdir/$base
     
     for h in $(seq 1 $num_ccd); do
@@ -3038,14 +3062,15 @@ produceCalibrationCheckPlot() {
     local referenceCatalogueDir=$4
     local pythonScriptsPath=$5
     local output=$6
-    local calibrationBrighLimit=$7
+    local calibrationBrightLimit=$7
     local calibrationFaintLimit=$8
     local numberOfApertureUnitsForCalibration=$9
     local outputDir=${10}
     local survey=${11}
-    local BDIR=${12}
-
-    calibratedCataloguesDir=$BDIR/calibratedCatalogues
+    local bdir=${12}
+    
+    calibratedCataloguesDir=$bdir/calibratedCatalogues
+    
     if ! [ -d $calibratedCataloguesDir ]; then mkdir $calibratedCataloguesDir; fi
     #tmpDir="./calibrationDiagnosisTmp"
     #if ! [ -d $tmpDir ]; then mkdir $tmpDir; fi
@@ -3092,7 +3117,7 @@ produceCalibrationCheckPlot() {
         
     done
     for h in $(seq 1 $num_ccd); do
-        python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibratedCataloguesDir $output $outputDir $calibrationBrighLimit $calibrationFaintLimit $survey $h
+        python3 $pythonScriptsPath/diagnosis_magVsDeltaMag.py $calibratedCataloguesDir $output $outputDir $calibrationBrightLimit $calibrationFaintLimit $survey $h
     done
     
 }
@@ -3232,7 +3257,7 @@ computeExposureMap() {
     if [ -f $exposuremapdone ]; then
         echo -e "\n\tThe exposure map is already done\n"
     else
-      framesDir=$BDIR/pointings_fullGrid
+      
       framesToProcess=()
       for a in $(seq 1 $totalNumberOfFrames); do
         framesToProcess+=("$a")
@@ -3306,7 +3331,6 @@ generateCatalogueFromImage_sextractor(){
     #For panstarrs we need to use zp=25
    
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param   1>/dev/null 2>&1
-    
     #awk '{ $6 = $6 / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a".cat # I divide because SExtractor gives the FWHM and the pipeline expects half
     #If multidetector the .cat output file is a num_ccd layer .cat with the catalogues of each layer of the .fits file. We make the arith and save everything properly
     if [[ "$survey" == "YES" ]]; then
@@ -3530,7 +3554,7 @@ computeFWHMSingleFrame(){
     fi
     
     if [[ "$survey" == "YES" ]]; then
-        astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aFWHM -o$fwhmdir/match_"$a"_my_gaia.txt
+        astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aFWHM -o$fwhmdir/match_"$a"_my_gaia.txt
         hFWHM=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
         FWHM=$(awk "BEGIN {print $hFWHM * 2}")
         echo $FWHM > $fwhmdir/fwhm_"$a".txt
@@ -3538,7 +3562,7 @@ computeFWHMSingleFrame(){
     else
         for h in $(seq 1 $num_ccd); do
             tmp_cat=$fwhmdir/match_"$a"_ccd"$h"_my_gaia.fits
-            astmatch $outputCatalogue --hdu=$h $BDIR/catalogs/"$objectName"_Gaia_eDR3.fits --hdu2=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,a$apertureUnits -o$tmp_cat
+            astmatch $outputCatalogue --hdu=$h $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu2=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,a$apertureUnits -o$tmp_cat
             astfits $tmp_cat --copy=1 -o $fwhmdir/match_"$a"_my_gaia.fits
             rm $tmp_cat
         done

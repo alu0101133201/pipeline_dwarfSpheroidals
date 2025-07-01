@@ -218,7 +218,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord,
     except:
         print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + ")")
         return(float('nan'), float('nan')) 
-    return(backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
+    return(backgroundValue,backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
 
 def saveParameterEvolution(files, values, parameter, imageName, astrometryRejectedIndices):
     fig, ax = plt.subplots(2,1, figsize=(20,10))
@@ -333,8 +333,8 @@ def getIndicesOfFiles(allData, filesNames):
     indices = []
 
     for i in filesNames:
-        for j in range(len(allData["File"])):
-            if (i == allData["File"][j]):
+        for j in range(len(allData)):
+            if (i == allData[j]):
                 indices.append(j)
     return(indices)
 
@@ -427,6 +427,7 @@ with open(outputFolder + "/skewnessValues.dat", 'w') as file:
 with open(outputFolder + "/kurtosisValues.dat", 'w') as file:
     for i in range(len(backgroundKurtos)):
         file.write(files[i] + " " + str(backgroundKurtos[i]) + '\n')
+
 
 badAstrometrisedIndices   = getIndicesOfFiles(files, badAstrometrisedFrames)
 
