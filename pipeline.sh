@@ -2242,9 +2242,13 @@ computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration 
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 
 
+
+
 applyCommonCalibrationFactor=true
-if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
-  computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
+if ! [ -f $BDIR/commonCalibrationFactor_it$iteration.txt ]; then
+  if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
+    computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
+  fi
 fi
 
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
@@ -2268,6 +2272,7 @@ applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 ##Recover the full grid
 
+
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
@@ -2289,10 +2294,10 @@ smallGridtoFullGrid $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGrid
 echo -e "\n·Removing bad frames"
 
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-rejectedFramesDir=$BDIR/rejectedFrames
+rejectedFramesDir=$BDIR/rejectedFrames_it"$iteration"
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-
+prefixOfFilesToRemove='entirecamera_'
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
 removeBadFramesFromReduction $photCorrFullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
@@ -2420,8 +2425,8 @@ else
       ((coadd_count++))
     done
   done
-  astarithmetic $names_coadd $coadd_count mean -o$coadd_av
-  subtractCoaddToFrames $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
+  #astarithmetic $names_coadd $coadd_count sigclip-mean -o$coadd_av
+  subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
   names_sub=""
   file_count=0
   for file in $(ls -v $framesWithCoaddSubtractedDir/*.fits); do

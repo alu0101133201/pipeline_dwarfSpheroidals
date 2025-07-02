@@ -855,18 +855,7 @@ warpImage() {
     # Parameters for identifing our frame in the full grid
     currentIndex=$(basename $imageToSwarp .fits)
 
-    detect_swarp() {
-        for cmd in swarp SWarp; do
-            if command -v "$cmd" >/dev/null 2>&1; then
-                echo "$cmd"
-                return
-            fi
-        done
-        echo "Error: SWarp not found" >&2
-        exit 1
-    }
-
-    SWARP_CMD=$(detect_swarp)
+    
     
 
     ##Multiple layers treatement: we want to preserve the multi-layer structure of the .fits file in the output, something swarp apparently doesn't like. 
@@ -897,7 +886,7 @@ warpImage() {
     frameSmallGrid=$entiredir/entirecamera_$currentIndex.fits
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
+    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
     
     # Mask bad pixels
 
@@ -2388,6 +2377,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         for h in $(seq 1 $num_ccd); do
             s=$(asttable $mycatdir/match_"$a"_my_gaia.fits -h$h -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1,$iterationsForStdSigClip --sigclip-median)
             std=$(asttable $mycatdir/match_"$a"_my_gaia.fits -h$h -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1,$iterationsForStdSigClip --sigclip-std)
+            
             minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
             maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
             echo "$s $std $minr $maxr" >> $mycatdir/range_"$a".txt
@@ -2439,7 +2429,6 @@ matchDecalsAndSingleFrame() {
     out_cat=$matchdir/match-"$base".cat
     out_fits=$matchdir/match-"$base".fits
     
-    
     for h in $(seq 1 $num_ccd); do
         tmpCatalogue=$matchdir/match-$base-tmp_ccd"$h".cat
         out_ccd=$matchdir/match-"$base"_ccd"$h".fits
@@ -2454,14 +2443,14 @@ matchDecalsAndSingleFrame() {
             astmatch $ourDataCatalogue --hdu=$h $calibrationCatalogue --hdu2=$h --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 \
                 --outcols=bRA,bDEC,aRA,aDEC,bMAGNITUDE,bSUM,aMAGNITUDE,aSUM -o$tmpCatalogue
         fi
-        asttable $tmpCatalogue --output=$out_ccd --colmetadata=1,RA,deg,"Right ascension DECaLs" \
-                --colmetadata=2,DEC,none,"Declination DECaLs" \
-                --colmetadata=3,RA,deg,"Right ascension data being reduced" \
-                --colmetadata=4,DEC,none,"Declination data being reduced" \
+        asttable $tmpCatalogue --output=$out_ccd --colmetadata=1,RA_CALIBRATED,deg,"Right ascension DECaLs" \
+                --colmetadata=2,DEC_CALIBRATED,none,"Declination DECaLs" \
+                --colmetadata=3,RA_NONCALIBRATED,deg,"Right ascension data being reduced" \
+                --colmetadata=4,DEC_NONCALIBRATED,none,"Declination data being reduced" \
                 --colmetadata=5,MAGNITUDE_CALIBRATED,none,"Magnitude in DECaLS data" \
-                --colmetadata=6,SUM,none,"Sum in DECaLS" \
+                --colmetadata=6,SUM_CALIBRATED,none,"Sum in DECaLS" \
                 --colmetadata=7,MAGNITUDE_NONCALIBRATED,none,"Magnitude in data being reduced" \
-                --colmetadata=8,SUM,none,"Sum in in data being reduced" 
+                --colmetadata=8,SUM_NONCALIBRATED,none,"Sum in in data being reduced" 
         astfits $out_ccd --copy=1 -o$out_fits
         rm $tmpCatalogue $out_ccd
     done
@@ -2756,10 +2745,12 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
+    echo "selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits" > sstars_it"$iteration".txt
    
     
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
+    echo "buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration" > bodata_it"$iteration".txt
    
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
@@ -2769,14 +2760,16 @@ computeCalibrationFactors() {
     else
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association $mosaicDir/aperturePhotometryCatalogues
+        echo "combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association $mosaicDir/aperturePhotometryCatalogues" > ccat_it"$iteration".txt
     fi
     
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic
-    
+    echo "matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic" > match_it"$iteration".txt
+  
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
-    
+    echo "computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit" > compfac_it"$iteration".txt
 }
 export -f computeCalibrationFactors
 
@@ -2785,11 +2778,17 @@ applyCalibrationFactorsToFrame() {
     local imagesForCalibration=$2
     local alphatruedir=$3
     local photCorrDir=$4
-    local inverseApplication=$5
+    local iteration=$5
+    local applyCommon=$6
+    local inverseApplication=$7
 
     base=entirecamera_"$a".fits
     f=$imagesForCalibration/"entirecamera_$a.fits"
-    alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
+    if [[ "$applyCommonCalibrationFactor" == "true" || "$applyCommonCalibrationFactor" == "True" ]]; then
+        alpha_cat=$BDIR/commonCalibrationFactor_it"$iteration".txt
+    else
+        alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
+    fi
     for h in $(seq 1 $num_ccd); do
         base_ccd=entirecamera_"$a"_ccd"$h".fits
         alpha=$(awk 'NR=='$h'{print $1}' $alpha_cat)
@@ -2808,7 +2807,9 @@ applyCalibrationFactors() {
     local imagesForCalibration=$1
     local alphatruedir=$2
     local photCorrDir=$3
-    local inverseApplication=${4:-false}
+    local iteration=$4
+    local applyCommon=$5
+    local inverseApplication=${6:-false}
 
     muldone=$photCorrDir/done.txt
     if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
@@ -2819,7 +2820,7 @@ applyCalibrationFactors() {
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToApplyFactor+=("$a")
         done
-        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir $inverseApplication
+        printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir $iteration $applyCommon $inverseApplication
         echo done > $muldone
     fi
 }
