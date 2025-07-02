@@ -2386,8 +2386,8 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
         for h in $(seq 1 $num_ccd); do
-            s=$(asttable $mycatdir/match_"$a"_my_gaia.fits -h$h -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-            std=$(asttable $mycatdir/match_"$a"_my_gaia.fits -h$h -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
+            s=$(asttable $mycatdir/match_"$a"_my_gaia.fits -h$h -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1,$iterationsForStdSigClip --sigclip-median)
+            std=$(asttable $mycatdir/match_"$a"_my_gaia.fits -h$h -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1,$iterationsForStdSigClip --sigclip-std)
             minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
             maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
             echo "$s $std $minr $maxr" >> $mycatdir/range_"$a".txt

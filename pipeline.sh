@@ -1254,8 +1254,7 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
 ringDir=$BDIR/ring
-sky_estimation_method=noisechisel 
-export sky_estimation_method
+
 
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
@@ -2099,8 +2098,8 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 
 
 # compute sky with frames masked with global mask
-imagesAreMasked=false
-sky_estimation_method=fullImage #If we trust the mask, we can use the full image
+imagesAreMasked=true
+sky_estimation_method=ring #If we trust the mask, we can use the full image
 computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
