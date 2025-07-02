@@ -58,6 +58,7 @@ def readFilterTransmittance(fileWithFilterTransmittance, waveUnits, transmittanc
     transmittance = []
 
     with open(fileWithFilterTransmittance, 'r') as f:
+        next(f)
         for line in f:
             splittedLine = line.split()
             wavelengths.append(float(splittedLine[0]))
@@ -170,7 +171,7 @@ def colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coe
     ax.scatter(g_r_colour, magnitudes1-magnitudes2, s=80, edgecolors="black", linewidths=1.75, label="Gaia stars")
     ax.scatter(x_fit, y_fit, color="red", lw=1, label="fit")
     
-    ax.text(0.1, 0.1, "({:.2}".format(coeffs[0]) + r")$x^2$ +" + "({:.2}".format(coeffs[1]) + r")x + " + "({:.2}".format(coeffs[2]) + ")" , fontsize=22, color="blue")
+    ax.text(0.1, -0.1, "({:.2}".format(coeffs[0]) + r")$x^2$ +" + "({:.2}".format(coeffs[1]) + r")x + " + "({:.2}".format(coeffs[2]) + ")" , fontsize=22, color="blue")
     ax.legend(fontsize=18)
     plt.savefig(f"./images/{field}_{bandToStudy}_{comparisonSurvey}_colourDependencePlot.png")
     return()
@@ -210,16 +211,16 @@ else:
 
 
 
-filterName1 = f"./filters/{comparisonSurvey}_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/{currentInstrument}_{bandToStudy}.dat"; waveUnits2 = "A"; transmittanceUnits2 = "normalised"
+filterName1 = f"../filters/{comparisonSurvey}_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
+filterName2 = f"../filters/{currentInstrument}_{bandToStudy}.dat"; waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra
 
 # Compute colour g-r, always used for computing the offset
 
-filterName_g = f"./filters/{comparisonSurvey}_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
-filterName_r = f"./filters/{comparisonSurvey}_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
+filterName_g = f"../filters/{comparisonSurvey}_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
+filterName_r = f"../filters/{comparisonSurvey}_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
 
 
 wavelengths_g, transmittance_g = readFilterTransmittance(filterName_g, waveUnits_g, transmittanceUnits_g)

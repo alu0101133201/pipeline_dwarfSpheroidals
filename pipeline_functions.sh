@@ -3450,7 +3450,7 @@ limitingSurfaceBrightness() {
     # We run again noisechisel because we need the SKY_STD header. We need it because we want to use MEDSTD, it is said
     # in gnuastro documentation that it is more reliable than simply using the std of the background px of the image.
     out_maskexp=$directoryOfImages/mask_exp.fits
-    astnoisechisel $out_maskexp_tmp --tilesize=20,20 -o$out_maskexp  # >/dev/null 2>&1
+    astnoisechisel $out_maskexp_tmp --tilesize=20,20 -o$out_maskexp >/dev/null 2>&1
     sigma=$( astfits $out_maskexp --hdu=SKY_STD --keyvalue='MEDSTD' --quiet )
 
     sb_lim=$(astarithmetic $sigma 3 x $pixelScale x $areaSB / log10 -2.5 x $zp_asec + -q)
