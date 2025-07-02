@@ -274,7 +274,7 @@ checkIfStringVariablesHaveValidValues() {
         exit $errorCode
     fi
 
-    if [[ ("$surveyForPhotometry" != "PANSTARRS") && ("$surveyForPhotometry" != "DECaLS") && ("$surveyForPhotometry" != "SPECTRA")]]; then
+    if [[ ("$surveyForPhotometry" != "PANSTARRS") && ("$surveyForPhotometry" != "DECaLS") && ("$surveyForPhotometry" != "SPECTRA") && ("$surveyForPhotometry" != "SLOAN") ]]; then
         echo "Error. The variable surveyForPhotometry has a value ($surveyForPhotometry) which is not accepted"
         exit $errorCode
     fi
@@ -980,7 +980,7 @@ warpImage() {
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
     astarithmetic $entiredir/"$currentIndex"_swarp1.fits -h0 $tmpFile1 -h1 0 eq nan where -o$frameFullGrid
-
+    
     regionOfDataInFullGrid=$(python3 $pythonScriptsPath/getRegionToCrop.py $frameFullGrid 1)
     read row_min row_max col_min col_max <<< "$regionOfDataInFullGrid"
     astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
@@ -1618,6 +1618,11 @@ copyAstrometry() {
     wcsImage=$astroFolder/$base
     output=$outputDir/$base
     astarithmetic $inputImage --wcsfile=$wcsImage -o $output
+    inputHead=$astroFolder/${base%.fits}.head
+    if  [ -f $inputHead ]; then
+        cp $inputHead $outputDir/${base%.fits}.head
+    fi
+    
 }
 export -f copyAstrometry
 

@@ -500,7 +500,7 @@ oneNightPreProcessing() {
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone
   fi
 
-  
+ 
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
   # Obtain a mask using noisechisel on the running flat images
@@ -1043,8 +1043,8 @@ fi
 # # Making the indexes
 # writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
 # echo -e "·Downloading Indices for astrometrisation"
-catName_tst=$catdir/"$objectName"_TST_20.fits
-cp $DIR/"$objectName"_TST_20.fits $catName_tst
+catName_dec=$catdir/"$objectName"_Decals_dr10.fits
+cp $DIR/"$objectName"_Decals_dr10.fits $catName_dec
 indexdir=$BDIR/indexes
 indexdone=$indexdir/done_"$filter".txt
 if ! [ -d $indexdir ]; then mkdir $indexdir; fi
@@ -1058,10 +1058,9 @@ else
   for re in $(seq $lowestScaleForIndex $highestScaleForIndex); do
       indexes+=("$re")
   done
-  printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catName_tst $indexdir
+  printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catName_ps $indexdir
   echo done > $indexdone
 fi
-
 
 sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
 writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
@@ -1113,7 +1112,52 @@ else
       i=$convolimadir/$base
       frameNames+=("$i")
     done
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir $stitchdir
+    sfDone=$astroimadir/solveDone.txt
+    if  [ -f $sfDone ]; then
+      echo -e "\n\tImages already solved"
+    else
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir $stitchdir
+      echo done > $sfDone
+    fi
+    
+    writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
+    echo -e "·Creating SExtractor catalogues and running scamp"
+    #
+    numOfSextractorPlusScampIterations=2
+    #
+    sexcfg=$CDIR/sextractor_astrometry.sex
+    sexparam=$CDIR/sextractor_astrometry.param
+    sexconv=$CDIR/default.conv
+    sexdir=$BDIR/sex-it1
+    #
+    scampcfg=$CDIR/scamp.cfg
+    scampdir=$BDIR/scamp-it1
+    scampres=$scampdir/results_Decals-"$filter"
+    scampdone=$scampdir/done_"$filter".txt
+    #
+    if ! [ -d $sexdir ]; then mkdir $sexdir; fi
+    if ! [ -d $scampdir ]; then mkdir $scampdir; fi
+    if ! [ -d $scampres ]; then mkdir $scampres; fi
+    #
+    if [ -f $scampdone ]; then
+        echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
+    else
+      frameNames=()
+      for a in $(seq 1 $totalNumberOfFrames); do
+          frameNames+=("$a")
+      done
+
+      for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
+        echo -e "\tSExtractor + scamp iteration $i"
+
+        printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
+        scamp -c $scampcfg $(ls -v $sexdir/*.cat)
+        cp $sexdir/*.head $astroimadir
+        mv *.pdf $scampres/
+        mv scamp.xml $scampdir
+      done
+      echo done > $scampdone
+    fi
   else
     #Use already astrometrized images for making the astrometry
     frameNames=()
@@ -1127,8 +1171,6 @@ else
 fi
 
 
-
-
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -1140,46 +1182,9 @@ fi
 # I have put them together so we can loop them easily, because to perform an iterative astrometrisation we need to do
 # sextractor + scamp, so for doing it in a confortable manner in the code both steps are in the same block
 
-echo -e "·We won't correct from distortion using scamp in HiPERCAM"
+#echo -e "·We won't correct from distortion using scamp in HiPERCAM"
 
-#writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
-#echo -e "·Creating SExtractor catalogues and running scamp"
-#
-#numOfSextractorPlusScampIterations=2
-#
-#sexcfg=$CDIR/sextractor_astrometry.sex
-#sexparam=$CDIR/sextractor_astrometry.param
-#sexconv=$CDIR/default.conv
-#sexdir=$BDIR/sex-it1
-#
-#scampcfg=$CDIR/scamp.cfg
-#scampdir=$BDIR/scamp-it1
-#scampres=$scampdir/results_Decals-"$filter"
-#scampdone=$scampdir/done_"$filter".txt
-#
-#if ! [ -d $sexdir ]; then mkdir $sexdir; fi
-#if ! [ -d $scampdir ]; then mkdir $scampdir; fi
-#if ! [ -d $scampres ]; then mkdir $scampres; fi
-#
-#if [ -f $scampdone ]; then
-#    echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
-#else
-#  frameNames=()
-#  for a in $(seq 1 $totalNumberOfFrames); do
-#      frameNames+=("$a")
-#  done
-#
-#  for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
-#    echo -e "\tSExtractor + scamp iteration $i"
-#
-#    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
-#    scamp -c $scampcfg $(ls -v $sexdir/*.cat)
-#    cp $sexdir/*.head $astroimadir
-#    mv *.pdf $scampres/
-#    mv scamp.xml $scampdir
-#  done
-#  echo done > $scampdone
-#fi
+
 
 
 
@@ -1390,240 +1395,240 @@ else
   exposuremapdone=$coaddDir/done_exposureMap.txt
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
+exit 0
+#if [[ "$filter" != "u" ]]; then
+  #### PHOTOMETRIC CALIBRATION  ####
+  echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
+  writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
+
+  ### PREPARING DATA FOR CALIBRATION ###
+  referenceImagesForMosaic=$entiredir_smallGrid
+  mosaicDir=$DIR/mosaic
+  selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
+  rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
+  aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
+  mosaicDone=$mosaicDir/done_prep.txt
+  sizeOfBrick=1000
+
+  # ****** Decision note *******
+  # Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
+  # we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
+  # magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. 
+  # For solving this we compute this offset and correct it in each run of the pipeline (thus PANSTARRS always agreeing with GAIA)\\ 
+  # GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. 
+  #It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha 
+  # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
+  # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
+  prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
+                                              $pixelScale $sizeOfOurFieldDegrees $catName_gaia $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
 
 
-#### PHOTOMETRIC CALIBRATION  ####
-echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
-writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
 
-### PREPARING DATA FOR CALIBRATION ###
-referenceImagesForMosaic=$entiredir_smallGrid
-mosaicDir=$DIR/mosaic
-selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
-rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
-aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
-mosaicDone=$mosaicDir/done_prep.txt
-sizeOfBrick=1000
+  # Calibration of coadd prephot
+  writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
+  if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
+  cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
 
-# ****** Decision note *******
-# Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
-# we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
-# magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. 
-# For solving this we compute this offset and correct it in each run of the pipeline (thus PANSTARRS always agreeing with GAIA)\\ 
-# GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. 
-#It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha 
-# (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
-# Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
-prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName_gaia $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
+  # Calibrate the coadd only in the high snr section 
+  expMax=$(aststatistics $BDIR/coadds-prephot/exposureMap.fits --maximum -q)
+  exp_fr=$(astarithmetic $expMax 0.1 x -q)
+  astarithmetic $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits $BDIR/coadds-prephot/exposureMap.fits -g1 $exp_fr lt nan where --output=$BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+  rm $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
+
+  iteration=1
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  matchdir=$BDIR/match-decals-myData_coaddPrephot_it$iteration
+  ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration
+  prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
+  mycatdir=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
+  calibratingMosaic=true
+  imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
+  computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
+                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
 
 
+  # Calibration of individual frames will be impossible in such an small field
+  #writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
+  #iteration=1
+  #alphatruedir=$BDIR/alpha-stars-true_it$iteration
+  #matchdir=$BDIR/match-decals-myData_it$iteration
+  #ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
+  #prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
+  #mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
+  #imagesForCalibration=$subskySmallGrid_dir
+  #calibratingMosaic=false
+  #
+  #computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
+  #                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 
-# Calibration of coadd prephot
-writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
-if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
-cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
-
-# Calibrate the coadd only in the high snr section 
-expMax=$(aststatistics $BDIR/coadds-prephot/exposureMap.fits --maximum -q)
-exp_fr=$(astarithmetic $expMax 0.1 x -q)
-astarithmetic $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits $BDIR/coadds-prephot/exposureMap.fits -g1 $exp_fr lt nan where --output=$BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-rm $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
-
-iteration=1
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-matchdir=$BDIR/match-decals-myData_coaddPrephot_it$iteration
-ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_coaddPrephot_it$iteration
-prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it$iteration
-mycatdir=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
-calibratingMosaic=true
-imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
-computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
+  # Creating histogram with the number of stars used for the calibratino of each frame
+  #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+  #if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
+  #numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir/numOfStarsUsedForCalibrationHist.png
+  #numberOfStarsUsedInEachFrameDone=$diagnosis_and_badFilesDir/done_numOfStarsUsedForCalibrate.txt
+  #if [ -f $numberOfStarsUsedInEachFrameDone ]; then
+  #  echo -e "\nHistogram with the number of stars used for calibrating each plot already done"
+  #else
+  #  python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot
+  #  echo done > $numberOfStarsUsedInEachFrameDone
+  #fi
 
 
-# Calibration of individual frames will be impossible in such an small field
-#writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
-#iteration=1
-#alphatruedir=$BDIR/alpha-stars-true_it$iteration
-#matchdir=$BDIR/match-decals-myData_it$iteration
-#ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
-#prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
-#mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
-#imagesForCalibration=$subskySmallGrid_dir
-#calibratingMosaic=false
-#
-#computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-#                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 
-# Creating histogram with the number of stars used for the calibratino of each frame
-#diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-#if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
-#numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir/numOfStarsUsedForCalibrationHist.png
-#numberOfStarsUsedInEachFrameDone=$diagnosis_and_badFilesDir/done_numOfStarsUsedForCalibrate.txt
-#if [ -f $numberOfStarsUsedInEachFrameDone ]; then
-#  echo -e "\nHistogram with the number of stars used for calibrating each plot already done"
-#else
-#  python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot
-#  echo done > $numberOfStarsUsedInEachFrameDone
+  # DIAGNOSIS PLOT
+  # Histogram of the background values on magnitudes / arcsec²
+  if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
+    tmpDir=$BDIR/noise-sky_it1
+  else
+    tmpDir=$noiseskyctedir
+  fi
+
+  backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness.done
+  if [ -f $backgroundBrightnessDone ]; then
+    echo -e "\nDiagnosis based on background brightness already done"
+  else
+    badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
+    python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $stitchdir $airMassKeyWord $dateHeaderKey $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
+    echo "done" > $backgroundBrightnessDone
+  fi
+
+
+  echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
+
+  #alphatruedir=$BDIR/alpha-stars-true_it$iteration
+  #photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
+  #applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
+
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+
+
+  # DIAGNOSIS PLOTs ---------------------------------------------------
+
+  # Astrometry
+  #astrometryPlotName=$diagnosis_and_badFilesDir/astrometry.png
+  #if [ -f $astrometryPlotName ]; then
+  #    echo -e "\nAstrometry diagnosis plot already done\n"
+  #else
+  #  produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
+  #fi
+  #
+  ## Calibration
+  #aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
+  #calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_individualFrames.png
+  #if [ -f $calibrationPlotName ]; then
+  #    echo -e "\nCalibration diagnosis plot for individual frames already done\n"
+  #else
+  #    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+  #      dirWithReferenceCat=$mosaicDir
+  #    else
+  #      dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_it1
+  #    fi
+  #    mosaicPlot=false
+  #    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
+  #                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogues  
+  #fi
+  #
+  #
+
+  # Calibration
+  aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it1
+  calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot.png
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  if [ -f $calibrationPlotName ]; then
+      echo -e "\nCalibration diagnosis plot for coadd prephot already done\n"
+  else
+      if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+        dirWithReferenceCat=$mosaicDir
+      else
+        dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it1
+      fi
+      mosaicPlot=true
+      produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_coaddPrephot_it1 $photCorrPrePhotDir $aperturesFolder $dirWithReferenceCat \
+                                    $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_prehot
+  fi
+
+
+  # # Half-Max-Radius vs magnitude plots of our calibrated data
+  #halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
+  #halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
+  #if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
+  #if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
+  #   echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
+  #else
+  #  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits
+  #  echo done > $halfMaxRadiusVsMagnitudeOurDataDone
+  #fi
+
+
+  # Getting depth, mask and adding keywords to the calibrated coadd prephot
+  # ---------------------------------------------------
+
+  # Since we calibrated the coadd in the high snr region, we need to restore the whole image
+  # I don't do that before so the calibration plot is with the calibrated area
+  iteration=1
+  photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
+  rm $photCorrPrePhotDir/*
+  rm $BDIR/coaddForCalibration_it$iteration/*
+
+  cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+  echo cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
+  alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
+  applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
+
+  coaddPrephotDir=$BDIR/coadds-prephot
+  coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated.fits
+  if [ ! -f "$coaddPrephotCalibratedName" ]; then
+    cp $BDIR/photCorr-coaddPrephot-dir_it$iteration/entirecamera_1.fits $coaddPrephotCalibratedName
+  fi
+
+
+  # Compute surface brightness limit
+  sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
+  exposuremapName=$coaddPrephotDir/exposureMap.fits
+  if [ -f  $sblimitFile ]; then
+    echo -e "\n\tSurface brightness limit for coadd already measured\n"
+    surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
+  else
+    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddPrephotCalibratedName $maskName $exposuremapName $coaddPrephotDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+  fi
+
+
+  times=($(getInitialMidAndFinalFrameTimes $INDIR))
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    initialTime=$( TZ=UTC  gdate -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+    meanTime=$( TZ=UTC  gdate -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+    finalTime=$( TZ=UTC  gdate -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+  else
+    initialTime=$( TZ=UTC  date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+    meanTime=$( TZ=UTC  date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+    finalTime=$( TZ=UTC  date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+  fi
+
+  keyWords=("FRAMES_COMBINED" \
+            "NUMBER_OF_DIFFERENT_NIGHTS" \
+            "INITIAL_DATE_OBS" \
+            "MEAN_DATE_OBS" \
+            "FINAL_DATE_OBS" \
+            "FILTER" \
+            "LOWER_VIGNETTING_THRESHOLD" \
+            "UPPER_VIGNETTING_THRESHOLD" \
+            "SATURATION_THRESHOLD" \
+            "CALIBRATED_USING" \
+            "CALIBRATION_BRIGHTLIMIT" \
+            "CALIBRATION_FAINTLIMIT" \
+            "RUNNING_FLAT" \
+            "WINDOW_SIZE" \
+            "SURFACE_BRIGHTNESS_LIMIT")
+
+  numberOfFramesCombined=$(ls $BDIR/weight-dir_prephot/*.fits | wc -l)
+  values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitCoaddPrephot" "$calibrationFaintLimitCoaddPrephot" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
+  comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+  astfits $coaddPrephotCalibratedName --write=/,"Pipeline information"
+  addkeywords "$coaddPrephotCalibratedName" keyWords values comments
 #fi
-
-
-
-# DIAGNOSIS PLOT
-# Histogram of the background values on magnitudes / arcsec²
-if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-  tmpDir=$BDIR/noise-sky_it1
-else
-  tmpDir=$noiseskyctedir
-fi
-
-backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness.done
-if [ -f $backgroundBrightnessDone ]; then
-  echo -e "\nDiagnosis based on background brightness already done"
-else
-  badFilesWarningsFile=identifiedBadFrames_backgroundBrightness.txt
-  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudes.py $tmpDir $stitchdir $airMassKeyWord $dateHeaderKey $alphatruedir $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesWarningsFile
-  echo "done" > $backgroundBrightnessDone
-fi
-
-
-echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
-
-#alphatruedir=$BDIR/alpha-stars-true_it$iteration
-#photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-#applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir
-
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
-
-
-# DIAGNOSIS PLOTs ---------------------------------------------------
-
-# Astrometry
-#astrometryPlotName=$diagnosis_and_badFilesDir/astrometry.png
-#if [ -f $astrometryPlotName ]; then
-#    echo -e "\nAstrometry diagnosis plot already done\n"
-#else
-#  produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
-#fi
-#
-## Calibration
-#aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
-#calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_individualFrames.png
-#if [ -f $calibrationPlotName ]; then
-#    echo -e "\nCalibration diagnosis plot for individual frames already done\n"
-#else
-#    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-#      dirWithReferenceCat=$mosaicDir
-#    else
-#      dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_it1
-#    fi
-#    mosaicPlot=false
-#    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
-#                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogues  
-#fi
-#
-#
-
-# Calibration
-aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it1
-calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot.png
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-if [ -f $calibrationPlotName ]; then
-    echo -e "\nCalibration diagnosis plot for coadd prephot already done\n"
-else
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-      dirWithReferenceCat=$mosaicDir
-    else
-      dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_coaddPrephot_it1
-    fi
-    mosaicPlot=true
-    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_coaddPrephot_it1 $photCorrPrePhotDir $aperturesFolder $dirWithReferenceCat \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_prehot
-fi
-
-
-# # Half-Max-Radius vs magnitude plots of our calibrated data
-#halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
-#halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
-#if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
-#if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
-#   echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
-#else
-#  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits
-#  echo done > $halfMaxRadiusVsMagnitudeOurDataDone
-#fi
-
-
-# Getting depth, mask and adding keywords to the calibrated coadd prephot
-# ---------------------------------------------------
-
-# Since we calibrated the coadd in the high snr region, we need to restore the whole image
-# I don't do that before so the calibration plot is with the calibrated area
-iteration=1
-photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
-rm $photCorrPrePhotDir/*
-rm $BDIR/coaddForCalibration_it$iteration/*
-
-cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-echo cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1.fits
-alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
-applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
-
-coaddPrephotDir=$BDIR/coadds-prephot
-coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated.fits
-if [ ! -f "$coaddPrephotCalibratedName" ]; then
-  cp $BDIR/photCorr-coaddPrephot-dir_it$iteration/entirecamera_1.fits $coaddPrephotCalibratedName
-fi
-
-
-# Compute surface brightness limit
-sblimitFile=$coaddPrephotDir/"$objectName"_"$filter"_sblimit.txt
-exposuremapName=$coaddPrephotDir/exposureMap.fits
-if [ -f  $sblimitFile ]; then
-  echo -e "\n\tSurface brightness limit for coadd already measured\n"
-  surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
-else
-  maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-  surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddPrephotCalibratedName $maskName $exposuremapName $coaddPrephotDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
-fi
-
-
-times=($(getInitialMidAndFinalFrameTimes $INDIR))
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  initialTime=$( TZ=UTC  gdate -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
-  meanTime=$( TZ=UTC  gdate -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
-  finalTime=$( TZ=UTC  gdate -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
-else
-  initialTime=$( TZ=UTC  date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
-  meanTime=$( TZ=UTC  date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
-  finalTime=$( TZ=UTC  date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
-fi
-
-keyWords=("FRAMES_COMBINED" \
-          "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS" \
-          "MEAN_DATE_OBS" \
-          "FINAL_DATE_OBS" \
-          "FILTER" \
-          "LOWER_VIGNETTING_THRESHOLD" \
-          "UPPER_VIGNETTING_THRESHOLD" \
-          "SATURATION_THRESHOLD" \
-          "CALIBRATED_USING" \
-          "CALIBRATION_BRIGHTLIMIT" \
-          "CALIBRATION_FAINTLIMIT" \
-          "RUNNING_FLAT" \
-          "WINDOW_SIZE" \
-          "SURFACE_BRIGHTNESS_LIMIT")
-
-numberOfFramesCombined=$(ls $BDIR/weight-dir_prephot/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitCoaddPrephot" "$calibrationFaintLimitCoaddPrephot" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
-astfits $coaddPrephotCalibratedName --write=/,"Pipeline information"
-addkeywords "$coaddPrephotCalibratedName" keyWords values comments
-
 # ------------------------------------------------------
 
 #echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
@@ -1976,7 +1981,7 @@ else
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
 
-
+#if [[ "$filrer" == "u" ]]; then exit 0; fi
 # Calibration of coadd prephot
 if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
 cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
@@ -2135,7 +2140,7 @@ addkeywords $coaddPrephotCalibratedName keyWords values comments
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt
 if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
-alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-g_1.txt
+alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_1.txt
 alpha=$(awk 'NR=='1'{print $1}' $alpha_cat)
 subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
 
@@ -2155,6 +2160,7 @@ if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtracted
 if [ -f $framesWithCoaddSubtractedDone ]; then
     echo -e "\nFrames with coadd subtracted already generated\n"
 else
+  coaddPrephotCalibratedName=$coaddDir/"$objectName"_prephot_calibrated_it"$iteration".fits
   sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
   photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
   subtractCoaddToFrames $photCorrfullGridDir $coaddPrephotCalibratedName $framesWithCoaddSubtractedDir

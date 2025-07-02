@@ -15,7 +15,7 @@ def chunks(lst, n):
 # ra          = 149.8528
 # dec         = 30.7493
 
-fieldName   = "Coma"
+fieldName   = "Coma_sdss"
 ra          = 195.20333
 dec         = 27.66072
 

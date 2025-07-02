@@ -153,11 +153,11 @@ def comparisonPlot(mag1, mag2, colours, waveUnits1, transmittanceUnits1, filter1
     sc = ax2.scatter(mag1, mag1 - mag2, c=colours, vmin=-1, vmax=1, s=80, edgecolors="black", linewidths=1.5)
     cbar = plt.colorbar(sc)
     cbar.set_label('g-r', fontsize=20)
-
+    dif_05=np.interp(0.5,colours,mag1-mag2)
     ax2.plot([7, 16], [0, 0], lw=2, ls="--", color="grey")
 
     if (std != None): ax2.text(7.5, 0.3, f"std: " + "{:.2}".format(std), fontsize=22, color="blue")
-
+    ax2.text(7.5,0.4,fr"$\Delta(g-r=0.5):$" +"{:.2}".format(dif_05),fontsize=22,color="blue")
     ax1.legend(fontsize=20, loc="upper right")
     plt.savefig(figName)
 
@@ -205,7 +205,7 @@ else:
     bandToStudy = "i"
 
 
-filterName1 = f"./filters/DECaLS_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
+filterName1 = f"./filters/SLOAN_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
 filterName2 = f"./filters/HIPERCAM_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 spectraFolder = f"./gaiaSpectra_{field}"
@@ -213,8 +213,8 @@ WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to hav
 
 # Compute colour g-r, always used for computing the offset
 
-filterName_g = "./filters/DECaLS_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
-filterName_r = "./filters/DECaLS_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
+filterName_g = "./filters/SLOAN_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
+filterName_r = "./filters/SLOAN_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
 
 
 wavelengths_g, transmittance_g = readFilterTransmittance(filterName_g, waveUnits_g, transmittanceUnits_g)
