@@ -259,6 +259,16 @@ oneNightPreProcessing() {
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
   
+  # The following lines are to check whether running flat has to apply here or not (even if selected, depending on the number
+  # of frames and the window size maybe it cannot be applied and it gives problems in the runningFlat function)
+  window_size=$(( (halfWindowSize * 2) + 1 ))
+  local RUNNING_FLAT_night=$RUNNING_FLAT
+  if [ "$n_exp" -le "$window_size" ]; then
+    RUNNING_FLAT_night=false
+  fi
+
+
+
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
   
@@ -412,7 +422,7 @@ oneNightPreProcessing() {
 
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit1dir=$BDIR/flat-it1-Running_n$currentNight
     flatit1done=$flatit1dir/done_"$filter"_ccd"$h".txt
     iteration=1
@@ -437,7 +447,7 @@ oneNightPreProcessing() {
   fi
 
   # Dividing the science images for the running it1 flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit1imadir=$BDIR/flat-it1-Running-ima_n$currentNight
     flatit1imadone=$flatit1imadir/done_"$filter"_ccd"$h".txt
     if ! [ -d $flatit1imadir ]; then mkdir $flatit1imadir; fi
@@ -464,7 +474,7 @@ oneNightPreProcessing() {
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
  
   # Obtain a mask using noisechisel on the running flat images
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
     noiseit2done=$noiseit2dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $noiseit2dir ]; then mkdir $noiseit2dir; fi
@@ -500,7 +510,7 @@ oneNightPreProcessing() {
 
 
   # Mask the images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
     maskedit2done=$maskedit2dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $maskedit2dir ]; then mkdir $maskedit2dir; fi
@@ -525,7 +535,7 @@ oneNightPreProcessing() {
 
 
   # Normalising masked images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     normit2dir=$BDIR/norm-it2-Running-images_n$currentNight
     normit2done=$normit2dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $normit2dir ]; then mkdir $normit2dir; fi
@@ -550,7 +560,7 @@ oneNightPreProcessing() {
 
   
   # Combining masked normalized images to make it2 running flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit2dir=$BDIR/flat-it2-Running_n$currentNight
     flatit2done=$flatit2dir/done_"$filter"_ccd"$h".txt
     iteration=2
@@ -576,7 +586,7 @@ oneNightPreProcessing() {
 
 
   # Dividing the science image by the it2 flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit2imadir=$BDIR/flat-it2-Running-ima_n$currentNight
     flatit2imadone=$flatit2imadir/done_"$filter"_ccd"$h".txt
     if ! [ -d $flatit2imadir ]; then mkdir $flatit2imadir; fi
@@ -631,7 +641,7 @@ oneNightPreProcessing() {
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
   # Obtain a mask using noisechisel on the running flat images
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     noiseit3dir=$BDIR/noise-it3-Running_n$currentNight
     noiseit3done=$noiseit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $noiseit3dir ]; then mkdir $noiseit3dir; fi
@@ -668,7 +678,7 @@ oneNightPreProcessing() {
 
  
   # Mask the images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
     maskedit3done=$maskedit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $maskedit3dir ]; then mkdir $maskedit3dir; fi
@@ -694,7 +704,7 @@ oneNightPreProcessing() {
 
   
   # Normalising masked images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     normit3dir=$BDIR/norm-it3-Running-images_n$currentNight
     normit3done=$normit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $normit3dir ]; then mkdir $normit3dir; fi
@@ -729,7 +739,7 @@ oneNightPreProcessing() {
 
 
   # Combining masked normalized images to make it3 flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
     flatit3BeforeCorrectiondone=$flatit3BeforeCorrectiondir/done_"$filter"_ccd"$h".txt
     iteration=3
@@ -757,7 +767,7 @@ oneNightPreProcessing() {
 
 
   # Correct the running flats using the whole night flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit3dir=$BDIR/flat-it3-Running_n$currentNight
     flatit3done=$flatit3dir/done_"$k"_ccd"$h".txt
     if ! [ -d $flatit3dir ]; then mkdir $flatit3dir; fi
@@ -788,7 +798,7 @@ oneNightPreProcessing() {
   flatit3imadir=$BDIR/flat-it3-ima_n$currentNight
   flatit3imadone=$flatit3imadir/done_"$filter"_ccd"$h".txt
   if ! [ -d $flatit3imadir ]; then mkdir $flatit3imadir; fi
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     if [ -f $flatit3imadone ]; then
       echo -e "\nScience images are divided by the it3 flat for night $currentNight and extension $h\n"
     else
@@ -813,7 +823,7 @@ oneNightPreProcessing() {
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
 
-      if $RUNNING_FLAT; then
+      if $RUNNING_FLAT_night; then
         if [ "$a" -le "$((halfWindowSize + 1))" ]; then
           currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_left_ccd"$h".fits
         elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
@@ -1011,8 +1021,6 @@ else
   printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
   echo done > $astroimadone
 fi
-
-exit 0
 
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
@@ -1734,8 +1742,6 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
 fi
-
-
 
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
