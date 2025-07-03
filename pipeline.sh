@@ -323,10 +323,9 @@ oneNightPreProcessing() {
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
   ###If WINDOW_SIZE >= number of exposures; then it is the same as making whole night flat
   window_size=$(( (halfWindowSize * 2) + 1 ))
+  local RUNNNING_FLAT_night=$RUNNING_FLAT
   if [ $n_exp -le $window_size ]; then
     RUNNING_FLAT_night=false
-  else
-    RUNNING_FLAT_night=$RUNNING_FLAT
   fi
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight

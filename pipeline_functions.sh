@@ -886,7 +886,19 @@ warpImage() {
     frameSmallGrid=$entiredir/entirecamera_$currentIndex.fits
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "swarp"
-    swarp -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
+    detect_swarp() {
+        for cmd in swarp SWarp; do
+            if command -v "$cmd" >/dev/null 2>&1; then
+                echo "$cmd"
+                return
+            fi
+        done
+        echo "Error: SWarp not found" >&2
+        exit 1
+    }
+
+    SWARP_CMD=$(detect_swarp)
+    $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
     
     # Mask bad pixels
 
