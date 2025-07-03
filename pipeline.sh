@@ -323,7 +323,7 @@ oneNightPreProcessing() {
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
   ###If WINDOW_SIZE >= number of exposures; then it is the same as making whole night flat
   window_size=$(( (halfWindowSize * 2) + 1 ))
-  local RUNNNING_FLAT_night=$RUNNING_FLAT
+  local RUNNING_FLAT_night=$RUNNING_FLAT
   if [ $n_exp -le $window_size ]; then
     RUNNING_FLAT_night=false
   fi
@@ -2431,7 +2431,7 @@ else
       ((coadd_count++))
     done
   done
-  astarithmetic $names_coadd $coadd_count sigclip-mean -o$coadd_av
+  astarithmetic $names_coadd $coadd_count mean -o$coadd_av
   subtractCoaddToFrames $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
   names_sub=""
   file_count=0
