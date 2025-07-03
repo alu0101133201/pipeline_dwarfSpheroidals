@@ -1022,6 +1022,7 @@ else
   echo done > $astroimadone
 fi
 
+
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
