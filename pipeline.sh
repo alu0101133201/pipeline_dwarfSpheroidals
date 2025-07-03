@@ -321,7 +321,13 @@ oneNightPreProcessing() {
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fit* | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
-  
+  ###If WINDOW_SIZE >= number of exposures; then it is the same as making whole night flat
+  window_size=$(( (halfWindowSize * 2) + 1 ))
+  if [ $n_exp -le $window_size ]; then
+    RUNNING_FLAT_night=false
+  else
+    RUNNING_FLAT_night=$RUNNING_FLAT
+  fi
   currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
 
@@ -508,7 +514,7 @@ oneNightPreProcessing() {
 
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit1dir=$BDIR/flat-it1-Running_n$currentNight
     flatit1done=$flatit1dir/done_"$filter".txt
     iteration=1
@@ -534,7 +540,7 @@ oneNightPreProcessing() {
 
 
   # Dividing the science images for the running it1 flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit1imadir=$BDIR/flat-it1-Running-ima_n$currentNight
     flatit1imadone=$flatit1imadir/done_"$filter".txt
     if ! [ -d $flatit1imadir ]; then mkdir $flatit1imadir; fi
@@ -555,11 +561,11 @@ oneNightPreProcessing() {
     wholeNightFlatToUse=$flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone
   fi
-
+exit 0
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
   # Obtain a mask using noisechisel on the running flat images
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
     noiseit2done=$noiseit2dir/done_"$filter".txt
     if ! [ -d $noiseit2dir ]; then mkdir $noiseit2dir; fi
@@ -593,7 +599,7 @@ oneNightPreProcessing() {
   fi
 
   # Mask the images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
     maskedit2done=$maskedit2dir/done_"$filter".txt
     if ! [ -d $maskedit2dir ]; then mkdir $maskedit2dir; fi
@@ -618,7 +624,7 @@ oneNightPreProcessing() {
 
 
   # Normalising masked images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     normit2dir=$BDIR/norm-it2-Running-images_n$currentNight
     normit2done=$normit2dir/done_"$filter".txt
     if ! [ -d $normit2dir ]; then mkdir $normit2dir; fi
@@ -642,7 +648,7 @@ oneNightPreProcessing() {
   fi
 
   # Combining masked normalized images to make it2 running flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit2dir=$BDIR/flat-it2-Running_n$currentNight
     flatit2done=$flatit2dir/done_"$filter".txt
     iteration=2
@@ -668,7 +674,7 @@ oneNightPreProcessing() {
 
   
   # Dividing the science image by the it2 flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit2imadir=$BDIR/flat-it2-Running-ima_n$currentNight
     flatit2imadone=$flatit2imadir/done_"$filter".txt
     if ! [ -d $flatit2imadir ]; then mkdir $flatit2imadir; fi
@@ -739,7 +745,7 @@ oneNightPreProcessing() {
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
   # Obtain a mask using noisechisel on the running flat images
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     noiseit3dir=$BDIR/noise-it3-Running_n$currentNight
     noiseit3done=$noiseit3dir/done_"$filter".txt
     if ! [ -d $noiseit3dir ]; then mkdir $noiseit3dir; fi
@@ -777,7 +783,7 @@ oneNightPreProcessing() {
   
 
   # Mask the images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
     maskedit3done=$maskedit3dir/done_"$filter".txt
     if ! [ -d $maskedit3dir ]; then mkdir $maskedit3dir; fi
@@ -803,7 +809,7 @@ oneNightPreProcessing() {
 
   
   # Normalising masked images (running flat)
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     normit3dir=$BDIR/norm-it3-Running-images_n$currentNight
     normit3done=$normit3dir/done_"$filter".txt
     if ! [ -d $normit3dir ]; then mkdir $normit3dir; fi
@@ -836,7 +842,7 @@ oneNightPreProcessing() {
 
 
   # Combining masked normalized images to make it3 flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
     flatit3BeforeCorrectiondone=$flatit3BeforeCorrectiondir/done_"$k".txt
     iteration=3
@@ -861,7 +867,7 @@ oneNightPreProcessing() {
   fi
 
   # Correct the running flats using the whole night flat
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     flatit3dir=$BDIR/flat-it3-Running_n$currentNight
     flatit3done=$flatit3dir/done_"$k".txt
     if ! [ -d $flatit3dir ]; then mkdir $flatit3dir; fi
@@ -893,7 +899,7 @@ oneNightPreProcessing() {
   flatit3imadir=$BDIR/flat-it3-ima_n$currentNight
   flatit3imadone=$flatit3imadir/done_"$filter".txt
   if ! [ -d $flatit3imadir ]; then mkdir $flatit3imadir; fi
-  if $RUNNING_FLAT; then
+  if $RUNNING_FLAT_night; then
     if [ -f $flatit3imadone ]; then
       echo -e "\nScience images are divided by the it3 flat for night $currentNight\n"
     else
@@ -918,7 +924,7 @@ oneNightPreProcessing() {
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
 
-      if $RUNNING_FLAT; then
+      if $RUNNING_FLAT_night; then
         if [ "$a" -le "$((halfWindowSize + 1))" ]; then
           currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_left.fits
         elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
@@ -1014,7 +1020,7 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
-
+exit 0
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
@@ -1143,7 +1149,7 @@ else
   rm -rf $astroimadir_layer
   echo done > $astroimadone
 fi
-
+exit 0
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -2254,6 +2260,7 @@ fi
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
+
 #applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles_it$iteration
 #if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi

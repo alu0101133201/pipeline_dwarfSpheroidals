@@ -2745,13 +2745,11 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
-    echo "selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits" > sstars_it"$iteration".txt
-   
+     
     
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
-    echo "buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration" > bodata_it"$iteration".txt
-   
+      
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
     if ! [ -d $prepareCalibrationCataloguePerFrame ]; then mkdir $prepareCalibrationCataloguePerFrame; fi
@@ -2760,16 +2758,14 @@ computeCalibrationFactors() {
     else
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association $mosaicDir/aperturePhotometryCatalogues
-        echo "combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association $mosaicDir/aperturePhotometryCatalogues" > ccat_it"$iteration".txt
+        
     fi
     
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic
-    echo "matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic" > match_it"$iteration".txt
-  
+    
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
-    echo "computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit" > compfac_it"$iteration".txt
 }
 export -f computeCalibrationFactors
 
@@ -2784,7 +2780,7 @@ applyCalibrationFactorsToFrame() {
 
     base=entirecamera_"$a".fits
     f=$imagesForCalibration/"entirecamera_$a.fits"
-    if [[ "$applyCommonCalibrationFactor" == "true" || "$applyCommonCalibrationFactor" == "True" ]]; then
+    if [[ "$applyCommon" == "true" || "$applyCommon" == "True" ]]; then
         alpha_cat=$BDIR/commonCalibrationFactor_it"$iteration".txt
     else
         alpha_cat=$alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
