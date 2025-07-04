@@ -109,7 +109,7 @@ def saveHistogram(values, fwhmRejectedIndices, astrometryRejectedIndices, imageN
                 fontsize=20,verticalalignment='top',horizontalalignment='left')
 
     ax.hist(values[fwhmRejectedIndices], bins=myBins, color='mediumorchid', label='Rejected FWHM')
-    ax.hist(values[astrometryRejectedIndices], bins=myBins, color='blue', label='Rejected astrometry')
+    # ax.hist(values[astrometryRejectedIndices], bins=myBins, color='blue', label='Rejected astrometry')
 
     if (addCoaddSeeing):
         coaddFWHM = getCoaddSeeing(dirWithFrameFWHM)
@@ -150,7 +150,7 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
     fwhmRejectedValues = [x for x in allTable['FWHM'][fwhmRejectedIndices] ]
 
     astrometryRejectedFiles  = [x for x in allTable['File'][astrometryRejectedIndices] ]
-    astrometryRejectedValues = [x for x in allTable['FWHM'][astrometryRejectedIndices] ]
+    # astrometryRejectedValues = [x for x in allTable['FWHM'][astrometryRejectedIndices] ]
 
     for j in range(len(fwhmRejectedFiles)):
         match=re.search(pattern, fwhmRejectedFiles[j])
@@ -163,16 +163,16 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
         ax[0].scatter(date_ok, fwhmRejectedValues[j],marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=6,label='Rejected by FWHM' if (j==0) else "")
         ax[1].scatter(air, fwhmRejectedValues[j],marker='P',edgecolor='k',color='mediumorchid',s=120,zorder=6,label='Rejected by FWHM'  if (j==0) else "")
         
-    for j in range(len(astrometryRejectedFiles)):
-        match=re.search(pattern, astrometryRejectedFiles[j])
-        frame=int(match.group(1))
-        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
+    # for j in range(len(astrometryRejectedFiles)):
+    #     match=re.search(pattern, astrometryRejectedFiles[j])
+    #     frame=int(match.group(1))
+    #     file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+    #     date=obtainKeyWordFromFits(file,'DATE-OBS')
+    #     air=obtainKeyWordFromFits(file,'AIRMASS')
+    #     date_ok=datetime.fromisoformat(date)
 
-        ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry' if (j==0) else "")
-        ax[1].scatter(air, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry'  if (j==0) else "")
+    #     ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry' if (j==0) else "")
+    #     ax[1].scatter(air, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry'  if (j==0) else "")
 
     ax[0].hlines(fwhmThreshold, xmin=np.nanmin(alldate_ok), xmax=np.nanmax(alldate_ok), lw=1.5, ls="--", color="black", label="Rejection threshold")
     ax[1].hlines(fwhmThreshold, xmin=np.nanmin(allAir), xmax=np.nanmax(allAir), lw=1.5, ls="--", color="black")

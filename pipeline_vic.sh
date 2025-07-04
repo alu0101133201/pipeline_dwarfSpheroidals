@@ -759,7 +759,7 @@ oneNightPreProcessing() {
   # Correct the running flats using the whole night flat
   if $RUNNING_FLAT; then
     flatit3dir=$BDIR/flat-it3-Running_n$currentNight
-    flatit3done=$flatit3dir/done_"$k"_ccd"$h".txt
+    flatit3done=$flatit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $flatit3dir ]; then mkdir $flatit3dir; fi
     if [ -f $flatit3done ]; then
       echo -e "\nFlats iteration 3 are corrected using the flat of the whole night for night $currentNight and extension $h\n"
@@ -1326,9 +1326,9 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
     
     prefixOfTheFilesToRemove="entirecamera_"
-    rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    # removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
     rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
     removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
     removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -1655,9 +1655,9 @@ rejectedFramesDir=$BDIR/rejectedFrames
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 
 prefixOfTheFilesToRemove="entirecamera_"
-rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+# removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -1954,10 +1954,10 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
     diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
     prefixOfTheFilesToRemove="entirecamera_"
-    rejectedByAstrometry=identifiedBadFrames_astrometry.txt
     if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    # removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
     rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
     removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
     removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -2211,9 +2211,9 @@ diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 rejectedFramesDir=$BDIR/rejectedFrames
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 prefixOfTheFilesToRemove="entirecamera_"
-rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+# removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -2229,7 +2229,7 @@ minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
 clippingdir=$BDIR/clipping-outliers_it$iteration
-clippingdone=$clippingdir/done_"$k".txt
+clippingdone=$clippingdir/done_"$filter".txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
 
 photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration

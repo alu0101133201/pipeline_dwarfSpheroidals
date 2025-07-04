@@ -143,8 +143,8 @@ def saveHistogram(values, badAstrometrisedIndices, imageName, title, labelX):
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
 
-    if (len(badAstrometrisedIndices) != 0):
-        ax.hist(values[badAstrometrisedIndices], bins=myBins, color='blue', label='Rejected due to Astrometry')
+    # if (len(badAstrometrisedIndices) != 0):
+    #     ax.hist(values[badAstrometrisedIndices], bins=myBins, color='blue', label='Rejected due to Astrometry')
 
     ax.legend(fontsize=18)
     plt.savefig(imageName)
@@ -243,20 +243,20 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
 
-    astrometryRejectedValues        = [x for x in values[astrometryRejectedIndices]]  if len(astrometryRejectedIndices) > 0 else []
-    astrometryRejectedFiles         = [x for x in files[astrometryRejectedIndices]]   if len(astrometryRejectedIndices) > 0 else []
+    # astrometryRejectedValues        = [x for x in values[astrometryRejectedIndices]]  if len(astrometryRejectedIndices) > 0 else []
+    # astrometryRejectedFiles         = [x for x in files[astrometryRejectedIndices]]   if len(astrometryRejectedIndices) > 0 else []
 
-    for j in range(len(astrometryRejectedFiles)):
-        match=re.search(pattern, astrometryRejectedFiles[j])
-        frame=match.group(1)
-        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
-        ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
-        ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
-        if j==0:
-            ax[0].legend(fontsize=18)
+    # for j in range(len(astrometryRejectedFiles)):
+    #     match=re.search(pattern, astrometryRejectedFiles[j])
+    #     frame=match.group(1)
+    #     file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+    #     date=obtainKeyWordFromFits(file,'DATE-OBS')
+    #     air=obtainKeyWordFromFits(file,'AIRMASS')
+    #     date_ok=datetime.fromisoformat(date)
+    #     # ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
+    #     # ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
+    #     if j==0:
+    #         ax[0].legend(fontsize=18)
 
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
@@ -307,10 +307,10 @@ def saveValuesVSStats(values, STD, Skew, kurto, backgroundRejectedIndices, stdRe
         ax[1].scatter(values[stdRejectedIndices], np.abs(Skew[stdRejectedIndices]), s=120, marker="D", edgecolor='k',color='gold', label="Rejected by background std")
         ax[2].scatter(values[stdRejectedIndices], np.abs(kurto[stdRejectedIndices]), s=120, marker="D", edgecolor='k',color='gold')
 
-    if (len(badAstrometrisedIndices) != 0):
-        ax[0].scatter(np.sqrt(values)[badAstrometrisedIndices], STD[badAstrometrisedIndices], s=350, lw=1.5, edgecolor='blue', facecolors='none')
-        ax[1].scatter(values[badAstrometrisedIndices], np.abs(Skew[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none', label="Rejected by astrometry")
-        ax[2].scatter(values[badAstrometrisedIndices], np.abs(kurto[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none')
+    # if (len(badAstrometrisedIndices) != 0):
+    #     ax[0].scatter(np.sqrt(values)[badAstrometrisedIndices], STD[badAstrometrisedIndices], s=350, lw=1.5, edgecolor='blue', facecolors='none')
+    #     ax[1].scatter(values[badAstrometrisedIndices], np.abs(Skew[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none', label="Rejected by astrometry")
+    #     ax[2].scatter(values[badAstrometrisedIndices], np.abs(kurto[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none')
 
     ax[1].legend(fontsize=20)
     plt.tight_layout()

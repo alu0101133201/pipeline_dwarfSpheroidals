@@ -2618,6 +2618,7 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
 
+
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
 
@@ -2633,7 +2634,7 @@ computeCalibrationFactors() {
     
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic
-
+    
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
 }

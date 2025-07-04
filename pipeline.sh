@@ -911,7 +911,6 @@ totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
 
-
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
@@ -1238,9 +1237,9 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
     
     prefixOfTheFilesToRemove="entirecamera_"
-    rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    # removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
     rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
     removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
     removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -1562,9 +1561,9 @@ rejectedFramesDir=$BDIR/rejectedFrames
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 
 prefixOfTheFilesToRemove="entirecamera_"
-rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+# removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -1743,6 +1742,7 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   echo "done" > $fwhmPlotsWithCoadd
 fi
 
+
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
 
@@ -1860,10 +1860,10 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
     diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
     prefixOfTheFilesToRemove="entirecamera_"
-    rejectedByAstrometry=identifiedBadFrames_astrometry.txt
     if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    # removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
     rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
     removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
     removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
@@ -1952,6 +1952,8 @@ matchdir=$BDIR/match-decals-myData_it$iteration
 ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
 prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
 mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
+
+
 
 imagesForCalibration=$BDIR/sub-sky-smallGrid_it$iteration
 calibratingMosaic=false
@@ -2122,9 +2124,9 @@ diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 rejectedFramesDir=$BDIR/rejectedFrames
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 prefixOfTheFilesToRemove="entirecamera_"
-rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+# removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+# removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove

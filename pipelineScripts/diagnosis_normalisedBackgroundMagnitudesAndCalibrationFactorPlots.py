@@ -170,8 +170,8 @@ def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, reject
         ax.hist(values[rejectedBackgroundIndices - 1], bins=myBins, color="red", label="Rejected by background brightness")
     if (len(rejectedFWHMIndices)):
         ax.hist(values[rejectedFWHMIndices - 1], bins=myBins, color="mediumorchid", label="Rejected by fwhm")
-    if (len(rejectedAstrometryIndices)):
-        ax.hist(values[rejectedAstrometryIndices - 1], bins=myBins, color="blue", label="Rejected by astrometry")
+    # if (len(rejectedAstrometryIndices)):
+    #     ax.hist(values[rejectedAstrometryIndices - 1], bins=myBins, color="blue", label="Rejected by astrometry")
     if (len(rejectedCalibrationFactorIndices)):
         ax.hist(values[rejectedCalibrationFactorIndices - 1], bins=myBins, color="orange", label="Rejected by calibration factor")
 
@@ -234,10 +234,10 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
     ax[0].scatter(time[timeMask],cfactors[timeMask],marker='o',s=50,edgecolor='black',color='teal',zorder=0)
     ax[1].scatter(airMass,cfactors,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
 
-    if (len(rejectedAstrometryIndices) > 0):
-        timeMask = ~pd.isna(time[rejectedAstrometryIndices - 1]) & ~pd.isna(cfactors[rejectedAstrometryIndices - 1])
-        ax[0].scatter(time[rejectedAstrometryIndices - 1][timeMask], cfactors[rejectedAstrometryIndices - 1][timeMask], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
-        ax[1].scatter(airMass[rejectedAstrometryIndices - 1], cfactors[rejectedAstrometryIndices - 1], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    # if (len(rejectedAstrometryIndices) > 0):
+    #     timeMask = ~pd.isna(time[rejectedAstrometryIndices - 1]) & ~pd.isna(cfactors[rejectedAstrometryIndices - 1])
+    #     ax[0].scatter(time[rejectedAstrometryIndices - 1][timeMask], cfactors[rejectedAstrometryIndices - 1][timeMask], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    #     ax[1].scatter(airMass[rejectedAstrometryIndices - 1], cfactors[rejectedAstrometryIndices - 1], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
     
     if (len(rejectedFWHMIndices) > 0):
         timeMask = ~pd.isna(time[rejectedFWHMIndices - 1]) & ~pd.isna(cfactors[rejectedFWHMIndices - 1])
@@ -305,10 +305,10 @@ def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejected
     ax[0].scatter(time[timeMask],magnitudesPerArcSecSq[timeMask],marker='o',s=50,edgecolor='black',color='teal',zorder=0)
     ax[1].scatter(airMass,magnitudesPerArcSecSq,marker='o',s=50,edgecolor='black',color='teal',zorder=0)
 
-    if (len(rejectedAstrometryIndices) > 0):
-        timeMask = ~pd.isna(time[rejectedAstrometryIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedAstrometryIndices - 1])
-        ax[0].scatter(time[rejectedAstrometryIndices - 1][timeMask], magnitudesPerArcSecSq[rejectedAstrometryIndices - 1][timeMask], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
-        ax[1].scatter(airMass[rejectedAstrometryIndices - 1], magnitudesPerArcSecSq[rejectedAstrometryIndices - 1], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    # if (len(rejectedAstrometryIndices) > 0):
+    #     timeMask = ~pd.isna(time[rejectedAstrometryIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedAstrometryIndices - 1])
+    #     ax[0].scatter(time[rejectedAstrometryIndices - 1][timeMask], magnitudesPerArcSecSq[rejectedAstrometryIndices - 1][timeMask], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
+    #     ax[1].scatter(airMass[rejectedAstrometryIndices - 1], magnitudesPerArcSecSq[rejectedAstrometryIndices - 1], facecolors='none', lw=1.5, edgecolor='blue', s=350,zorder=1, label="Rejected by astrometry")
     
     if (len(rejectedFWHMIndices) > 0):
         timeMask = ~pd.isna(time[rejectedFWHMIndices - 1]) & ~pd.isna(magnitudesPerArcSecSq[rejectedFWHMIndices - 1])
@@ -403,7 +403,7 @@ def scatterPlotCountsVsMagnitudes(backgroundCounts, magnitudesPerArcSecSq, rejec
     plt.tight_layout(pad=6.0)
     ax.scatter(magnitudesPerArcSecSq, np.log10(backgroundCounts), s=40, color="teal")
 
-    ax.scatter(magnitudesPerArcSecSq[rejectedAstrometryIndices], np.log10(backgroundCounts)[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue',s=120, label="Rejected astrometry")
+    # ax.scatter(magnitudesPerArcSecSq[rejectedAstrometryIndices], np.log10(backgroundCounts)[rejectedAstrometryIndices], facecolors='none', lw=1.5, edgecolor='blue',s=120, label="Rejected astrometry")
     ax.scatter(magnitudesPerArcSecSq[rejectedFWHMIndices], np.log10(backgroundCounts)[rejectedFWHMIndices], s=40, color="mediumorchid", label="Rejected FWHM")
 
     ax.legend(fontsize=18, loc="upper right")
