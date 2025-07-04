@@ -1379,7 +1379,6 @@ else
   echo done > $numberOfStarsUsedInEachFrameDone
 fi
 
-
 applyCommonCalibrationFactor=true
 if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
   computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
@@ -1405,8 +1404,6 @@ else
                                                                                                   $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt 1
   echo "done" > $backgroundBrightnessDone
 fi
-
-
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"

@@ -1616,7 +1616,13 @@ selectStarsAndSelectionRangeSurvey() {
                 currentName=$( basename $i )
                 brickList+=("$currentName")
             done
+        elif [ "$survey" = "SDSS" ]; then
+            for i in $( ls $dirWithBricks/sdss_*.fits); do
+                currentName=$( basename $i )
+                brickList+=("$currentName")
+            done
         fi
+
         headerWithData=0 # After decompressing the data ends up in the hdu 0
         noisechiselTileSize=50
         printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $noisechiselTileSize $apertureUnits
@@ -1698,6 +1704,8 @@ performAperturePhotometryToSingleBrick() {
         brickName=decompressed_decal_image_"$brick".fits
     elif [[ "$survey" = "PANSTARRS" ]]; then
         brickName=cal_"$brick".fits
+    elif [[ "$survey" = "SDSS" ]]; then
+        brickName=$brick.fits
     fi
 
     brickImage=$brickDir/$brickName
@@ -1740,7 +1748,6 @@ performAperturePhotometryToBricks() {
         echo -e "\n\tCatalogues done with aperture photometry already done\n"
     else
         brickList=()
-        #If aperture photometry is done in Panstarrs, brickNames are different
 
         if [[ "$survey" = "DECaLS" ]]; then
             for a in $( ls $brickDir/decompressed*.fits); do
@@ -1752,12 +1759,16 @@ performAperturePhotometryToBricks() {
                 brickName=$(echo "$a" | awk -F'cal_' '{print $2}' | awk -F'.fits' '{print $1}')
                 brickList+=("$brickName")
             done
+        elif [[ "$survey" = "SDSS" ]]; then
+            for a in $( ls $brickDir/sdss_*.fits); do
+                brickName="sdss"$(echo "$a" | awk -F'/sdss' '{print $2}' | awk -F'.fits' '{print $1}')
+                brickList+=("$brickName")
+            done
         else
             echo "Error: "$survey" not supported for photometric calibration!"
             exit 1
         fi
 
-    
         printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfApertureForRecuperateGAIA $survey
         echo "done" > $outputDone
     fi
@@ -1894,14 +1905,14 @@ prepareSurveyDataForPhotometricCalibration() {
     bricksIdentificationFile_r=$surveyImagesDir_r/brickIdentification.txt
     bricksIdentificationFileForGaiaCalibration_r=$surveyImagesDirForGaiaCalibration_r/brickIdentification.txt
 
+
+
     sizeOfBrick_gaia=3600 #3600 is the default value because the pipeline originally worked with DECaLS and it used this brick-size. We try to keep it to 3600 when possible
-    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick    
+    downloadSurveyData $mosaicDir $surveyImagesDir_g $bricksIdentificationFile_g "g" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick       
     downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_g $bricksIdentificationFileForGaiaCalibration_g "g" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
     downloadSurveyData $mosaicDir $surveyImagesDir_r $bricksIdentificationFile_r "r" $ra $dec $sizeOfOurFieldDegrees $gaiaCatalogue $survey $sizeOfBrick
     downloadSurveyData $mosaicDir $surveyImagesDirForGaiaCalibration_r $bricksIdentificationFileForGaiaCalibration_r "r" $ra $dec $sizeOfFieldForCalibratingPANSTARRStoGAIA $gaiaCatalogue $survey $sizeOfBrick_gaia
 
-
-   
     if [ "$filter" = "lum" ]; then
         # This was used at the beginning as a sort of proxy to lum. This is not used anymore (we calibrate lum with spectra) but we prefer not to
         # remove the code. Anyway this is not well tested because a lot of things have changed and should need some checks.
@@ -1930,6 +1941,7 @@ prepareSurveyDataForPhotometricCalibration() {
         fi
     fi
 
+    
     # The photometric calibration is frame by frame, so we are not going to use the mosaic for calibration.
     # This was implemented due to the LBT origin of the pipeline, but for doing it at original resolution takes time and memory so
     # it's not worth. I dont' delete it to let the option of using it
@@ -1970,8 +1982,8 @@ prepareSurveyDataForPhotometricCalibration() {
         selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $methodToUse $survey $apertureUnits
     fi
 
-    
-    
+   
+   
     # halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     # if [ $survey == "DECaLS" ]; then
     #     produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
@@ -2003,7 +2015,8 @@ prepareSurveyDataForPhotometricCalibration() {
         performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
         performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
     fi
-  
+    
+    
     
     # # --- Decision note ---
     # # Now two corrections are applied. First a colour correction to match the survey filter to the filter of our telescope, and
@@ -2016,11 +2029,12 @@ prepareSurveyDataForPhotometricCalibration() {
     magFromSpectraDir_g=$mosaicDir/magnitudesFromGaiaSpectra_g
     magFromSpectraDir_r=$mosaicDir/magnitudesFromGaiaSpectra_r
 
-    # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
-    calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5
-    calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15
-
     
+    # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
+    calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5 $survey
+    calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15 $survey
+
+
     read offset_g factorToApplyToCounts_g < "$mosaicDir/offsetToCorrectSurveyToGaia_g.txt"
     read offset_r factorToApplyToCounts_r < "$mosaicDir/offsetToCorrectSurveyToGaia_r.txt"
 
@@ -2034,22 +2048,22 @@ prepareSurveyDataForPhotometricCalibration() {
     else
         magFromSpectraDir=$mosaicDir/magnitudesFromGaiaSpectra
 
-        calibrationToGAIA $spectraDir $folderWithTransmittances $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir $aperturePhotDir"ForGAIACalibration" $calibrationBrightLimit $calibrationFaintLimit
+        calibrationToGAIA $spectraDir $folderWithTransmittances $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir $aperturePhotDir"ForGAIACalibration" $calibrationBrightLimit $calibrationFaintLimit $survey
         read offset factorToApplyToCounts < "$mosaicDir/offsetToCorrectSurveyToGaia_"$filter".txt"
         correctOffsetFromCatalogues $aperturePhotDir $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
         correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration" $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
     fi
-    
+
     computeColoursAndAddThemToCatalogues $aperturePhotDir $aperturePhotDir"_g" $aperturePhotDir"_r" $filter
     applyColourcorrectionToAllCatalogues $aperturePhotDir "$filterCorrectionCoeff"
-
+    
     imagesHdu=1
     brickDecalsAssociationFile=$mosaicDir/frames_bricks_association.txt
     if [[ -f $brickDecalsAssociationFile ]]; then
         rm $brickDecalsAssociationFile
     fi
     python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
-
+   
     # Create a catalogue of the whole field
     listOfCatalogues=()
     for i in "$aperturePhotDir"/*.cat; do
@@ -2145,7 +2159,10 @@ computeColoursAndAddThemToCatalogues() {
         for i in "$cataloguesDir_g"/*.g.cat; do
             fileName=$( basename "$i" .g.cat )
 
-   
+            echo $fileName
+            echo "$cataloguesToUseDir/$fileName.$filt.cat"
+            echo "$cataloguesDir_r/$fileName.r.cat"
+
             if [ ! -f "$cataloguesToUseDir/$fileName.$filt.cat" ] || [ ! -f "$cataloguesDir_r/$fileName.r.cat" ]; then
                 errorCode=999
                 echo "ERROR - Catalogues in the different filters for calibration are not equal (missing a catalogue in some filter). We should never get there. Exiting with errorCode $errorCode"
@@ -2213,6 +2230,7 @@ calibrationToGAIA() {
     local panstarrsCatalogueDir=$9
     local brightLimitToCompareGAIAandPANSTARRS=${10}
     local faintLimitToCompareGAIAandPANSTARRS=${11}
+    local survey=${12}
 
     echo -e "\n·Computing offset between PANSTARRS data and GAIA (panstarrs catalogues used for the calculation $panstarrsCatalogueDir)"
 
@@ -2231,10 +2249,10 @@ calibrationToGAIA() {
             combineCatalogues $panstarrsCatalogueDir $panstarrsCatalogueDir "mergedCatalogue.cat" "${listOfCatalogues[@]}"
         fi
 
-
-
-        transmittanceCurveFile="$folderWithTransmittances"/PANSTARRS_$filter.dat
+        
+        transmittanceCurveFile="$folderWithTransmittances"/"$survey"_"$filter".dat
         prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA "GAIA" $transmittanceCurveFile
+        
         offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir $filter )
 
         offset=$(echo $offsetValues | awk '{print $1}')
@@ -2617,7 +2635,6 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
-
 
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
