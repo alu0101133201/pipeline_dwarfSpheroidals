@@ -126,8 +126,9 @@ def writeBricksAndItsCoordinates(file, brickNames, ra, dec, survey):
             if survey=='PANSTARRS':
                 #Just to avoid the .fits in the brick identification file, will be useful in the future
                 brickName=brickNames[i][:-5]
-            elif survey=='DECaLS':
+            elif (survey=='DECaLS' or survey=='SDSS'):
                 brickName=brickNames[i]
+
             f.write(brickName + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
 
 
@@ -144,6 +145,8 @@ bricksIdentificationFile        = sys.argv[7]
 gaiaCatalogue                   = sys.argv[8]
 survey                          = sys.argv[9]
 sizeOfBrick                     = int(sys.argv[10])
+
+
 
 
 setMatplotlibConf()
@@ -195,6 +198,13 @@ elif survey=='PANSTARRS':
         i.start()
     for i in threadList:
         i.join()
+
+elif survey=="SDSS":
+    # SDSS works weird and I have not too much time to see how to download the bricks. The best thing that works for me is to
+    # download based on coordinates and radius. I now I should use fieldSize/2, but then we miss some parts of the mosaic, so
+    # I'm downloading more to be safe
+    bricksNames, bricksRA, bricksDec = download_fields_mosaic(galaxyRA, galaxyDec, (fieldSize/2)+0.15, downloadDestination, filters, data_release=17)
+    remove_duplicate_bricks(".")
 else:
     raise Exception (f"Survey {survey} not supported for Photometric calibration")
     
@@ -210,6 +220,8 @@ maskCombined = mask_bricksInsideGalaxy | mask_bricksWithBrightStar
 bricksToDownload = bricksNames[~maskCombined]
 plotEllipseAndBricks(galaxyRA, galaxyDec, galaxySMA, galaxyAxisRatio, galaxyPA, bricksRA, bricksDec, mask_bricksInsideGalaxy, mask_bricksWithBrightStar, maskCombined, mosaicDir)
 """
+
+
 
 writeBricksAndItsCoordinates(bricksIdentificationFile, bricksNames, bricksRA, bricksDec, survey)
 

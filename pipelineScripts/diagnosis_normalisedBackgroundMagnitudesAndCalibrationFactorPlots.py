@@ -158,7 +158,11 @@ def calculateFreedmanBins(data, initialValue = None):
     return(bins)
 
 def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, rejectedBackgroundIndices, rejectedCalibrationFactorIndices, title, xLabel, imageName, valueForMeanVerticalLine=None, valueForStdVerticalLines=None):
-    myBins = calculateFreedmanBins(values[~np.isnan(values)])
+    clean_values = values[~np.isnan(values)]
+    mean = np.mean(clean_values)
+    std = np.std(clean_values)
+    filtered_values = clean_values[np.abs(clean_values - mean) <= 3 * std]
+    myBins = calculateFreedmanBins(filtered_values)
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.set_title(title, fontsize=22, pad=17)
@@ -181,7 +185,7 @@ def saveHistogram(values, rejectedAstrometryIndices, rejectedFWHMIndices, reject
             plt.axvline(x=valueForMeanVerticalLine + numberOfSigma*valueForStdVerticalLines, color='grey', ls='-.', lw=2, label=f'{numberOfSigma} sigma std')
             plt.axvline(x=valueForMeanVerticalLine - numberOfSigma*valueForStdVerticalLines, color='grey', ls='-.', lw=2)
 
-    ax.set_xlim((np.nanmedian(values) - 3*np.nanstd(values)), (np.nanmedian(values) + 3*np.nanstd(values)))
+    ax.set_xlim((np.nanmedian(filtered_values) - 3*np.nanstd(filtered_values)), (np.nanmedian(filtered_values) + 3*np.nanstd(filtered_values)))
 
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)

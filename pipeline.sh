@@ -1380,7 +1380,6 @@ else
   echo done > $numberOfStarsUsedInEachFrameDone
 fi
 
-
 applyCommonCalibrationFactor=true
 if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
   computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
@@ -1406,8 +1405,6 @@ else
                                                                                                   $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt 1
   echo "done" > $backgroundBrightnessDone
 fi
-
-
 
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
@@ -1742,6 +1739,7 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
 fi
+
 
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
