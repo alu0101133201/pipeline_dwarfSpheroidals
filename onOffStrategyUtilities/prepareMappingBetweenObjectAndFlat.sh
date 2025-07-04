@@ -7,6 +7,15 @@ escapeSpacesFromString() {
 }
 export -f escapeSpacesFromString
 
+printArrayOfPairs() {
+    local arrayToPrint=("$@")
+
+    for ((i=0; i<${#arrayToPrint[@]}; i+=2)); do
+        echo "${arrayToPrint[i]}  ${arrayToPrint[i+1]}"
+    done
+}
+export -f printArrayOfPairs
+
 getNameAndDateObs(){
     folderWithRaws=$1
     dateHeaderKey=$2
@@ -119,8 +128,9 @@ mergeArrays() {
 export -f mergeArrays
 
 correctObjectsAndFlatsMissing() {
-    local -n objAndFlatArray=$1
-    local -n newArray=$2
+    local nightBeginsAndEndsWithObject=$1
+    local -n objAndFlatArray=$2
+    local -n newArray=$3
 
     flag=""
     for ((i=0; i<${#objectsAndFlatsCombined[@]}; i+=2)); do
@@ -128,11 +138,14 @@ correctObjectsAndFlatsMissing() {
         currentKey="${objectsAndFlatsCombined[i+1]}"
         currentFlag=${objectsAndFlatsCombined[i]:0:4}
 
+        # If we have the same type of file (flat/object) repeated, we need to fix the gap
         if [[ "$flag" == "$currentFlag" ]]; then
             if [[ "$flag" == "flat" ]]; then
+                # If we have repeated flat (i.e. missing object image) we simply remove one of the flats
                 unset 'newArray[-1]'  
                 unset 'newArray[-1]'
             else
+                # If we have repeated object (i.e. missing flat image) we duplicate the next flat so we don't lose the frame
                 if (( i+3 < ${#objectsAndFlatsCombined[@]} )); then
                     nextFile="${objectsAndFlatsCombined[i+2]}"
                     nextKey="${objectsAndFlatsCombined[i+3]}"
@@ -144,7 +157,20 @@ correctObjectsAndFlatsMissing() {
 
         newArray+=("$currentFile" "$currentKey")
         flag=$currentFlag
+
+        # This last correction accounts for the situations in which you start and end the night with object images
+        # If that happens then you need to duplicate the last (or firts, I chose last one because I don't have to shift everything)
+        # in order not to leave any object frames without its flat
+        if (( i == ${#objectsAndFlatsCombined[@]} - 2 )); then
+            if [[ "$nightBeginsAndEndsWithObject" == "true" ]]; then
+                extraFlat="${objectsAndFlatsCombined[i-2]}"
+                extraKey="${objectsAndFlatsCombined[i-1]}"
+                extraKeyMod=$(( extraKey + 140))
+                newArray+=("$extraFlat" "$extraKeyMod")
+            fi
+        fi
     done
+
 }
 export -f correctObjectsAndFlatsMissing
 
@@ -165,16 +191,21 @@ divideFlatAndObjects() {
 }
 export -f divideFlatAndObjects 
 
-source /opt/SIE/local/glob/.bashrc_SIE
-source /scratch1/sguerra/venv/bin/activate
-module load gnuastro/0.22
+# source /opt/SIE/local/glob/.bashrc_SIE
+# source /scratch1/sguerra/venv/bin/activate
+# module load gnuastro/0.22
 
 objectImagesDir=$1
 flatImagesDir=$2
 flatsDir=$3
 newFlatDir=$4
+night=$5 # Only used for image names
+
+mkdir -p ./images
 
 dateHeaderKey="DATE-OBS"
+
+# The following arrays are arrays of pair with the format ( name, unixTime )
 
 # Get relevant information for object raws
 rawObjectInfo=()
@@ -196,40 +227,49 @@ rawObjectInfoPythonArgument=$(printf "%s " "${rawObjectInfo[@]}")
 flatFieldInfoPythonArgument=$(printf "%s " "${rawFlatInfo[@]}")
 flatInfoPythonArgument=$(printf "%s " "${flatInfo[@]}")
 
-python3 onOffAcquisitionPlot.py "$rawObjectInfoPythonArgument" "$flatFieldInfoPythonArgument" "$flatInfoPythonArgument" "./onOffAcquisitionPlot.png"
+python3 onOffAcquisitionPlot.py "$rawObjectInfoPythonArgument" "$flatFieldInfoPythonArgument" "$flatInfoPythonArgument" "./images/onOffAcquisitionPlot$night.png"
 
+
+# check if the night starts and ends with object image 
+objectsAndFlatRawsCombined=()
+mergeArrays rawObjectInfo rawFlatInfo objectsAndFlatRawsCombined
+
+
+nightBeginsAndEndsWithObject="false"
+if [[ ! "${objectsAndFlatRawsCombined[0]}" == *Flat* && ! "${objectsAndFlatRawsCombined[-2]}" == *Flat* ]]; then
+    nightBeginsAndEndsWithObject=true
+fi
+##
 
 # 2.- In order to solve mapping problems (if these exists), we need to work with the flats and the object frames
 # For working properly we remove the initial and last N frames, because these will always have the left and right flat
 runningFlatSize=$( getRunningFlatSizeUsed flatInfo )
-
 total_len=${#rawObjectInfo[@]}
 start=$(( 2 * runningFlatSize )) # 2 * because is an array of pairs
 end=$(( total_len - 4 * runningFlatSize ))
 rawObjectInfoTrimmed=("${rawObjectInfo[@]:start:end}")
 
-
 # Now we combine the flats and the object frames in a single data structure to later apply the operations
 objectsAndFlatsCombined=()
 mergeArrays rawObjectInfoTrimmed flatInfo objectsAndFlatsCombined
 
+
 #  Correct flats/objects missing 
 correctedArray=()
-correctObjectsAndFlatsMissing objectsAndFlatsCombined correctedArray
+correctObjectsAndFlatsMissing $nightBeginsAndEndsWithObject objectsAndFlatsCombined correctedArray
+
 
 # Recover the flat and object arrays
 flatCorrectedArray=()
 objectCorrectedArray=()
 divideFlatAndObjects flatCorrectedArray objectCorrectedArray
 
-
 # Corrected plot
 rawObjectInfoPythonArgument=$(printf "%s " "${objectCorrectedArray[@]}")
 flatFieldInfoPythonArgument=$(printf "%s " "${rawFlatInfo[@]}")
 flatInfoPythonArgument=$(printf "%s " "${flatCorrectedArray[@]}")
 
-python3 onOffAcquisitionPlot.py "$rawObjectInfoPythonArgument" "$flatFieldInfoPythonArgument" "$flatInfoPythonArgument" "./onOffAcquisitionPlotCorrected.png"
-
+python3 onOffAcquisitionPlot.py "$rawObjectInfoPythonArgument" "$flatFieldInfoPythonArgument" "$flatInfoPythonArgument" "./images/onOffAcquisitionPlotCorrected$night.png"
 
 # Copy the flats in the format that will be correct for hardcoding in he pipeline
 if ! [ -d $newFlatDir ]; then mkdir $newFlatDir; fi
@@ -241,6 +281,12 @@ for ((i=0; i<${#flatCorrectedArray[@]}; i+=2)); do
     else
         currentFileName=${flatCorrectedArray[i]}
         newFileName=$(echo "$currentFileName" | sed -E "s/_f[0-9]+/_f$counter/")
+
+        # Case when we have the "right" flat repeated (because we had to add it at the end) and the previous pattern does not match
+        if [[ "$newFileName" == "$currentFileName" ]]; then
+            newFileName=$(echo "$currentFileName" | sed -E "s/(n[0-9]+_)right/\1f$counter/")
+        fi
+
         cp $flatsDir/$currentFileName "$newFlatDir/$newFileName"
         counter=$(( counter + 1 ))
     fi

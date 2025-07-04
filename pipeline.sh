@@ -769,7 +769,7 @@ oneNightPreProcessing() {
   # Correct the running flats using the whole night flat
   if $RUNNING_FLAT_night; then
     flatit3dir=$BDIR/flat-it3-Running_n$currentNight
-    flatit3done=$flatit3dir/done_"$k"_ccd"$h".txt
+    flatit3done=$flatit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $flatit3dir ]; then mkdir $flatit3dir; fi
     if [ -f $flatit3done ]; then
       echo -e "\nFlats iteration 3 are corrected using the flat of the whole night for night $currentNight and extension $h\n"
@@ -2141,7 +2141,7 @@ python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $
 
 sigmaForStdSigclip=3
 clippingdir=$BDIR/clipping-outliers_it$iteration
-clippingdone=$clippingdir/done_"$k".txt
+clippingdone=$clippingdir/done_"$filter".txt
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
 
 photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
