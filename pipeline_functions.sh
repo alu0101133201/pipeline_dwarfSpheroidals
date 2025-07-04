@@ -3253,7 +3253,7 @@ changeNonNansOfFrameToOnes() {
     astarithmetic $frame $frame 0 gt 1 where --output=$outputDir/exposure_tmp_ccd_$a.fits -g$h
     astfits $outputDir/exposure_tmp_ccd_$a.fits --copy=1 -o$output
     rm $outputDir/exposure_tmp_ccd_$a.fits
-done
+  done
 }
 export -f changeNonNansOfFrameToOnes
 
@@ -3261,9 +3261,10 @@ computeExposureMap() {
     local framesDir=$1
     local exposureMapDir=$2
     local exposureMapDone=$3
+    local exposureMapName=$4
 
-    if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
-    if [ -f $exposuremapdone ]; then
+    if ! [ -d $exposureMapDir ]; then mkdir $exposureMapDir; fi
+    if [ -f $exposureMapDone ]; then
         echo -e "\n\tThe exposure map is already done\n"
     else
       
@@ -3272,23 +3273,23 @@ computeExposureMap() {
         framesToProcess+=("$a")
       done
       
-      printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposuremapDir
+      printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnes {} $framesDir $exposureMapDir
       gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
       exposure_frames=""
       file_count=0
-      for file in $(ls -v $exposuremapDir/*.fits); do
+      for file in $(ls -v $exposureMapDir/*.fits); do
         for h in $(seq 1 $num_ccd); do
             exposure_frames+="$file -h$h "
             ((file_count++))
         done
       done
       if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-        astarithmetic $exposure_frames $file_count sum   --writeall -o$coaddDir/exposureMap.fits
+        astarithmetic $exposure_frames $file_count sum   --writeall -o$exposureMapName
       else
-        astarithmetic $exposure_frames $file_count sum   --writeall -o$coaddDir/exposureMap.fits
+        astarithmetic $exposure_frames $file_count sum   --writeall -o$exposureMapName
       fi
-      rm -rf $exposuremapDir
-      echo done > $exposuremapdone
+      rm -rf $exposureMapDir
+      echo done > $exposureMapDone
     fi
 }
 export -f computeExposureMap

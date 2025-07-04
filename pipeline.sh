@@ -1780,17 +1780,22 @@ else
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
+exposuremapdone=$coaddDir/done_exposureMap_eff.txt
+exposureMapName=$coaddDir/"$objectName"_expMap_eff_"$filter"_it"$iteration".fits
+computeExposureMap $mowdir $exposuremapDir $exposuremapdone $exposureMapName
+
 exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone
+exposureMapName=$coaddDir/"$objectName"_expMap_"$filter"_it"$iteration".fits
+computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
 
 
 #Compute surface brightness limit
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
-exposuremapName=$coaddDir/exposureMap.fits
+
 if [ -f  $sblimitFile ]; then
     echo -e "\n\tSurface brightness limit for coadd already measured\n"
 else
-    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposureMapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
 
@@ -2376,15 +2381,21 @@ else
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
+exposuremapdone=$coaddDir/done_exposureMap_eff.txt
+exposureMapName=$coaddDir/"$objectName"_expMap_eff_"$filter"_it"$iteration".fits
+computeExposureMap $mowdir $exposuremapDir $exposuremapdone $exposureMapName
+
 exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $mowdir $exposuremapDir $exposuremapdone
+exposureMapName=$coaddDir/"$objectName"_expMap_"$filter"_it"$iteration".fits
+computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
+
 
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
 if [ -f  $sblimitFile ]; then
     echo -e "\n\tSurface brightness limit for coadd already measured\n"
 else
-    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+    surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposureMapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
 echo -e "\nAdding keywords to the coadd"
@@ -2431,8 +2442,8 @@ else
       ((coadd_count++))
     done
   done
-  astarithmetic $names_coadd $coadd_count mean -o$coadd_av
-  subtractCoaddToFrames $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
+  #astarithmetic $names_coadd $coadd_count mean -o$coadd_av
+  subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
   names_sub=""
   file_count=0
   for file in $(ls -v $framesWithCoaddSubtractedDir/*.fits); do
