@@ -3250,7 +3250,7 @@ changeNonNansOfFrameToOnes() {
   frame=$framesDir/entirecamera_$a.fits
   output=$outputDir/exposure_tmp_$a.fits
   for h in $(seq 1 $num_ccd); do
-    astarithmetic $frame $frame 0 gt 1 where --output=$outputDir/exposure_tmp_ccd_$a.fits -g$h
+    astarithmetic $frame $frame isblank not 1 where --output=$outputDir/exposure_tmp_ccd_$a.fits -g$h
     astfits $outputDir/exposure_tmp_ccd_$a.fits --copy=1 -o$output
     rm $outputDir/exposure_tmp_ccd_$a.fits
   done
