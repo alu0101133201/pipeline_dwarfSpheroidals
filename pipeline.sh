@@ -1366,6 +1366,7 @@ calibratingMosaic=false
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
 
+
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
@@ -1740,6 +1741,8 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
 fi
 
 
+
+
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
 
@@ -1775,14 +1778,14 @@ astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x floa
 valueToPut=1
 read -r -a maskArray <<< "$maskParams"
 for ((i=0; i<${#maskArray[@]}; i+=5)); do
-	ra="${maskArray[i]}"
-	dec="${maskArray[i+1]}"
+	ra_tmp="${maskArray[i]}"
+	dec_tmp="${maskArray[i+1]}"
 	r="${maskArray[i+2]}"
 	axisRatio="${maskArray[i+3]}"
 	pa="${maskArray[i+4]}"
 
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
 done
 
 ####### ITERATION 2 ######

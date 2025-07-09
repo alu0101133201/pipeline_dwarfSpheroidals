@@ -1872,14 +1872,14 @@ astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x floa
 valueToPut=1
 read -r -a maskArray <<< "$maskParams"
 for ((i=0; i<${#maskArray[@]}; i+=5)); do
-	ra="${maskArray[i]}"
-	dec="${maskArray[i+1]}"
+	ra_tmp="${maskArray[i]}"
+	dec_tmp="${maskArray[i+1]}"
 	r="${maskArray[i+2]}"
 	axisRatio="${maskArray[i+3]}"
 	pa="${maskArray[i+4]}"
 
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
 done
 
 ####### ITERATION 2 ######
