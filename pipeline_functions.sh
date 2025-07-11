@@ -1700,6 +1700,7 @@ performAperturePhotometryToSingleBrick() {
     local survey=$7
 
 
+
     if [[ "$survey" = "DECaLS" ]]; then
         brickName=decompressed_decal_image_"$brick".fits
     elif [[ "$survey" = "PANSTARRS" ]]; then
@@ -1768,6 +1769,7 @@ performAperturePhotometryToBricks() {
             echo "Error: "$survey" not supported for photometric calibration!"
             exit 1
         fi
+
 
         printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" performAperturePhotometryToSingleBrick {}  $brickDir $automaticallySelectedDir $outputCat $filter $numberOfApertureForRecuperateGAIA $survey
         echo "done" > $outputDone
@@ -1983,7 +1985,6 @@ prepareSurveyDataForPhotometricCalibration() {
     fi
 
    
-   
     # halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     # if [ $survey == "DECaLS" ]; then
     #     produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
@@ -2014,9 +2015,7 @@ prepareSurveyDataForPhotometricCalibration() {
     else
         performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
         performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
-    fi
-    
-    
+    fi    
     
     # # --- Decision note ---
     # # Now two corrections are applied. First a colour correction to match the survey filter to the filter of our telescope, and
@@ -2042,6 +2041,7 @@ prepareSurveyDataForPhotometricCalibration() {
     correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration_g" $offset_g $factorToApplyToCounts_g "beforeCorrectingPanstarrsGAIAOffset"
     correctOffsetFromCatalogues $aperturePhotDir"_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
     correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
+
     
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         : # Since the correct offset happens in the aperturePhotDir, this soft link has already been done
@@ -2054,6 +2054,7 @@ prepareSurveyDataForPhotometricCalibration() {
         correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration" $offset $factorToApplyToCounts "beforeCorrectingPanstarrsGAIAOffset"
     fi
 
+    
     computeColoursAndAddThemToCatalogues $aperturePhotDir $aperturePhotDir"_g" $aperturePhotDir"_r" $filter
     applyColourcorrectionToAllCatalogues $aperturePhotDir "$filterCorrectionCoeff"
     
@@ -2130,6 +2131,7 @@ getColourCorrectionFromPolynomial() {
     local power=0
     local result=0
 
+    LC_NUMERIC=C
     IFS=',' read -r -a coeffs_array <<< "$coeffs"
     x=$(printf "%f" "$x") # This is needed in case $x is given for transforming $x from scientific notation to normal, so bc can handle it
 
@@ -2159,16 +2161,16 @@ computeColoursAndAddThemToCatalogues() {
         for i in "$cataloguesDir_g"/*.g.cat; do
             fileName=$( basename "$i" .g.cat )
 
-            echo $fileName
-            echo "$cataloguesToUseDir/$fileName.$filt.cat"
-            echo "$cataloguesDir_r/$fileName.r.cat"
+            # echo $fileName
+            # echo "$cataloguesToUseDir/$fileName.$filt.cat"
+            # echo "$cataloguesDir_r/$fileName.r.cat"
 
             if [ ! -f "$cataloguesToUseDir/$fileName.$filt.cat" ] || [ ! -f "$cataloguesDir_r/$fileName.r.cat" ]; then
                 errorCode=999
                 echo "ERROR - Catalogues in the different filters for calibration are not equal (missing a catalogue in some filter). We should never get there. Exiting with errorCode $errorCode"
                 exit 999
             fi
-
+            
             fileNameInitial=$cataloguesToUseDir/$fileName.$filt.cat
             fileNameWithColour=$cataloguesToUseDir/$fileName.$filt.cat_withColour
 
@@ -3433,7 +3435,7 @@ photometryOnImage_photutils() {
 
     tmpCatalogName=$directoryToWork/tmp_"$a".cat
     python3 $pythonScriptsPath/photutilsPhotometry.py $matchedCatalogue $imageToUse $aperture_radius_px $tmpCatalogName $zeropoint $hduWithData $xColumnPx $yColumnPx $xColumnWCS $yColumnWCS
-
+   
     asttable $tmpCatalogName -p4 --colmetadata=2,X,px,"X" \
                             --colmetadata=3,Y,px,"Y" \
                             --colmetadata=4,RA,deg,"Right ascension" \

@@ -109,7 +109,7 @@ export num_cpus
 
 # ****** Decision note *******
 # Rebinned data
-tileSize=20 # 20 for the gtc osiris works fine
+tileSize=35 # 20 for the gtc osiris works fine
 noisechisel_param="--tilesize=$tileSize,$tileSize \
                     --detgrowmaxholesize=5000 \
                     --rawoutput"
@@ -1326,7 +1326,6 @@ prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $apertureP
                                             $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
                                             $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
 
-
 # Calibration of coadd prephot
 if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
   writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
@@ -1439,8 +1438,6 @@ else
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
                                   $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_it$iteration $onlyPointLikeCat
 fi
-
-
 
 # Calibration
 if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
@@ -1739,8 +1736,6 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
 fi
-
-
 
 
 # # Remove intermediate folders to save some space

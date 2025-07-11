@@ -51,9 +51,12 @@ def calculateFreedmanBins(data, initialValue = None):
     else:
         bins = [initialValue]
 
-    binWidht = astropy.stats.freedman_bin_width(data)
+    binWidth = astropy.stats.freedman_bin_width(data)
+    if binWidth == 0 or np.isnan(binWidth):
+        binWidth = 1
+        
     while(bins[-1] <= max(data)):
-        bins.append(bins[-1] + binWidht)
+        bins.append(bins[-1] + binWidth)
 
     return(bins)
 
