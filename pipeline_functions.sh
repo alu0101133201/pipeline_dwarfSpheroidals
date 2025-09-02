@@ -986,35 +986,33 @@ computeSkyForFrame(){
     # Masking the frames if they are not already 
     i=$entiredir/$1
     out=$(echo $base | sed 's/.fits/.txt/')
+
+    if ! [ "$inputImagesAreMasked" = true ]; then
+        tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
+        tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
+        astnoisechisel $i $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
+        astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
+        imageToUse=$noiseskydir/$tmpMaskedImage
+        rm -f $noiseskydir/$tmpMask
+
+        # manual masks defined by the user
+        valueToPut=nan
+        read -r -a maskArray <<< "$manualMaskParams"
+        for ((i=0; i<${#maskArray[@]}; i+=5)); do
+            ra_mask="${maskArray[i]}"
+            dec_mask="${maskArray[i+1]}"
+            r="${maskArray[i+2]}"
+            axisRatio="${maskArray[i+3]}"
+            pa="${maskArray[i+4]}"
+
+            python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra_mask $dec_mask $r $axisRatio $pa
+        done
+    else    
+        imageToUse=$i
+    fi
+
+
     if [ "$constantSky" = true ]; then  # Case when we subtract a constant
-        # Here we have two possibilities
-        # Estimate the background within the normalisation ring or using noisechisel
-
-        if ! [ "$inputImagesAreMasked" = true ]; then
-            tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
-            tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
-            astnoisechisel $i $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
-            astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
-            imageToUse=$noiseskydir/$tmpMaskedImage
-            rm -f $noiseskydir/$tmpMask
-
-            # manual masks defined by the user
-            valueToPut=nan
-            read -r -a maskArray <<< "$manualMaskParams"
-            for ((i=0; i<${#maskArray[@]}; i+=5)); do
-                ra_mask="${maskArray[i]}"
-                dec_mask="${maskArray[i+1]}"
-                r="${maskArray[i+2]}"
-                axisRatio="${maskArray[i+3]}"
-                pa="${maskArray[i+4]}"
-
-                python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra_mask $dec_mask $r $axisRatio $pa
-            done
-        else    
-            imageToUse=$i
-        fi
-
-
         # ****** Decision note *******
         # Here we have implemented two possibilities. Either the background is estimated by a constant or by a polynomial.
         # If it is a constant we store the fileName, the background value and the std. This is implemented this way because we
@@ -1083,6 +1081,7 @@ computeSkyForFrame(){
         python3 $pythonScriptsPath/surface-fit.py -i $imageToUse -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
         rm -f $noiseskydir/$noiseOutTmp
         rm -f $noiseskydir/$maskTmp
+        rm -f $noiseskydir/$planeOutput
     fi
 }
 export -f computeSkyForFrame
@@ -2638,6 +2637,7 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
 
+    
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
 
@@ -2650,7 +2650,7 @@ computeCalibrationFactors() {
         echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
         combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
     fi
-    
+        
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic
     
