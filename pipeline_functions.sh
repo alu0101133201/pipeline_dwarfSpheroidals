@@ -1196,6 +1196,15 @@ computeSkyForFrame(){
                 echo "$base $mean $std $skew $kurto" >> $noiseskydir/$out
                 rm -f $noiseskydir/$sky
             done
+        elif [ "$constantSkyMethod" = "fullImage" ]; then
+            for h in $(seq 1 $num_ccd); do
+                me=$(aststatistics $imageToUse -h$h --sigclip-median)
+                std=$(aststatistics $imageToUse -h$h --sigclip-std)
+
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $imageToUse SKEWNESS NO $h)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $imageToUse KURTOSIS NO $h)
+                echo "$base $me $std $skew $kurto" >> $noiseskydir/$out
+            done
         else
             errorNumber=6
             echo -e "\nAn invalid value for the sky_estimation_method was provided" >&2

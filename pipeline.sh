@@ -941,8 +941,9 @@ writeTimeOfStepToFile "Process the individual nights" $fileForTimeStamps
 nights=()
 for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
+      oneNightPreProcessing $currentNight
 done
-printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
+#printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
@@ -1043,7 +1044,7 @@ fi
 # # Making the indexes
 # writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
 # echo -e "·Downloading Indices for astrometrisation"
-catName_dec=$catdir/"$objectName"_Decals_dr10.fits
+catName_dec=$CDIR/"$objectName"_Decals_dr10.fits
 cp $DIR/"$objectName"_Decals_dr10.fits $catName_dec
 indexdir=$BDIR/indexes
 indexdone=$indexdir/done_"$filter".txt
@@ -1119,7 +1120,7 @@ else
       printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees $astroimacondir $stitchdir
       echo done > $sfDone
     fi
-    
+    #exit 0
     writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
     echo -e "·Creating SExtractor catalogues and running scamp"
     #
@@ -1169,8 +1170,9 @@ else
   fi
   echo done > $astroimadone
 fi
-
-
+#exit 0
+totalNumberOfFrames=$( ls $astroimadir/*.fits | wc -l)
+export totalNumberOfFrames
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -1227,6 +1229,7 @@ else
   rm -rf $entiredir_fullGrid
   echo done > $entiredone
 fi
+
 
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1395,8 +1398,8 @@ else
   exposuremapdone=$coaddDir/done_exposureMap.txt
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
-
-#if [[ "$filter" != "u" ]]; then
+#exit 0
+if [[ "$filter" != "u" ]]; then
   #### PHOTOMETRIC CALIBRATION  ####
   echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
   writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
@@ -1628,7 +1631,7 @@ fi
   comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
   astfits $coaddPrephotCalibratedName --write=/,"Pipeline information"
   addkeywords "$coaddPrephotCalibratedName" keyWords values comments
-#fi
+fi
 # ------------------------------------------------------
 
 #echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
@@ -1892,7 +1895,7 @@ maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDon
 noiseskydir=$BDIR/noise-sky_maskPrephot_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 imagesAreMasked=true
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT fullImage $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
@@ -1921,8 +1924,8 @@ else
   maskPointings $subskySmallGrid_dir $subSkyPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
   imagesAreMasked=true
-	computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
-  
+	computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT fullImage $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth
+  #exit 0
   subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_maskPrephot_it$iteration
   subskyfullGridDone=$subskyfullGrid_dir/done.txt
   if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
@@ -1981,7 +1984,7 @@ else
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
 
-#if [[ "$filrer" == "u" ]]; then exit 0; fi
+if [[ "$filter" == "u" ]]; then exit 0; fi
 # Calibration of coadd prephot
 if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
 cp $BDIR/coadds-prephot_it$iteration/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
@@ -2160,9 +2163,9 @@ if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtracted
 if [ -f $framesWithCoaddSubtractedDone ]; then
     echo -e "\nFrames with coadd subtracted already generated\n"
 else
-  coaddPrephotCalibratedName=$coaddDir/"$objectName"_prephot_calibrated_it"$iteration".fits
+  coaddPrephotCalibratedName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it"$iteration".fits
   sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
-  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+  photCorrfullGridDir=$BDIR/sub-sky-fullGrid_maskPrephot_it2
   subtractCoaddToFrames $photCorrfullGridDir $coaddPrephotCalibratedName $framesWithCoaddSubtractedDir
 
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
