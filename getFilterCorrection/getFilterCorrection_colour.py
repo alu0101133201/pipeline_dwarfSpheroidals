@@ -204,10 +204,10 @@ if (len(sys.argv) == 5):
     bandToStudy = sys.argv[3]
     comparisonSurvey = sys.argv[4]
 else:
-    field="Matlas2019"
-    currentInstrument = "OSIRIS"
-    bandToStudy = "g"
-    comparisonSurvey = "DECaLS"
+    field="NGC6789"
+    currentInstrument = "TTT3_iKon"
+    bandToStudy = "u"
+    comparisonSurvey = "SDSS"
 
 
 
