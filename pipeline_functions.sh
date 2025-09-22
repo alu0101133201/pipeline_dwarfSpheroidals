@@ -1624,6 +1624,7 @@ selectStarsAndSelectionRangeSurvey() {
 
         headerWithData=0 # After decompressing the data ends up in the hdu 0
         noisechiselTileSize=50
+
         printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $noisechiselTileSize $apertureUnits
         echo "done" > $starSelectionDone
     fi
@@ -1799,6 +1800,29 @@ prepareCalibrationData() {
     local mosaicDone=${19}
     local sizeOfBrick=${20}
 
+
+    # echo $surveyForCalibration
+    # echo $referenceImagesForMosaic
+    # echo $aperturePhotDir
+    # echo $filter
+    # echo $ra
+    # echo $dec
+    # echo $mosaicDir
+    # echo $selectedSurveyStarsDir
+    # echo $rangeUsedSurveyDir
+    # echo $dataPixelScale
+    # echo $sizeOfOurFieldDegrees
+    # echo $gaiaCatalogue
+    # echo $surveyForSpectra
+    # echo $apertureUnits
+    # echo $folderWithTransmittances
+    # echo $filterCorrectionCoeff
+    # echo $calibrationBrightLimit
+    # echo $calibrationFaintLimit
+    # echo $mosaicDone
+    # echo $sizeOfBrick
+
+
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
     if [ -f $mosaicDone ]; then 
         echo -e "\nSurvey data already prepared for photometric calibration\n"
@@ -1880,6 +1904,7 @@ prepareSurveyDataForPhotometricCalibration() {
     local calibrationFaintLimit=${18}
     local sizeOfBrick=${19}
 
+
     sizeOfFieldForCalibratingPANSTARRStoGAIA=1.5
 
     echo -e "\n ${GREEN} ---Preparing ${survey} data--- ${NOCOLOUR}"
@@ -1905,7 +1930,6 @@ prepareSurveyDataForPhotometricCalibration() {
     bricksIdentificationFileForGaiaCalibration_g=$surveyImagesDirForGaiaCalibration_g/brickIdentification.txt
     bricksIdentificationFile_r=$surveyImagesDir_r/brickIdentification.txt
     bricksIdentificationFileForGaiaCalibration_r=$surveyImagesDirForGaiaCalibration_r/brickIdentification.txt
-
 
 
     sizeOfBrick_gaia=3600 #3600 is the default value because the pipeline originally worked with DECaLS and it used this brick-size. We try to keep it to 3600 when possible
@@ -1983,7 +2007,7 @@ prepareSurveyDataForPhotometricCalibration() {
         selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $methodToUse $survey $apertureUnits
     fi
 
-   
+
     # halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     # if [ $survey == "DECaLS" ]; then
     #     produceHalfMaxRadiusPlotsForDecals $selectedSurveyStarsDir $halfMaxRad_Mag_plots $filter
@@ -2002,6 +2026,7 @@ prepareSurveyDataForPhotometricCalibration() {
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
+
 
     
     performAperturePhotometryToBricks $surveyImagesDir_g "$selectedSurveyStarsDir"_g "$aperturePhotDir"_g "g" $survey $numberOfApertureForRecuperateGAIA
@@ -2288,8 +2313,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         exit $erroNumber
     fi
     
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o$mycatdir/match_"$a"_my_gaia.txt
-    
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o$mycatdir/match_"$a"_my_gaia.txt   
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
     s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c5 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
@@ -2632,11 +2656,13 @@ computeCalibrationFactors() {
     local numberOfApertureUnitsForCalibration=${16}
     local calibratingMosaic=${17}
   
+
+
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
 
-    
+
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
 
@@ -3008,7 +3034,6 @@ produceHalfMaxRadVsMagForSingleImage() {
     local myCatDir=$9
     local brightCalibrationLimit=${10}
     local faintCalibrationLimit=${11}
-
 
     a=$( echo $image | grep -oP '\d+(?=\.fits)' )
     if ! [[ -n "$a" ]]; then
