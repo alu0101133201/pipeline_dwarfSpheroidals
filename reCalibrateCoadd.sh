@@ -203,7 +203,19 @@ else
 fi
 
 
+
+
+# Since we calibrated the coadd in the high snr region, we need to restore the whole image
+# I don't do that before so the calibration plot is with the calibrated area
+
+# We clean the input and output of the calibrated high-snr crop of the coadd and we get it again of the compelte field
+rm $recalibratedCoadd/*
+rm $imagesForCalibration/*
+cp $coaddToRecalibrate $imagesForCalibration/entirecamera_1.fits
+applyCalibrationFactors $imagesForCalibration $alphatruedir $recalibratedCoadd $iteration False
 mv $recalibratedCoadd/entirecamera_1.fits $recalibratedCoadd/$coaddToRecalibrateName
+
+
 
 # Compute surface brightness limit
 
