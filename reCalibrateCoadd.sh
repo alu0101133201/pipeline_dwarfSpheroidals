@@ -30,6 +30,12 @@ confFile=$1
 loadVariablesFromFile $confFile
 
 filterCorrectionCoeff=$( checkIfNeededFilterCorrectionIsGiven $telescope $filter $surveyForPhotometry $ROOTDIR/"$objectName"/config )
+if [[ $filterCorrectionCoeff == 11 ]]; then
+  echo "The filter corrections for the filter $filter, telescope $telescope and survey $survey were not found"
+  echo "Exiting with error code 11"
+  exit 11
+fi
+
 
 ra=$ra_gal
 dec=$dec_gal
@@ -42,7 +48,7 @@ if [ -z $num_cpus ]; then
 fi
 export num_cpus
 
-DIR=$ROOTDIR/$objectName/build_reCalibration
+DIR=$ROOTDIR/$objectName/build_reCalibration_$filter
 BDIR=$DIR
 mkdir -p $DIR
 export DIR
@@ -54,9 +60,10 @@ export tileSize
 
 # Files to use ------------------------------------------------------------------
 
-coaddToRecalibrateName="NGC6789_coadd_"$filter"_it2.fits"
-coaddMask=NGC6789_coadd_"$filter"_mask.fits
+coaddToRecalibrateName=$objectName"_coadd_"$filter"_it2.fits"
+coaddMask=$objectName"_coadd_"$filter"_mask.fits"
 folderWithInputToRecalibrate=$ROOTDIR/$objectName/coadd_"$filter"_ToRecalibrate
+
 
 exposureMap=$folderWithInputToRecalibrate/exposureMap.fits
 coaddToRecalibrate=$folderWithInputToRecalibrate/$coaddToRecalibrateName
@@ -69,9 +76,9 @@ if [[ -f "$exposureMap" && -f "$coaddToRecalibrate" && -f "$coaddMask" ]]; then
     echo $coaddMask
 else
     echo "One or more files are missing"
-    [[ ! -f "$file1" ]] && echo "Missing: $file1"
-    [[ ! -f "$file2" ]] && echo "Missing: $file2"
-    [[ ! -f "$file3" ]] && echo "Missing: $file3"
+    [[ ! -f "$exposureMap" ]] && echo "Missing: $exposureMap"
+    [[ ! -f "$coaddToRecalibrate" ]] && echo "Missing: $coaddToRecalibrate"
+    [[ ! -f "$coaddMask" ]] && echo "Missing: $coaddMask"
     exit 1
 fi
 
@@ -237,4 +244,8 @@ done
 
 addkeywords $recalibratedCoadd/$coaddToRecalibrateName keyWords values comments
 astfits $recalibratedCoadd/$coaddToRecalibrateName --update=SURFACE_BRIGHTNESS_LIMIT,$surfaceBrightnessLimit,"[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)"
+
+
+echo "Depth of the previous coadd: " $( astfits $coaddToRecalibrate -h1 --keyvalue=surface_brightness_limit -q)
+echo "Depth of the new coadd: " $( astfits $recalibratedCoadd/$coaddToRecalibrateName -h1 --keyvalue=surface_brightness_limit -q)
 
