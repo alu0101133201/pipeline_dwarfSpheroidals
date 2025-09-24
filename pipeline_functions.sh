@@ -2006,7 +2006,7 @@ prepareSurveyDataForPhotometricCalibration() {
         selectStarsAndSelectionRangeSurvey $surveyImagesDir $selectedSurveyStarsDir $methodToUse $survey $apertureUnits
         selectStarsAndSelectionRangeSurvey $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $methodToUse $survey $apertureUnits
     fi
-
+    
 
     # halfMaxRad_Mag_plots=$mosaicDir/halfMaxradius_Magnitude_plots
     # if [ $survey == "DECaLS" ]; then
@@ -2041,6 +2041,7 @@ prepareSurveyDataForPhotometricCalibration() {
         performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
     fi    
     
+    
     # # --- Decision note ---
     # # Now two corrections are applied. First a colour correction to match the survey filter to the filter of our telescope, and
     # # Secondly an offset to match the survey photometry to GAIA. Thus, our photometry is referenced to GAIA spectra and to our filter
@@ -2057,6 +2058,7 @@ prepareSurveyDataForPhotometricCalibration() {
     calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5 $survey
     calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15 $survey
 
+    
     read offset_g factorToApplyToCounts_g < "$mosaicDir/offsetToCorrectSurveyToGaia_g.txt"
     read offset_r factorToApplyToCounts_r < "$mosaicDir/offsetToCorrectSurveyToGaia_r.txt"
 
@@ -2065,7 +2067,7 @@ prepareSurveyDataForPhotometricCalibration() {
     correctOffsetFromCatalogues $aperturePhotDir"_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
     correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
 
-    
+   
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         : # Since the correct offset happens in the aperturePhotDir, this soft link has already been done
     else
@@ -2087,6 +2089,7 @@ prepareSurveyDataForPhotometricCalibration() {
         rm $brickDecalsAssociationFile
     fi
     python3 $pythonScriptsPath/associateDecalsBricksToFrames.py $referenceImagesForMosaic $imagesHdu $bricksIdentificationFile $brickDecalsAssociationFile $survey
+   
    
     # Create a catalogue of the whole field
     listOfCatalogues=()
@@ -2193,7 +2196,7 @@ computeColoursAndAddThemToCatalogues() {
                 echo "ERROR - Catalogues in the different filters for calibration are not equal (missing a catalogue in some filter). We should never get there. Exiting with errorCode $errorCode"
                 exit 999
             fi
-            
+
             fileNameInitial=$cataloguesToUseDir/$fileName.$filt.cat
             fileNameWithColour=$cataloguesToUseDir/$fileName.$filt.cat_withColour
 
@@ -2259,7 +2262,6 @@ calibrationToGAIA() {
 
     echo -e "\n·Computing offset between PANSTARRS data and GAIA (panstarrs catalogues used for the calculation $panstarrsCatalogueDir)"
 
-    
     if [ -f $mosaicDir"/offsetToCorrectSurveyToGaia_"$filter".txt" ]; then
             echo -e "\n\tOffset for calibrating survey to GAIA already computed\n"
     else
@@ -2274,11 +2276,10 @@ calibrationToGAIA() {
             combineCatalogues $panstarrsCatalogueDir $panstarrsCatalogueDir "mergedCatalogue.cat" "${listOfCatalogues[@]}"
         fi
 
-        
         transmittanceCurveFile="$folderWithTransmittances"/"$survey"_"$filter".dat
         prepareSpectraDataForPhotometricCalibration $spectraDir $filter $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA "GAIA" $transmittanceCurveFile
         
-        offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir $filter )
+        offsetValues=$( python3 $pythonScriptsPath/getOffsetBetweenPANSTARRSandGAIA.py $panstarrsCatalogueDir/mergedCatalogue.cat $mosaicDir/wholeFieldPhotometricCatalogue_"$filter".cat $brightLimitToCompareGAIAandPANSTARRS $faintLimitToCompareGAIAandPANSTARRS $mosaicDir $filter )       
 
         offset=$(echo $offsetValues | awk '{print $1}')
         factorToApplyToCounts=$(echo $offsetValues | awk '{print $2}')
@@ -2571,15 +2572,28 @@ combineCatalogues() {
 
     catalogueName=$( echo "$frame" | awk -F'.' '{print $1}')
 
-    firstBrick=${bricks[0]}
-    asttablePrompt="asttable $cataloguesDir/$firstBrick.cat -o$outputDir/$catalogueName.cat"
+    firstBrick=""
+    asttablePrompt="asttable"
 
-    remainingBricks=$(echo "$bricks" | cut -d' ' -f2-)  # Get the rest of the bricks
-    for brick in "${bricks[@]}"; do  # Iterate over remaining bricks
-        asttablePrompt+=" --catrowfile=$cataloguesDir/$brick.cat"
+    for brick in "${bricks[@]}"; do
+        catFile="$cataloguesDir/$brick.cat"
+        
+        # When doing the wholePhtometryCatalog, the check for -gt 8 is because there are 8 header lines. If the table is empty for some reason we
+        # get core dumped... So I just skip it if its empty
+        if [ -s "$catFile" ] && [ "$(wc -l < "$catFile")" -gt 8 ]; then
+            if [ -z "$firstBrick" ]; then
+                firstBrick="$brick"
+                asttablePrompt+=" $catFile -o$outputDir/$catalogueName.cat"
+            else
+                asttablePrompt+=" --catrowfile=$catFile"
+            fi
+        else
+            echo "Skipping empty catalogue: $catFile"
+        fi
     done
 
     $asttablePrompt
+
     raCol=3
     decCol=4
     python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py "$outputDir/$catalogueName.cat" "$outputDir/$catalogueName.reg" "plain" $raCol $decCol
@@ -3487,7 +3501,7 @@ limitingSurfaceBrightness() {
     exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
 
     out_mask=$directoryOfImages/mask_det.fits
-    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
+    astarithmetic $image -h1 $mask -h1 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
     out_maskexp_tmp=$directoryOfImages/mask_exp_tmp.fits
     astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp_tmp >/dev/null 2>&1
 
