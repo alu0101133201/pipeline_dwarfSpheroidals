@@ -1512,26 +1512,36 @@ solveField() {
     LC_NUMERIC=C  # Format to get rid of scientific notation if needed
 
     pointingRAValue=$( astfits $i -h0 --keyvalue=$pointingRA --quiet)
-    pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
+    #pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
+    pointingDecValue=$( astfits $i -h0 --keyvalue=$pointingDEC --quiet)
     if [[ "$pointingRAUnits" == "hours" ]]; then
+        pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
         pointRA=$(echo "$pointingRAValue * 15" | bc -l)
     elif [[ "$pointingRAUnits" == "deg" || "$pointingRAUnits" == "degrees" ]]; then
-        pointRA="$pointingRAValue"
+        pointRA="$( printf "%.8f\n" " $pointingRAValue")"
+    elif [[ "$pointingRAUnits" == "hms" ]]; then
+            ra_dec=$(skycoor -d "$pointingRAValue" "$pointingDecValue")
+            pointRA=$(echo "$ra_dec" | awk '{print $1}')
     else
         echo "Error: Unsupported RA units: $pointingRAUnits"
         exit 888
     fi
 
-    pointingDecValue=$( astfits $i -h0 --keyvalue=$pointingDEC --quiet)
-    pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
+    #pointingDecValue=$( astfits $i -h0 --keyvalue=$pointingDEC --quiet)
+    #pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
     if [[ "$pointingDECUnits" == "hours" ]]; then
         pointDec=$(echo "$pointingDecValue * 15" | bc -l)
     elif [[ "$pointingDECUnits" == "deg" || "$pointingDECUnits" == "degrees" ]]; then
-        pointDec="$pointingDecValue"
+        pointDec="$( printf "%.8f\n" " $pointingDecValue")"
+    elif [[ "$pointingDECUnits" == "dms" ]]; then
+            ra_dec=$(skycoor -d "$pointingRAValue" "$pointingDecValue")
+            pointDec=$(echo "$ra_dec" | awk '{print $2}')
     else
         echo "Error: Unsupported RA units: $pointingDECUnits"
         exit 888
     fi
+    
+    
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
@@ -1549,6 +1559,7 @@ solveField() {
             #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
             solve-field $image_temp --no-plots \
             -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
+            --ra $pointRA --dec=$pointDec --radius $sizeOfOurFieldDegrees \
             --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
             --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
             --source-extractor-config=$sexcfg_sf --x-column X_IMAGE --y-column Y_IMAGE \
