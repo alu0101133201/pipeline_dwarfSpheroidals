@@ -20,7 +20,7 @@ observing_location = EarthLocation(lat=lat*u.deg, lon=long*u.deg, height=elev*u.
 #Header
 hed = fits.open(img)[1].header
 if datK.startswith("DATE"):
-    date_obs = Time(hed[datK],format='isot',scaleç='utc')
+    date_obs = Time(hed[datK],format='isot',scale='utc')
 elif datK.startswith("MJD"):
     date_obs = Time(hed[datK],format='mjd',scale='utc')
 else:
