@@ -439,24 +439,35 @@ maskImages() {
     local outputDirectory=$3
     local useCommonRing=$4
     local keyWordToDecideRing=$5
-
+    images=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$inputDirectory/$base
-        out=$outputDirectory/$base
-        astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $out -q
-       
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $dateHeaderKey $out 
-        # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
-        # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
-        if [ "$useCommonRing" = false ]; then
-            propagateKeyword $i $keyWordToDecideRing $out
-        fi
+        images+=("$base")
     done
+    printf "%s\n" "${images[@]}" | parallel -j "$num_cpus" maskIndividualImage {} $inputDirectory $masksDirectory $outputDirectory $useCommonRing $keyWordToDecideRing
+    
 }
 export -f maskImages
+maskIndividualImage() {
+    local base=$1
+    local inputDirectory=$2
+    local masksDirectory=$3
+    local outputDirectory=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    i=$inputDirectory/$base
+    out=$outputDirectory/$base
+    astarithmetic $i -h1 $masksDirectory/$base -h1 1 eq nan where float32 -o $out -q
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $dateHeaderKey $out 
+    # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
+    # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
+    if [ "$useCommonRing" = false ]; then
+        propagateKeyword $i $keyWordToDecideRing $out
+    fi
+}
+export -f maskIndividualImage
 
 getInitialMidAndFinalFrameTimes() {
   local directoryWithNights=$1
@@ -3633,8 +3644,10 @@ warpMaskForFrame(){
     local outputDir=$3
     local threads=$4
 
-    astwarp $maskDir_33/$frame -h1 --scale=3 --numthreads=$threads --output=$outputDir/$frame
-
+    astwarp $maskDir_33/$frame -h1 --scale=3 --numthreads=$threads --output=$outputDir/temp_$frame
+    
+    astcrop $outputDir/temp_$frame --mode=img --section=1:$detectorWidth,1:$detectorHeight --zeroisnotblank -o$outputDir/$frame
+    rm $outputDir/temp_$frame
 }
 export -f warpMaskForFrame
 divideSkyBy9(){

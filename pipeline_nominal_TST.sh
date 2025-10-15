@@ -393,7 +393,7 @@ oneNightPreProcessing() {
     printf "%s\n" "${framesToSubtract[@]}" | parallel -j "$num_cpus" subtractBiasFromFrame {} $dark $saturationThreshold $currentINDIR $mbiascorrdir
     echo done > $mbiascorrdone
   fi
-  exit 0
+  
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
   iteration=3
   # We always need the common ring  definition always stored for photometric calibration (selection of decals bricks to download)
@@ -426,7 +426,7 @@ oneNightPreProcessing() {
           base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
           frameNames+=("$base")
       done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" warpMaskForFrame {} $currentFlatMaskDir_r $noiseit3dir $num_threads
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" warpMaskForFrame {} $currentFlatMaskDir_r $noiseit3dir $num_threads 
       echo done > $noiseit3done
     fi
   fi
@@ -443,7 +443,7 @@ oneNightPreProcessing() {
       frameNames+=("$base")
     done
 
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit2WholeNightimaDir $noiseit3WholeNightDir "'$noisechisel_param'"
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" warpMaskForFrame {} $currentFlatMaskDir_w $noiseit3WholeNightDir $num_threads 
     echo done > $noiseit3WholeNightdone 
   fi
   if $RUNNING_FLAT; then
@@ -780,7 +780,7 @@ else
   rm -rf $entiredir_fullGrid
   echo done > $entiredone
 fi
-
+exit 0
 echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
 noiseskydir=$BDIR/noise-sky_it1
 noiseskydone=$noiseskydir/done_"$filter".txt
