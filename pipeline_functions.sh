@@ -706,21 +706,37 @@ normaliseImagesWithRing() {
     local keyWordThreshold=$8
     local keyWordValueForFirstRing=$9
     local keyWordValueForSecondRing=${10}
-
+    imagesToNormalise=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-
-        me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $outputDir)
-        astarithmetic $i -h1 $me / -o $out
-
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $dateHeaderKey $out
+        imagesToNormalise+=("$base")
     done
+    printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseIndividualImageWithRing {} $imageDir $outputDir $useCommonRing $commonRing $doubleRing_first $doubleRing_second $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+    
 }
 export -f normaliseImagesWithRing
+normaliseIndividualImageWithRing() {
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local useCommonRing=$4
+    local commonRing=$5
+    local doubleRing_first=$6
+    local doubleRing_second=$7
+    local keyWordToDecideRing=$8
+    local keyWordThreshold=$9
+    local keyWordValueForFirstRing=$10
+    local keyWordValueForSecondRing=${11}
+    i=$imageDir/$base
+    out=$outputDir/$base
+    me=$(getMedianValueInsideRing $i $commonRing $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $outputDir)
+    astarithmetic $i -h1 $me / -o $out
+
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $dateHeaderKey $out
+}
+export -f normaliseIndividualImageWithRing
 
 calculateFlat() {
     local flatName="$1"
@@ -786,55 +802,71 @@ divideImagesByRunningFlats(){
     local outputDir=$2
     local flatDir=$3
     local flatDone=$4
-
+    imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-       
-        # -- NOTE ---
-        # At the beginning we were using the first commented block. Each image with its flat
-        # The thing is that we use the onOff strategy sometimes the matching between the frames and the 
-        # flats is not that perfect... That's why I relax the checks and if something has no counterpart the right running flat is used
-
-        if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left_ccd"$h".fits
-        elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right_ccd"$h".fits
-        else
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        fi
-        astarithmetic $i -h1 $flatToUse -h1 / -o $out
-
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $pointingRA $out
-        propagateKeyword $i $pointingDEC $out
+        imagesToDivide+=("$base")
     done
+    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByRunningFlats {} $imageDir $outputDir $flatDir
     echo done > $flatDone
 }
 export -f divideImagesByRunningFlats
-
+divideIndividualImageByRunningFlats(){
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local flatDir=$4
+    i=$imageDir/$base
+    out=$outputDir/$base
+    
+    # -- NOTE ---
+    # At the beginning we were using the first commented block. Each image with its flat
+    # The thing is that we use the onOff strategy sometimes the matching between the frames and the 
+    # flats is not that perfect... That's why I relax the checks and if something has no counterpart the right running flat is used
+    if [ "$a" -le "$((halfWindowSize + 1))" ]; then
+        flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left_ccd"$h".fits
+    elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
+        flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right_ccd"$h".fits
+    else
+        flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+    fi
+    astarithmetic $i -h1 $flatToUse -h1 / -o $out
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $pointingRA $out
+    propagateKeyword $i $pointingDEC $out    
+}
+export -f divideIndividualImageByRunningFlats
 divideImagesByWholeNightFlat(){
     local imageDir=$1
     local outputDir=$2
     local flatToUse=$3
     local flatDone=$4
-
+    imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-
-        astarithmetic $i -h1 $flatToUse -h1 / -o $out
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $pointingRA $out
-        propagateKeyword $i $pointingDEC $out
+        imagesToDivide+=("$base")
     done
+    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByWholeNightFlat {} $imageDir $outputDir $flatToUse
+        
     echo done > $flatDone
 }
 export -f divideImagesByWholeNightFlat
+divideIndividualImageByWholeNightFlat(){
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local flatToUse=$4
+    i=$imageDir/$base
+    out=$outputDir/$base
+
+    astarithmetic $i -h1 $flatToUse -h1 / -o $out
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $pointingRA $out
+    propagateKeyword $i $pointingDEC $out    
+}
+export -f divideIndividualImageByWholeNightFlat
 
 runNoiseChiselOnFrame() {
     local baseName=$1
