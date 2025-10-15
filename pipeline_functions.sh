@@ -420,7 +420,7 @@ subtractBiasFromFrame(){
 
     i=$inputDir/$base
     out=$outDir/$base
-    astarithmetic $i -h1 $dark -h1 set-m \
+    astarithmetic $i -h1 set-i $dark -h1 set-m \
               i i $satThres gt i isblank or 2 dilate nan where m - float32 \
               -o $out
     propagateKeyword $i $dateHeaderKey $out
