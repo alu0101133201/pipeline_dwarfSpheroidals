@@ -271,8 +271,11 @@ oneNightPreProcessing() {
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
-  
-  currentDARKDIR=$DARKDIR/night$currentNight
+  if [ -d $DARKDIR/night"$currentNight" ]; then
+    currentDARKDIR=$DARKDIR/night$currentNight
+  else
+    currentDARKDIR=$DARKDIR
+  fi
   mdadir=$BDIR/masterdark_n$currentNight
   
   for h in 0; do
@@ -988,7 +991,7 @@ else
   echo done > $astroimadone
 fi
 
-
+exit 0
 
 # ########## Distorsion correction ##########
 # echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
@@ -1745,7 +1748,7 @@ if [ -f $CDIR/mask.fits ]; then
   cp $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
   astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
 fi
-
+exit 0
 ####### ITERATION 2 ######
 iteration=2
 entiredir_smallGrid=$BDIR/pointings_smallGrid
