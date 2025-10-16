@@ -902,7 +902,7 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
-
+exit 0
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.

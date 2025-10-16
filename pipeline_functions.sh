@@ -784,6 +784,7 @@ calculateRunningFlat() {
 
 
     echo "Computing non-common flats - iteration $iteration"
+    #aValues=()
     for a in $(seq 1 $n_exp); do
         if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($n_exp - $halfWindowSize))" ]; then
             leftLimit=$(( a - $halfWindowSize - 1))
@@ -792,10 +793,33 @@ calculateRunningFlat() {
             tmpIndex=$(( a - 1 ))
             propagateKeyword "${fileArray[$tmpIndex]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits"
         fi
+    #    aValues+=("$a")
     done
+    #printf "%s\n" "${aValues[@]}" | parallel -j "$num_cpus" calculateNonCommonFlat {} $outputDir $iteration $fileArray
+    #seq 1 $n_exp | parallel -j "$num_cpus" calculateNonCommonFlat {} "$outputDir" "$iteration" "$normalisedDir" "$h" "$n_exp"
     echo done > $doneFile
 }
 export -f calculateRunningFlat
+calculateNonCommonFlat() {
+    local a=$1
+    local outputDir=$2
+    local iteration=$3
+    local normalisedDir=$4
+    local h=$5
+    local n_exp=$6
+
+    fileArray=($(ls -v "$normalisedDir"/*Decals-"$filter"_n*_f*_ccd"$h".fits))
+    windowSize=$(( (halfWindowSize * 2) + 1 ))
+    echo "$n_exp" >> test.txt
+    if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($n_exp - $halfWindowSize))" ]; then
+        
+        leftLimit=$(( a - halfWindowSize - 1 ))
+        calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits" "${fileArray[@]:$leftLimit:$windowSize}"
+        tmpIndex=$(( a - 1 ))
+        propagateKeyword "${fileArray[$tmpIndex]}" "$dateHeaderKey" "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits"
+    fi
+}
+export -f calculateNonCommonFlat
 
 divideImagesByRunningFlats(){
     local imageDir=$1
@@ -807,7 +831,7 @@ divideImagesByRunningFlats(){
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
         imagesToDivide+=("$base")
     done
-    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByRunningFlats {} $imageDir $outputDir $flatDir
+    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByRunningFlats {} $imageDir $outputDir $flatDir $n_exp $currentNight $iteration $h
     echo done > $flatDone
 }
 export -f divideImagesByRunningFlats
@@ -816,19 +840,25 @@ divideIndividualImageByRunningFlats(){
     local imageDir=$2
     local outputDir=$3
     local flatDir=$4
+    local n_exp=$5
+    local currentNight=$6
+    local iteration=$7
+    local h=$8
     i=$imageDir/$base
     out=$outputDir/$base
-    
+    a="${base#*_f}"
+    a="${a%%_ccd*}"
     # -- NOTE ---
     # At the beginning we were using the first commented block. Each image with its flat
     # The thing is that we use the onOff strategy sometimes the matching between the frames and the 
     # flats is not that perfect... That's why I relax the checks and if something has no counterpart the right running flat is used
+    
     if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-        flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left_ccd"$h".fits
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits
     elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-        flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right_ccd"$h".fits
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits
     else
-        flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
     fi
     astarithmetic $i -h1 $flatToUse -h1 / -o $out
     propagateKeyword $i $dateHeaderKey $out
