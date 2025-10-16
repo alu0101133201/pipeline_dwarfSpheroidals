@@ -1740,6 +1740,11 @@ for ((i=0; i<${#maskArray[@]}; i+=5)); do
 	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
 	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
 done
+if [ -f $CDIR/mask.fits ]; then
+  #If a mask already exists, we combine the created one with the existing one
+  cp $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
+  astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
+fi
 
 ####### ITERATION 2 ######
 iteration=2
