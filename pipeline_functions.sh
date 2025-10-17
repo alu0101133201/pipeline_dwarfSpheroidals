@@ -126,6 +126,8 @@ outputConfigurationVariablesInformation() {
         "·The background is modelled as a constant:$MODEL_SKY_AS_CONSTANT"
         "  If so, the sky estimation method is:$sky_estimation_method"
         "  Otherwise, the polynomial degree is:$polynomialDegree"
+        "  Noisechisel will be run with the following params: $noisechisel_param"
+        "  Prior to noisechisel, a block will be applied with value: $blockScale (1=No block)"
         " "
         "·Indices scales for astrometrisation"
         "  Lowest index:$lowestScaleForIndex"
@@ -240,6 +242,8 @@ checkIfAllVariablesAreSet() {
                 MODEL_SKY_AS_CONSTANT \
                 sky_estimation_method \
                 polynomialDegree \
+                noisechisel_param \
+                blockScale \
                 filter \
                 pixelScale \
                 detectorWidth \
@@ -902,11 +906,27 @@ runNoiseChiselOnFrame() {
     local baseName=$1
     local inputFileDir=$2
     local outputDir=$3
-    local noiseChiselParams=$4
+    local blockScale=$4
+    local noiseChiselParams=$5
+
+    ###If a block scale is given, we will block, highlighting LSB regions, detect, and un-block the mask
 
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
-    astnoisechisel $imageToUse $noiseChiselParams --numthreads=$num_threads -o $output
+
+    if [ "$blockScale" -eq 1 ]; then
+        #No block will be applied
+        astnoisechisel $imageToUse $noiseChiselParams --numthreads=$num_threads -o $output
+    else
+        wFile=$outputDir/imW_$baseName
+        wMask=$outputDir/mkW_$baseName
+        wMask2=$outputDir/mkW2_$baseName
+        astwarp $imageToUse --scale=1/$blockScale --numthreads=$num_threads -o $wFile
+        astnoisechisel $wFile $noiseChiselParams --numthreads=$num_threads -o $wMask
+        astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=1 --numthreads=$num_threads -o$wMask2
+        astarithmetic $wMask2 -h1 set-i i i 0 gt 1 where -q float32 -o$output
+        rm $wFile $wMask $wMask2
+    fi
 }
 export -f runNoiseChiselOnFrame
 
@@ -1064,8 +1084,9 @@ computeSkyForFrame(){
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
-    local noisechisel_param=${15}
-    local manualMaskParams=${16}
+    local blockScale=${15}
+    local noisechisel_param=${16}
+    local manualMaskParams=${17}
 
 
     # Masking the frames if they are not already 
@@ -1078,7 +1099,9 @@ computeSkyForFrame(){
         if ! [ "$inputImagesAreMasked" = true ]; then
             tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
             tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
-            astnoisechisel $i $noisechisel_param --numthreads=$num_threads -o $noiseskydir/$tmpMask
+            runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale $noisechisel_param
+            mv $noiseskydir/$1 $tmpMask #This is because of the output of runNoiseChiselOnFrame 
+            #astnoisechisel $i $noisechisel_param --numthreads=$num_threads -o $noiseskydir/$tmpMask
             astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
             imageToUse=$noiseskydir/$tmpMaskedImage
             rm -f $noiseskydir/$tmpMask
@@ -1186,8 +1209,9 @@ computeSky() {
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
-    local noisechisel_param=${15}
-    local maskParams=${16}
+    local blockScale=${15}
+    local noisechisel_param=${16}
+    local maskParams=${17}
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -3705,11 +3729,13 @@ warpMaskForFrame(){
     local maskDir_33=$2
     local outputDir=$3
     local threads=$4
+    local dataDir=$5
+    orImage=$dataDir/$frame
 
-    astwarp $maskDir_33/$frame -h1 --scale=3 --numthreads=$threads --output=$outputDir/temp_$frame
+    astwarp $maskDir_33/$frame -h1 --gridfile=$orImage --numthreads=$threads --output=$outputDir/$frame
     
-    astcrop $outputDir/temp_$frame --mode=img --section=1:$detectorWidth,1:$detectorHeight --zeroisnotblank -o$outputDir/$frame
-    rm $outputDir/temp_$frame
+    #astcrop $outputDir/temp_$frame --mode=img --section=1:$detectorWidth,1:$detectorHeight --zeroisnotblank -o$outputDir/$frame
+    #rm $outputDir/temp_$frame
 }
 export -f warpMaskForFrame
 divideSkyBy9(){

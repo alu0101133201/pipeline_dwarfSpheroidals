@@ -426,7 +426,7 @@ oneNightPreProcessing() {
           base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
           frameNames+=("$base")
       done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" warpMaskForFrame {} $currentFlatMaskDir_r $noiseit3dir $num_threads 
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" warpMaskForFrame {} $currentFlatMaskDir_r $noiseit3dir $num_threads $currentINDIR
       echo done > $noiseit3done
     fi
   fi
@@ -443,7 +443,7 @@ oneNightPreProcessing() {
       frameNames+=("$base")
     done
 
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" warpMaskForFrame {} $currentFlatMaskDir_w $noiseit3WholeNightDir $num_threads 
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" warpMaskForFrame {} $currentFlatMaskDir_w $noiseit3WholeNightDir $num_threads $currentINDIR
     echo done > $noiseit3WholeNightdone 
   fi
   if $RUNNING_FLAT; then
@@ -457,7 +457,7 @@ oneNightPreProcessing() {
       echo done > $maskedit3done
     fi
   fi
-
+exit 0
   
   # Mask the images (whole night flat)
   maskedit3WholeNightdir=$BDIR/masked-it3-WholeNight_n$currentNight
