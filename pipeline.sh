@@ -1112,7 +1112,7 @@ imagesAreMasked=false
 ringDir=$BDIR/ring
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
-
+#exit 0
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
@@ -1573,31 +1573,34 @@ maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+  ## If block scale is greater than 1, we apply the block
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddName --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+    imToMask=$coaddDir/coadd_blocked.fits
+  else
+    imToMask=$coaddName
+  fi
+  ### Second. If a kernel exists in the configuration file, we apply it
+  kernelFile=$CDIR/kernel.fits
+  if [ -f $kernelFile ]; then
+    astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
+    imToMask=$coaddDir/coadd_convolved.fits
+  fi
+  astnoisechisel $imToMask --tilesize=15,15 --detgrowquant=0.3 --interpnumngb=6 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
+    astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+    rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits
+  else
+    mv $coaddDir/mask_warped.fits $maskName
+  fi  
+  rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
 fi
 
 #astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
-if [ -f $maskName ]; then
-  echo -e "\tThe mask of the weighted coadd is already done"
-else
-  #We assume that if this works for this iteration, then the next one will need at least same parameters
-  tileSize=$((tileSize - 5))
-  noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
-fi
-if [ -f $maskName ]; then
-  echo -e "\tThe mask of the weighted coadd is already done"
-else
-  #We assume that if this works for this iteration, then the next one will need at least same parameters
-  tileSize=$((tileSize - 5))
-  noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus  -o $maskName
+if ! [ -f $maskName ]; then
+  echo -e "\tMask on 1st iteration has failed. Exiting with error code 47"
+  exit 47
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
@@ -1724,8 +1727,8 @@ fi
 
 ## This code is used for manually adding the user-defined masks to the mask from the coadd
 # First we save the original mask that noisechisel produces
-mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
-astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
+cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
+# astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
 cp $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
 #astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
@@ -2137,7 +2140,12 @@ removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badF
 rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
-
+##If we have detected read error:
+rejectedByReadError=identifiedBadFrames_readError.txt
+if [ -f $diagnosis_and_badFilesDir/$rejectedByReadError ]; then
+  removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByReadError $prefixOfTheFilesToRemove
+  removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByReadError $prefixOfTheFilesToRemove
+fi
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
@@ -2177,7 +2185,28 @@ maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+  ## If block scale is greater than 1, we apply the block
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddName --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+    imToMask=$coaddDir/coadd_blocked.fits
+  else
+    imToMask=$coaddName
+  fi
+  ### Second. If a kernel exists in the configuration file, we apply it
+  kernelFile=$CDIR/kernel.fits
+  if [ -f $kernelFile ]; then
+    astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
+    imToMask=$coaddDir/coadd_convolved.fits
+  fi
+  astnoisechisel $imToMask --tilesize=15,15 --detgrowquant=0.3 --interpnumngb=6 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
+    astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+    rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits
+  else
+    mv $coaddDir/mask_warped.fits $maskName
+  fi  
+  rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
 fi
 
 exposuremapDir=$coaddDir/"$objectName"_exposureMap

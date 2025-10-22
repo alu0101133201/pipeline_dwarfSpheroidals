@@ -1087,7 +1087,7 @@ computeSkyForFrame(){
     local blockScale=${15}
     local noisechisel_param=${16}
     local manualMaskParams=${17}
-
+    
 
     # Masking the frames if they are not already 
     i=$entiredir/$1
@@ -1100,7 +1100,7 @@ computeSkyForFrame(){
             tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
             tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
             runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale $noisechisel_param
-            mv $noiseskydir/$1 $tmpMask #This is because of the output of runNoiseChiselOnFrame 
+            mv $noiseskydir/$1 $noiseskydir/$tmpMask #This is because of the output of runNoiseChiselOnFrame 
             #astnoisechisel $i $noisechisel_param --numthreads=$num_threads -o $noiseskydir/$tmpMask
             astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
             imageToUse=$noiseskydir/$tmpMaskedImage
@@ -1149,7 +1149,7 @@ computeSkyForFrame(){
 
             ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
             echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
-            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
+            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --numthreads=$num_threads -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
             
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
@@ -1212,7 +1212,7 @@ computeSky() {
     local blockScale=${15}
     local noisechisel_param=${16}
     local maskParams=${17}
-
+    
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
         echo -e "\n\tScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
@@ -1224,7 +1224,8 @@ computeSky() {
             #computeSkyForFrame $base $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $noisechisel_param $maskParams
         done
 
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_parallel" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" "'$maskParams'"
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_parallel" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "'$noisechisel_param'" "'$maskParams'"
+        
         echo done > $noiseskydone
     fi
 }
@@ -1685,8 +1686,8 @@ selectStarsAndSelectionRangeSurvey() {
             done
         fi
         headerWithData=0 # After decompressing the data ends up in the hdu 0
-        noisechiselTileSize=50
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $noisechiselTileSize $apertureUnits
+        local noisechisel_param="--tilesize=50,50 --rawoutput"
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $apertureUnits "$noisechisel_param"
         echo "done" > $starSelectionDone
     fi
 }
@@ -2319,10 +2320,10 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     local framesForCalibrationDir=$2
     local mycatdir=$3
     local headerToUse=$4
-    local methodToUse=$5
-    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
-    local apertureUnits=$7
-
+    local methodToUse=$5          
+    local apertureUnits=$6
+    local noisechisel_param=$7 # This parameter will only be used if the catalogue is being generated with noisechisel
+    
 
     i=$framesForCalibrationDir/$a
     ##In the case of using it for Decals or Panstarrs, we need the variable survey
@@ -2330,7 +2331,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a $apertureUnits )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
-        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse $tileSize $apertureUnits )
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse $apertureUnits "$noisechisel_param" )
     else
         errorNumber=9
         echo "Error, method for selecting stars and the range in the calibration not recognised"
@@ -2340,7 +2341,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
 
     
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
-
+    
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
     s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
@@ -2358,8 +2359,8 @@ selectStarsAndSelectionRangeOurData() {
     local framesForCalibrationDir=$2
     local mycatdir=$3
     local methodToUse=$4
-    local tileSize=$5
-    local apertureUnits=$6
+    local apertureUnits=$5
+    local noisechisel_param=$6
 
     mycatdone=$mycatdir/done.txt
     if ! [ -d $mycatdir ]; then mkdir $mycatdir; fi
@@ -2373,7 +2374,7 @@ selectStarsAndSelectionRangeOurData() {
         done
 
         headerWithData=1
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $tileSize $apertureUnits
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $apertureUnits "$noisechisel_param"
         echo done > $mycatdone
     fi
 }
@@ -2668,18 +2669,19 @@ computeCalibrationFactors() {
     local alphatruedir=${11}
     local brightLimit=${12}
     local faintLimit=${13}
-    local tileSize=${14}
-    local apertureUnits=${15}
-    local numberOfApertureUnitsForCalibration=${16}
-    local calibratingMosaic=${17}
-
+    local apertureUnits=${14}
+    local numberOfApertureUnitsForCalibration=${15}
+    local calibratingMosaic=${16}
+    local noisechisel_param=${17}
+    
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
-    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
-
+    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $apertureUnits "$noisechisel_param"
+    
 
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
+    
     #if [ $iteration -eq 2 ]; then exit; fi
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
@@ -3323,12 +3325,12 @@ generateCatalogueFromImage_noisechisel() {
     local a=$3
 
     local header=$4
-    local tileSize=$5
-    local apertureUnitsToCalculate=$6
+    local apertureUnitsToCalculate=$5
+    local noisechisel_param=$6
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
     astconvolve $image -h$header --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits 1>/dev/null
-    astnoisechisel $image -h$header -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=$tileSize,$tileSize --numthreads=$num_cpus 1>/dev/null
+    astnoisechisel $image -h$header -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits $noisechisel_param --numthreads=$num_cpus 1>/dev/null
     astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --gthresh=-15 --objbordersn=0 1>/dev/null
 
     if [ $apertureUnitsToCalculate == "FWHM" ]; then
@@ -3368,7 +3370,7 @@ generateCatalogueFromImage_sextractor(){
             reCol=$(echo "$line" | awk '{print $2}')
         fi
     done <<< $headerLines
-
+    
     # We divide the fwhm by 2 so we have a radius
     # this is done here even if Re is chosen because then, when a column is removed, the column number changes and it's simpler to do it here
     awk -v col="$fwhmCol" '{ $col = $col / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a"_tmp2.cat
@@ -3385,7 +3387,7 @@ generateCatalogueFromImage_sextractor(){
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
-
+    
     # Headers to mimic the noisechisel format. Change between MacOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS (BSD sed)
@@ -3494,7 +3496,7 @@ limitingSurfaceBrightness() {
     exp_fr=$(astarithmetic $expMax $fracExpMap x -q)
 
     out_mask=$directoryOfImages/mask_det.fits
-    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
+    astarithmetic $image -h1 $mask -h1 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
     out_maskexp_tmp=$directoryOfImages/mask_exp_tmp.fits
     astarithmetic $out_mask $exposureMap -g1 $exp_fr lt nan where --output=$out_maskexp_tmp >/dev/null 2>&1
 
