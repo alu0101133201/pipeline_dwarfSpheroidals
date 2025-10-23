@@ -26,42 +26,44 @@ pa_rad = np.deg2rad(pa_deg)
 
 # Load image
 hdu = fits.open(image)
-data = hdu[1].data
-wcs = WCS(hdu[1].header)
 
-# Convert the center coordinates from (RA, Dec) to pixel coordinates
-x, y = wcs.world_to_pixel_values(ra, dec)
+for i in range(1,len(hdu)):
+    data = hdu[i].data
+    wcs = WCS(hdu[i].header)
+    if data is None:
+        continue
+    # Convert the center coordinates from (RA, Dec) to pixel coordinates
+    x, y = wcs.world_to_pixel_values(ra, dec)
 
-# Convert radius from arcseconds to pixels
-pix_scale = np.abs(wcs.pixel_scale_matrix[1,1]) * 3600  # Pixel scale in arcseconds/pixel
-radius_pixels = radius_arcsec / pix_scale
+    # Convert radius from arcseconds to pixels
+    pix_scale = np.abs(wcs.pixel_scale_matrix[1,1]) * 3600  # Pixel scale in arcseconds/pixel
+    radius_pixels = radius_arcsec / pix_scale
 
-# Create a circular or elliptical mask
-yy, xx = np.ogrid[:data.shape[0], :data.shape[1]]
-dx = xx - x
-dy = yy - y
+    # Create a circular or elliptical mask
+    yy, xx = np.ogrid[:data.shape[0], :data.shape[1]]
+    dx = xx - x
+    dy = yy - y
 
-# Rotate coordinates by PA (clockwise)
-dx_rot = dx * np.cos(pa_rad) + dy * np.sin(pa_rad)
-dy_rot = -dx * np.sin(pa_rad) + dy * np.cos(pa_rad)
+    # Rotate coordinates by PA (clockwise)
+    dx_rot = dx * np.cos(pa_rad) + dy * np.sin(pa_rad)
+    dy_rot = -dx * np.sin(pa_rad) + dy * np.cos(pa_rad)
 
-# Elliptical mask formula in rotated coordinates
-a = radius_pixels
-b = a * axis_ratio
-mask = (dx_rot / a)**2 + (dy_rot / b)**2 <= 1.0
+    # Elliptical mask formula in rotated coordinates
+    a = radius_pixels
+    b = a * axis_ratio
+    mask = (dx_rot / a)**2 + (dy_rot / b)**2 <= 1.0
 
-# Apply the mask (set pixels to NaN)
-if (valueToPut == "nan"):
-    data[mask] = np.nan  # You can also use 0 or another value
-else:
-    data[mask] = float(valueToPut)
+    # Apply the mask (set pixels to NaN)
+    if (valueToPut == "nan"):
+        data[mask] = np.nan  # You can also use 0 or another value
+    else:
+        data[mask] = float(valueToPut)
 
+    hdu[i].data = data
 # Save the masked image
-header = hdu[1].header.copy()
-if 'BLANK' in header:
-    del header['BLANK']
+for i in range(len(hdu)):
+    if 'BLANK' in hdu[i].header:
+        del hdu[i].header['BLANK']
 
-primary_hdu = PrimaryHDU()  
-image_hdu = ImageHDU(data=data, header=header)
-new_hdul = HDUList([primary_hdu, image_hdu])
-new_hdul.writeto(image, overwrite=True)
+hdu.writeto(image, overwrite=True)
+hdu.close()

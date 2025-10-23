@@ -126,6 +126,8 @@ outputConfigurationVariablesInformation() {
         "·The background is modelled as a constant:$MODEL_SKY_AS_CONSTANT"
         "  If so, the sky estimation method is:$sky_estimation_method"
         "  Otherwise, the polynomial degree is:$polynomialDegree"
+        "  Noisechisel will be run with the following params: $noisechisel_param"
+        "  Prior to noisechisel, a block will be applied with value: $blockScale (1=No block)"
         " "
         "·Indices scales for astrometrisation"
         "  Lowest index:$lowestScaleForIndex"
@@ -234,6 +236,8 @@ checkIfAllVariablesAreSet() {
                 MODEL_SKY_AS_CONSTANT \
                 sky_estimation_method \
                 polynomialDegree \
+                noisechisel_param \
+                blockScale \
                 filter \
                 pixelScale \
                 detectorWidth \
@@ -390,6 +394,34 @@ checkIfAllTheTransmittancesNeededAreGiven() {
 }
 export -f checkIfAllTheTransmittancesNeededAreGiven
 
+subtractBiasFromFrame(){
+    local base=$1
+    local dark=$2
+    local satThres=$3
+    local inputDir=$4
+    local outDir=$5
+
+    i=$inputDir/$base
+    out=$outDir/$base
+
+    for h in $(seq 0 $num_ccd); do
+        if [ $h -eq 0 ]; then
+            astfits $1 --copy=$h --primaryimghdu -o $out
+            if [ "$USE_COMMON_RING" = false ]; then
+                propagateKeyword $i $keyWordToDecideRing $out 0
+            fi
+        else
+            astarithmetic $i -h$h set-i $dark -h$h set-m \
+                  i i $satThres gt i isblank or 2 dilate nan where m - float32 \
+                  -o $outDir/temp_$base
+            astfits $outDir/temp_$base --copy=1 -o $out
+            rm $outDir/temp_$base
+            propagateKeyword $i $gain $out $H
+        fi
+    done
+}
+export -f subtractBiasFromFrame
+
 # Functions used in Flat
 maskImages() {
     local inputDirectory=$1
@@ -397,26 +429,39 @@ maskImages() {
     local outputDirectory=$3
     local useCommonRing=$4
     local keyWordToDecideRing=$5
-
+    imagesToMask=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
-        i=$inputDirectory/$base
-        out=$outputDirectory/$base
-        astfits $i --copy=0 --primaryimghdu -o $out
-        for h in $(seq 1 $num_ccd); do
-            astarithmetic $i -h$h $masksDirectory/$base -h$h 1 eq nan where float32 -o $outputDirectory/temp_"$base" -q
-            astfits $outputDirectory/temp_"$base" --copy=1 -o $out
-            rm $outputDirectory/temp_"$base"
-        done
+        imagesToMask+=("$base")
+    done
+    printf "%s\n" "${imagesToMask[@]}" | parallel -j "$num_cpus" maskIndividualImage {} $inputDirectory $masksDirectory $outputDirectory $useCommonRing $keyWordToDecideRing
+}
+export -f maskImages
+
+maskIndividualImage() {
+    local base=$1
+    local inputDirectory=$2
+    local masksDirectory=$3 
+    local outputDirectory=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    i=$inputDirectory/$base
+    out=$outputDirectory/$base
+    astfits $i --copy=0 --primaryimghdu -o $out
+    for h in $(seq 1 $num_ccd); do
+        astarithmetic $i -h$h $masksDirectory/$base -h$h 1 eq nan where float32 -o $outputDirectory/temp_"$base" -q
+        astfits $outputDirectory/temp_"$base" --copy=1 -o $out
+        rm $outputDirectory/temp_"$base"
+    done
         #propagateKeyword $i $airMassKeyWord $out 
         # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
         # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
-        if [ "$useCommonRing" = false ]; then
-            propagateKeyword $i $keyWordToDecideRing $out 0
-        fi
-    done
+    if [ "$useCommonRing" = false ]; then
+        propagateKeyword $i $keyWordToDecideRing $out 0
+    fi
 }
-export -f maskImages
+export -f maskIndividualImage
+
 
 getInitialMidAndFinalFrameTimes() {
   local directoryWithNights=$1
@@ -644,26 +689,43 @@ normaliseImagesWithRing() {
     local keyWordThreshold=$8
     local keyWordValueForFirstRing=$9
     local keyWordValueForSecondRing=${10}
-
+    imagesToNormalise=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-        astfits $i --copy=0 --primaryimghdu -o $out
-        if [ "$USE_COMMON_RING" = false ]; then
-            propagateKeyword $i $keyWordToDecideRing $out 0
-        fi
-        for h in $(seq 1 $num_ccd); do
-
-            me=$(getMedianValueInsideRing $i $commonRing $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
-            astarithmetic $i -h$h $me / -o $outputDir/temp_$base
-            astfits $outputDir/temp_$base --copy=1 -o $out
-            rm $outputDir/temp_$base
-            propagateKeyword $i $gain $out $h
-        done
+        imagesToNormalise+=("$base")
     done
+    printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseIndividualImageWithRing {} $imageDir $outputDir $useCommonRing $commonRing $doubleRing_first $doubleRing_second $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
 }
 export -f normaliseImagesWithRing
+normaliseIndividualImageWithRing() {
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local useCommonRing=$4
+    local commonRing=$5
+    local doubleRing_first=$6
+    local doubleRing_second=$7
+    local keyWordToDecideRing=$8
+    local keyWordThreshold=$9
+    local keyWordValueForFirstRing=${10}
+    local keyWordValueForSecondRing=${11}
+    i=$imageDir/$base
+    out=$outputDir/$base
+    astfits $i --copy=0 --primaryimghdu -o $out
+    if [ "$USE_COMMON_RING" = false ]; then
+        propagateKeyword $i $keyWordToDecideRing $out 0
+    fi
+    for h in $(seq 1 $num_ccd); do
+
+        me=$(getMedianValueInsideRing $i $commonRing $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
+        astarithmetic $i -h$h $me / -o $outputDir/temp_$base
+        astfits $outputDir/temp_$base --copy=1 -o $out
+        rm $outputDir/temp_$base
+        propagateKeyword $i $gain $out $h
+    done
+}
+export -f normaliseIndividualImageWithRing
+
 
 calculateFlat() {
     local flatName="$1"
@@ -757,62 +819,161 @@ divideImagesByRunningFlats(){
     local outputDir=$2
     local flatDir=$3
     local flatDone=$4
-
+    imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-        astfits $i --copy=0 --primaryimghdu -o $out
-        if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left.fits
-        elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right.fits
-        else
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a".fits
-        fi
-        for h in $(seq 1 $num_ccd); do
-            astarithmetic $i -h$h $flatToUse -h$h / -o $outputDir/temp_$base
-            astfits $outputDir/temp_$base --copy=1 -o$out
-            rm $outputDir/temp_$base
-            propagateKeyword $i $gain $out $h
-        done
+        imagesToDivide+=("$base")
     done
+    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByRunningFlats {} $imageDir $outputDir $flatDir $n_exp $currentNight $iteration 
     echo done > $flatDone
 }
 export -f divideImagesByRunningFlats
+divideIndividualImageByRunningFlats(){
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local flatDir=$4
+    local n_exp=$5
+    local currentNight=$6
+    local iteration=$7
+
+    i=$imageDir/$base
+    out=$outputDir/$base
+    a="${base#*_f}"
+    a="${a%.fits}"
+    astfits $i --copy=0 --primaryimghdu -o $out
+    if [ "$a" -le "$((halfWindowSize + 1))" ]; then
+        flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left.fits
+    elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right.fits
+    else
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a".fits
+    fi
+    for h in $(seq 1 $num_ccd); do
+        astarithmetic $i -h$h $flatToUse -h$h / -o $outputDir/temp_$base
+        astfits $outputDir/temp_$base --copy=1 -o$out
+        rm $outputDir/temp_$base
+        propagateKeyword $i $gain $out $h
+    done
+}
+export -f divideIndividualImageByRunningFlats
+    
 
 divideImagesByWholeNightFlat(){
     local imageDir=$1
     local outputDir=$2
     local flatToUse=$3
     local flatDone=$4
-
+    imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-        astfits $i --copy=0 --primaryimghdu -o $out
-        for h in $(seq 1 $num_ccd); do
-            astarithmetic $i -h$h $flatToUse -h$h / -o $outputDir/temp_$base
-            astfits $outputDir/temp_$base --copy=1 -o$out
-            rm $outputDir/temp_$base
-            propagateKeyword $i $gain $out $h
-        done
+        imagesToDivide+=("$base")
     done
+    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByWholeNightFlat {} $imageDir $outputDir $flatToUse
     echo done > $flatDone
 }
 export -f divideImagesByWholeNightFlat
+divideIndividualImageByWholeNightFlat(){
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local flatToUse=$4
+    
+    i=$imageDir/$base
+    out=$outputDir/$base
+    astfits $i --copy=0 --primaryimghdu -o $out
+    for h in $(seq 1 $num_ccd); do
+        astarithmetic $i -h$h $flatToUse -h$h / -o $outputDir/temp_$base
+        astfits $outputDir/temp_$base --copy=1 -o$out
+        rm $outputDir/temp_$base
+        propagateKeyword $i $gain $out $h
+    done
+}
+export -f divideIndividualImageByWholeNightFlat
+
+correctRunningFlatWithWholeNightFlat() {
+    local base=$1
+    local beforeDir=$2
+    local wholeNightFlat=$3 
+    local outputDir=$4
+
+    i=$beforeDir/$base
+    out=$outputDir/$base
+    astfits $i --copy=0 --primaryimghdu -o $out
+    for h in $(seq 1 $num_ccd); do
+        tmpRatio=$outputDir/tmpRatio_$base
+        astarithmetic $wholeNightFlat -h$h $i -h$h / -o $tmpRatio
+        tmpCorrected=$outputDir/tmpCorrected_$base
+        astarithmetic $i -h$h set-m $tmpRatio -h1 set-f m f 0.85 lt nan where -o $tmpCorrected
+        astfits $tmpCorrected --copy=1 -o $out
+        rm $tmpRatio $tmpCorrected
+    done
+}    
+export -f correctRunningFlatWithWholeNightFlat
+
+maskVignettingOnImages() {
+    local base=$1
+    local imaDir=$2 
+    local outDir=$3
+    local flatDir=$4
+    local wholeFlatDir=$5
+    local runningFlat=$6
+    local n_exp=$7
+    local currentNight=$8
+    local lowerVignettingThreshold=$9
+    local upperVignettingThreshold=${10}
+    a="${base#*_f}"
+    a="${a%.fits}"
+    if $runningFlat; then
+      if [ "$a" -le "$((halfWindowSize + 1))" ]; then
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_left.fits
+      elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_right.fits
+      else
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_f"$a".fits
+      fi
+    else
+      currentFlatImage=$wholeFlatDir/flat-it3_wholeNight_n$currentNight.fits
+    fi 
+
+    i=$imaDir/$base
+    out=$outDir/$base
+    tempStep=$outDir/temp_$base
+    astfits $i --copy=0 --primaryimghdu -o $out
+    for h in $(seq 1 $num_ccd); do
+        astarithmetic $i -h$h set-m $currentFlatImage -h$h set-f m f $lowerVignettingThreshold lt  nan where set-n n f $upperVignettingThreshold gt nan where -o $tempStep
+        astfits $tempStep --copy=1 -o $out
+        rm -f $tempStep
+    done
+    propagateKeyword $i $gain $out 0
+}
+export -f maskVignettingOnImages
 
 runNoiseChiselOnFrame() {
     local baseName=$1
     local inputFileDir=$2
     local outputDir=$3
-    local noiseChiselParams=$4
+    local blockScale=$4
+    local noiseChiselParams=$5
+    
+    ###If a block scale is given, we will block, highlighting LSB regions, detect, and un-block the mask
 
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
+    
     for h in $(seq 1 $num_ccd); do
-        astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$num_threads -o $outputDir/temp_"$baseName"
+        if [ "$blockScale" -eq 1 ]; then
+            astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$num_threads -o $outputDir/temp_"$baseName"
+        else
+            wFile=$outputDir/imW_$baseName
+            wMask=$outputDir/mkW_$baseName
+            wMask2=$outputDir/mkW2_$baseName
+            astwarp $imageToUse -h$h --scale=1/$blockScale --numthreads=$num_threads -o $wFile
+            astnoisechisel $wFile -h1 $noiseChiselParams --numthreads=$num_threads -o $wMask
+            astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=$h --numthreads=$num_threads -o $wMask2
+            astarithmetic $wMask2 -h1 set-i i i 0 gt 1 where -q float32 -o $outputDir/temp_"$baseName"
+            rm $wFile $wMask $wMask2
+        fi
         astfits $outputDir/temp_"$baseName" --copy=1 -o $output
         rm $outputDir/temp_"$baseName"
     done
@@ -994,6 +1155,9 @@ computeSkyForFrame(){
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
     local swarped=${15}
+    local blockScale=${16}
+    local noisechisel_param=${17}
+    local maskParams=${18}
     i=$entiredir/$1
 
     # ****** Decision note *******
@@ -1021,16 +1185,28 @@ computeSkyForFrame(){
                 tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
                 tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
                 tmpMaskedImage_single=$(echo $base | sed 's/.fits/_masked_ccd.fits/')
+                runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale $noisechisel_param 
+                mv $noiseskydir/$1 $noiseskydir/$tmpMask
                 for h in $(seq 1 $num_ccd); do
-                    astnoisechisel $i -h$h $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
-                    astarithmetic $i -h$h $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage_single --quiet
-                    astfits $noiseskydir/$tmpMaskedImage_single --copy=1 -o $noiseskydir/$tmpMaskedImage
+                    astarithmetic $i -h$h $noiseskydir/$tmpMask -h$h 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage_single -q
+                    astfits $noiseskydir/$tmpMaskedImage_single --copy=1 -o$noiseskydir/$tmpMaskedImage
                     rm -f $noiseskydir/$tmpMaskedImage_single
-                    rm -f $noiseskydir/$tmpMask
+                    
                 done    
-
+                rm -f $noiseskydir/$tmpMask
                 imageToUse=$noiseskydir/$tmpMaskedImage
                 
+                ##Aply manual mask defined by user
+                valueToPut=nan
+                read -r -a maskArray <<< "$maskParams"
+                for ((i=0; i<${#maskArray[@]}; i+=5)); do
+                    ra="${maskArray[i]}"
+                    dec="${maskArray[i+1]}"
+                    r="${maskArray[i+2]}"
+                    axisRatio="${maskArray[i+3]}"
+                    pa="${maskArray[i+4]}"
+                    python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
+                done 
             else
                 imageToUse=$i
             fi
@@ -1112,7 +1288,7 @@ computeSkyForFrame(){
                 echo "$base $mean $std $skew $kurto" >> $noiseskydir/$out
                 rm -f $noiseskydir/$sky
             done
-        elif [ "$constantSkyMethod" = "fullImage" ]; then
+        elif [ "$constantSkyMethod" = "wholeImage" ]; then
             for h in $(seq 1 $num_ccd); do
                 mean=$(aststatistics $i -h$h --sigclip-mean -q)
                 std=$(aststatistics $i -h$h --sigclip-std -q)
@@ -1177,6 +1353,8 @@ computeSkyForFrame(){
         fi
 
     else
+        echo "\n\tMultiDetector pipeline has not been prepared yet to work with polynomial fitting of sky"
+        exit 35
         # Case when we model a plane
         noiseOutTmp=$(echo $base | sed 's/.fits/_sky.fits/')
         maskTmp=$(echo $base | sed 's/.fits/_masked.fits/')
@@ -1214,6 +1392,8 @@ computeSky() {
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
     local swarped=${15}
+    local noisechisel_param=${16}
+    local maskParams=${17}
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -1224,7 +1404,7 @@ computeSky() {
             base=$( basename $a )
             framesToComputeSky+=("$base")
         done
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $swarped
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $swarped $blockScale $noisechisel_param $maskParams
         echo done > $noiseskydone
     fi
 }
