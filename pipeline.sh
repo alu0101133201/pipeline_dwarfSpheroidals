@@ -317,7 +317,7 @@ oneNightPreProcessing() {
   if [ -d $DARKDIR/night"$currentNight" ]; then
     currentDARKDIR=$DARKDIR/night$currentNight
   else
-    currentDARDIR=$DARKDIR
+    currentDARKDIR=$DARKDIR
   fi
   mdadir=$BDIR/masterdark_n$currentNight
 
@@ -436,11 +436,9 @@ oneNightPreProcessing() {
   
   # We create the .fits ring image based on how the normalisation is going to be done
   ringdir=$BDIR/ring
+  if ! [ -d $ringdir ]; then mkdir $ringdir; fi
   if ! [ -f "$ringdir/ring.fits" ] && ! [ -f "$ringdir/ring_1.fits" ] && ! [ -f "$ringdir/ring_2.fits" ]; then
 
-    
-    rm -rf $ringdir
-    mkdir $ringdir
     for h in $(seq 1 $num_ccd); do
       if [ "$USE_COMMON_RING" = true ]; then
         base="${commonRingDefinitionFile%.txt}"
@@ -843,8 +841,9 @@ oneNightPreProcessing() {
   fi
 
   # Correct the running flats using the whole night flat
+  flatit3dir=$BDIR/flat-it3-Running_n$currentNight
   if $RUNNING_FLAT_night; then
-    flatit3dir=$BDIR/flat-it3-Running_n$currentNight
+    
     flatit3done=$flatit3dir/done_"$k".txt
     if ! [ -d $flatit3dir ]; then mkdir $flatit3dir; fi
     if [ -f $flatit3done ]; then
@@ -1074,24 +1073,29 @@ if ! [ -d $astroimadir_layer ]; then mkdir $astroimadir_layer; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
-  frameNames=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-      base=$a.fits
-      i=$gaincordir/$base
-      frameNames+=("$i")
-  done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir_layer $sexcfg $sizeOfOurFieldDegrees 
-  
-  for a in $(seq 1 $totalNumberOfFrames); do
-      base=$a.fits
-      i=$framesForCommonReductionDir/$base
-      out=$astroimadir/$base
-      astfits $i --copy=0 --primaryimghdu -o $out
-      for h in $(seq 1 $num_ccd); do
-        im_layer=$astroimadir_layer/layer"$h"_"$base"
-        astfits $im_layer --copy=1 -o $out
-      done
-  done
+  #LBT frames are already astrometrized, so we will take advantage of that info
+  if [ "$telescope" == "LBT" ]; then
+    cp $gaincordir/*.fits $astroimadir/
+  else
+    frameNames=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+        base=$a.fits
+        i=$gaincordir/$base
+        frameNames+=("$i")
+    done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir_layer $sexcfg $sizeOfOurFieldDegrees 
+
+    for a in $(seq 1 $totalNumberOfFrames); do
+        base=$a.fits
+        i=$framesForCommonReductionDir/$base
+        out=$astroimadir/$base
+        astfits $i --copy=0 --primaryimghdu -o $out
+        for h in $(seq 1 $num_ccd); do
+          im_layer=$astroimadir_layer/layer"$h"_"$base"
+          astfits $im_layer --copy=1 -o $out
+        done
+    done
+  fi
   rm -rf $astroimadir_layer
   echo done > $astroimadone
 fi

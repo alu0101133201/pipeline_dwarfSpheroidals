@@ -1587,21 +1587,23 @@ addTwoFiltersAndDivideByTwo() {
 export -f addTwoFiltersAndDivideByTwo
 
 gainCorrection() {
-    local image=$1
-    local ringDir=$2
-    local noisechisel_param=$3
+    local base=$1
+    local inputDir=$2
+    local ringDir=$3
     local outDir=$4
-    
-    base=$( basename $image )
+    local blockScale=$5
+    local noisechisel_param=$6
+    image=$inputDir/$base
     output=$outDir/$base
     astfits $image --copy=0 --primaryimghdu -o$output
     ringFile=$ringDir/ring.fits
     noiseOut=$outDir/noise_$base
     maskOut=$outDir/mask_$base
     gainOut=$outDir/gain_$base
+    runNosieChiselOnFrame $base $inputDir $outDir $blockScale $noisechisel_param
+    mv $outDir/$base $noiseOut
     for h in $(seq 1 $num_ccd); do
-        astnoisechisel $image -h$h $noisechisel_param --numthreads=$num_threads -o $noiseOut
-        astarithmetic $image -h$h $noiseOut -h1 0 ne nan where -q -o$outDir/temp_$base
+        astarithmetic $image -h$h $noiseOut -h$h 0 ne nan where -q -o$outDir/temp_$base
         astarithmetic $outDir/temp_$base -h1 $ringFile -h$h 0 eq nan where -q -o$maskOut
         gain_h=$(aststatistics $maskOut --sigclip-median -q)
         if [ $h -eq 1 ]; then
@@ -1612,8 +1614,9 @@ gainCorrection() {
             astfits $gainOut --copy=1 -o$output
             rm $gainOut
         fi
-        rm $outDir/temp_$base $noiseOut $maskOut
+        rm $outDir/temp_$base $maskOut
     done
+    rm $noiseOut
 
 }
 export -f gainCorrection
