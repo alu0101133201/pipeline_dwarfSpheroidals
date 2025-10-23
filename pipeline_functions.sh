@@ -957,7 +957,7 @@ runNoiseChiselOnFrame() {
     local noiseChiselParams=$5
     
     ###If a block scale is given, we will block, highlighting LSB regions, detect, and un-block the mask
-
+    
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
     
@@ -1185,7 +1185,8 @@ computeSkyForFrame(){
                 tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
                 tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
                 tmpMaskedImage_single=$(echo $base | sed 's/.fits/_masked_ccd.fits/')
-                runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale $noisechisel_param 
+                runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale "$noisechisel_param"
+                
                 mv $noiseskydir/$1 $noiseskydir/$tmpMask
                 for h in $(seq 1 $num_ccd); do
                     astarithmetic $i -h$h $noiseskydir/$tmpMask -h$h 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage_single -q
@@ -1392,8 +1393,9 @@ computeSky() {
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
     local swarped=${15}
-    local noisechisel_param=${16}
-    local maskParams=${17}
+    local blockScale=${16}
+    local noisechisel_param=${17}
+    local maskParams=${18}
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
@@ -1404,6 +1406,7 @@ computeSky() {
             base=$( basename $a )
             framesToComputeSky+=("$base")
         done
+        
         printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $swarped $blockScale $noisechisel_param $maskParams
         echo done > $noiseskydone
     fi
