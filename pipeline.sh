@@ -768,19 +768,11 @@ oneNightPreProcessing() {
     if [ -f $flatit3done ]; then
       echo -e "\nFlats iteration 3 are corrected using the flat of the whole night for night $currentNight and extension $h\n"
     else
+      imagesToCorrect=()
       for i in $flatit3BeforeCorrectiondir/*.fits; do
-
-        tmpRatio=$flatit3dir/tmpRatio.fits
-        astarithmetic $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits -h1 $i -h1 / -o$tmpRatio
-
-        # ****** Decision note *******
-        # The standard deviation of the ratio between the whole flat and the running flat is around 0.03.
-        # So choosing 0.85, which seems a reasonable value.
-        # Chose this value based on the standard deviation of your ratios, how these vary through the night and how aggresive u want to apply the correction
-        astarithmetic $i -h1 set-m  $tmpRatio -h1 set-f m f 0.85 lt nan where -o $flatit3dir/$(basename "$i")
-        propagateKeyword $i $dateHeaderKey $flatit3dir/$(basename "$i")
-        rm $tmpRatio
+        imagesToCorrect+=("$(basename $i)")
       done
+      printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" correctRunningFlatWithWholeNightFlat {} $flatit3BeforeCorrectiondir $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits $flatit3dir $dateHeaderKey
       echo done > $flatit3done
     fi
   fi
@@ -814,29 +806,12 @@ oneNightPreProcessing() {
   if [ -f $maskedcornerdone ]; then
     echo -e "\nCorners are already masked for night $currentNight and extension $h\n"
   else
+    imagesForVignetting=()
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-
-      if $RUNNING_FLAT; then
-        if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-          currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_left_ccd"$h".fits
-        elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-          currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_right_ccd"$h".fits
-        else
-          currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        fi
-      else
-        currentFlatImage=$flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits
-      fi
-
-      i=$flatit3imadir/$base
-      out=$maskedcornerdir/$base
-      astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f $lowerVignettingThreshold lt nan where set-n n f $upperVignettingThreshold gt nan where -o $out
-      propagateKeyword $i $airMassKeyWord $out 
-      propagateKeyword $i $dateHeaderKey $out
-      propagateKeyword $i $pointingRA $out
-      propagateKeyword $i $pointingDEC $out
+      imagesForVignetting+=("$base")
     done
+    printf "%s\n" "${imagesForVignetting[@]}" | parallel -j "$num_cpus" maskVignettingOnImages {} $flatit3imadir $maskedcornerdir $flatit3dir $flatit3WholeNightdir $RUNNING_FLAT $n_exp $currentNight $lowerVignettingThreshold $upperVignettingThreshold 
     echo done > $maskedcornerdone
   fi
 
@@ -981,13 +956,18 @@ if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
-  frameNames=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-      base=$a.fits
-      i=$framesForCommonReductionDir/$base
-      frameNames+=("$i")
-  done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
+  if [ "$telescope" == "TST" ] || [ "$telescope" == "TTT3_ikon" ] || [ "$telescope" == "TTT3_QHY" ]; then
+    #This 2 telescopes on a monolitic detector come astrometrized, so we skip solve-field
+    cp $framesForCommonReductionDir/*.fits $astroimadir/
+  else
+    frameNames=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+        base=$a.fits
+        i=$framesForCommonReductionDir/$base
+        frameNames+=("$i")
+    done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
+  fi
   echo done > $astroimadone
 fi
 

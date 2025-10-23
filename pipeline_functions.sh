@@ -902,6 +902,57 @@ divideIndividualImageByWholeNightFlat(){
 }
 export -f divideIndividualImageByWholeNightFlat
 
+correctRunningFlatWithWholeNightFlat() {
+    local base=$1
+    local beforeDir=$2
+    local wholeNightFlat=$3
+    local outputDir=$4
+    local dateHeaderKey=$5
+
+    i=$beforeDir/$base
+    out=$outputDir/$base
+    tmpRatio=$outputDir/tmpRatio_$base
+    astarithmetic $wholeNightFlat -h1 $i -h1 / -o $tmpRatio
+    astarithmetic $i -h1 set-m $tmpRatio -h1 set-f m f 0.85 lt nan where -o $out
+    propagateKeyword $i $dateHeaderKey $out
+    rm $tmpRatio
+
+}
+export -f correctRunningFlatWithWholeNightFlat
+
+maskVignettingOnImages() {
+    local base=$1
+    local imaDir=$2 
+    local outDir=$3
+    local flatDir=$4
+    local wholeFlatDir=$5
+    local runningFlat=$6
+    local n_exp=$7
+    local currentNight=$8
+    local lowerVignettingThreshold=$9
+    local upperVignettingThreshold=${10}
+    a="${base#*_f}"
+    a="${a%%_ccd*}"
+    if $runningFlat; then
+      if [ "$a" -le "$((halfWindowSize + 1))" ]; then
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_left_ccd"$h".fits
+      elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_right_ccd"$h".fits
+      else
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+      fi
+    else
+      currentFlatImage=$wholeFlatDir/flat-it3_wholeNight_n$currentNight.fits
+    fi 
+    i=$imaDir/$base
+    out=$outDir/$base
+    astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f $lowerVignettingThreshold lt nan where set-n n f $upperVignettingThreshold gt nan where -o $out
+    propagateKeyword $i $airMassKeyWord $out 
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $pointingRA $out
+    propagateKeyword $i $pointingDEC $out
+}
+export -f maskVignettingOnImages
 runNoiseChiselOnFrame() {
     local baseName=$1
     local inputFileDir=$2
