@@ -935,11 +935,11 @@ maskVignettingOnImages() {
     a="${a%%_ccd*}"
     if $runningFlat; then
       if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_left_ccd"$h".fits
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_left_ccd0.fits
       elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_right_ccd"$h".fits
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_right_ccd0.fits
       else
-        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_f"$a"_ccd0.fits
       fi
     else
       currentFlatImage=$wholeFlatDir/flat-it3_wholeNight_n$currentNight.fits
