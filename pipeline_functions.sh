@@ -1600,7 +1600,7 @@ gainCorrection() {
     noiseOut=$outDir/noise_$base
     maskOut=$outDir/mask_$base
     gainOut=$outDir/gain_$base
-    runNosieChiselOnFrame $base $inputDir $outDir $blockScale $noisechisel_param
+    runNoiseChiselOnFrame $base $inputDir $outDir $blockScale $noisechisel_param
     mv $outDir/$base $noiseOut
     for h in $(seq 1 $num_ccd); do
         astarithmetic $image -h$h $noiseOut -h$h 0 ne nan where -q -o$outDir/temp_$base
@@ -2543,17 +2543,17 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     local framesForCalibrationDir=$2
     local mycatdir=$3
     local headerToUse=$4
-    local methodToUse=$5
-    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
-    local survey=$7
-    local apertureUnits=$8
+    local methodToUse=$5         # This parameter will only be used if the catalogue is being generated with noisechisel
+    local survey=$6
+    local apertureUnits=$7
+    local noisechisel_param=$8
     i=$framesForCalibrationDir/$a
     ##In the case of using it for Decals or Panstarrs, we need the variable survey
     
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a $survey )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
-        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse $tileSize  )
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse "'$noisechisel_param"  )
     else
         errorNumber=9
         echo "Error, method for selecting stars and the range in the calibration not recognised"
@@ -2601,8 +2601,8 @@ selectStarsAndSelectionRangeOurData() {
     local framesForCalibrationDir=$2
     local mycatdir=$3
     local methodToUse=$4
-    local tileSize=$5
-    local apertureUnits=$6
+    local apertureUnits=$5
+    local noisechisel_param=$6
     
     mycatdone=$mycatdir/done.txt
     if ! [ -d $mycatdir ]; then mkdir $mycatdir; fi
@@ -2615,7 +2615,7 @@ selectStarsAndSelectionRangeOurData() {
         done
 
         headerWithData=1
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $tileSize NO $apertureUnits
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse NO $apertureUnits $noisechisel_param
         echo done > $mycatdone
     fi
 }
@@ -2941,16 +2941,16 @@ computeCalibrationFactors() {
     local alphatruedir=${11}
     local brightLimit=${12}
     local faintLimit=${13}
-    local tileSize=${14}
-    local apertureUnits=${15}
-    local numberOfApertureUnitsForCalibration=${16}
-    local calibratingMosaic=${17}
+    local apertureUnits=${14}
+    local numberOfApertureUnitsForCalibration=${15}
+    local calibratingMosaic=${16}
+    local noisechisel_param=${17}
 
     
 
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
-    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
+    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $apertureUnits "'$noisechisel_param'"
      
     
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
@@ -3510,7 +3510,7 @@ generateCatalogueFromImage_noisechisel() {
     local outputDir=$2
     local a=$3   
     local header=$4
-    local tileSize=$5
+    local noisechisel_param=$5
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
     astconvolve $image -h$header --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits 1>/dev/null
@@ -3656,7 +3656,7 @@ limitingSurfaceBrightness() {
     numOfSigmasForMetric=3
 
     out_mask=$directoryOfImages/mask_det.fits
-    astarithmetic $image -h1 $mask -hDETECTIONS 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
+    astarithmetic $image -h1 $mask -h1 0 ne nan where -q --output=$out_mask >/dev/null 2>&1
 
     out_maskexp=$directoryOfImages/mask_exp.fits
     expMax=$(aststatistics $exposureMap --maximum -q)
