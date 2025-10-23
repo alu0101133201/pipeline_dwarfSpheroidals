@@ -984,9 +984,9 @@ if [ -f $gaincordone ]; then
 else
   frameNames=()
   for a in $framesForCommonReductionDir/*.fits; do
-    frameNames+=("$a")
+    frameNames+=("$(basename $a)")
   done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $ringDir "'$noisechisel_param'" $gaincordir
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $framesForCommonReductionDir $ringDir $gaincordir $blockScale "'$noisechisel_param'"
   echo done > $gaincordone
 fi
 echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
