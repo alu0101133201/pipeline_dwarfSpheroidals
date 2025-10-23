@@ -1285,7 +1285,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   calibratingMosaic=true
   imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
   computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
+                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 fi
 
 
@@ -1301,7 +1301,7 @@ imagesForCalibration=$subskySmallGrid_dir
 calibratingMosaic=false
 
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
+                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1938,7 +1938,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   calibratingMosaic=true
   imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
   computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
+                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 fi
 
 # Calibration of individual frames
@@ -1953,7 +1953,7 @@ mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 imagesForCalibration=$BDIR/sub-sky-smallGrid_it$iteration
 calibratingMosaic=false
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
+                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
 
 
