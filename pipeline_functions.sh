@@ -1945,8 +1945,8 @@ selectStarsAndSelectionRangeSurvey() {
         fi
 
         headerWithData=0 # After decompressing the data ends up in the hdu 0
-        noisechiselTileSize=50
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $noisechiselTileSize YES $apertureUnits
+        noisechisel_param_survey="--tilesize=50,50 --rawoutput"
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse YES $apertureUnits "'$noisechisel_param_survey'"
         echo "done" > $starSelectionDone
     fi
 }

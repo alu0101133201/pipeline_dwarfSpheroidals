@@ -966,6 +966,7 @@ done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
 
+
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
@@ -2302,7 +2303,7 @@ if [ -f $maskName ]; then
 else
   #If block scale is greater than 1, we apply the block
   if [ "$blockScale" -gt 1 ]; then
-    astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus-o $coaddDir/coadd_blocked.fits
+    astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coaddBlocked.fits
     imToMask=$coaddDir/coaddBlocked.fits
   else
     imToMask=$coaddName
