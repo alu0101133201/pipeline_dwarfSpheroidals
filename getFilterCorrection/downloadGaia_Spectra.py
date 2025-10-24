@@ -60,7 +60,8 @@ for inp_dict in datalink_all[1:]:
 keys = list(datalink_out.keys())
 print(f'* The merged dictionary contains {len(keys)} elements')  
 
-
+if not os.path.exists(f'./gaiaSpectra_{fieldName}'):
+	os.mkdir(f'./gaiaSpectra_{fieldName}')
 os.system(f"mv ./datalink_output*.zip ./gaiaSpectra_{fieldName}")
 for file in glob.glob(f"./gaiaSpectra_{fieldName}/*.zip"):
     os.system(f"unzip {file} -d ./gaiaSpectra_{fieldName}")
