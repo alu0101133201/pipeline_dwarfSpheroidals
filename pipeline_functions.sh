@@ -1745,7 +1745,6 @@ solveField() {
             #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
             solve-field $image_temp --no-plots \
             -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
-            --ra $pointRA --dec=$pointDec --radius $sizeOfOurFieldDegrees \
             --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
             --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
             --source-extractor-config=$sexcfg_sf --x-column X_IMAGE --y-column Y_IMAGE \
