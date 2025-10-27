@@ -185,6 +185,9 @@ elif survey=='PANSTARRS':
         i.start()
     for i in threadList:
         i.join()
+elif survey=='SDSS':
+    bricksNames,bricksRA,bricksDec = download_fields_mosaic(galaxyRA,galaxyDec,(fieldSize/2)+0.15,downloadDestination,filters,data_release=17)
+    remove_duplicate_bricks(".")
 else:
     raise Exception (f"Survey {survey} not supported for Photometric calibration")
     
