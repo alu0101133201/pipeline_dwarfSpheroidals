@@ -3425,18 +3425,30 @@ subtractCoaddToFrames() {
     local dirWithFrames=$1
     local coadd=$2
     local destinationDir=$3
-
+    imagesToSubtract=()
     for i in $dirWithFrames/*.fits; do
         name=$( basename $i )
-        for h in $(seq 1 $num_ccd); do
-            temp_file=$destinationDir/temp_$name
-            astarithmetic $i -h$h $coadd -h1 - -o$temp_file
-            astfits $temp_file --copy=1 -o $destinationDir/$name
-            rm $temp_file
-        done
+        imagesToSubtract+=("$name")
     done
+    printf "%s\n" "${imagesToSubtract[@]}" | parallel -j "$num_cpus" subtractCoaddToSingleFrame {} $dirWithFrames $coadd $destinationDir
 }
 export -f subtractCoaddToFrames
+
+subtractCoaddToSingleFrame(){
+    local base=$1
+    local dirWithFrames=$2
+    local coadd=$3
+    local destinationDir=$4
+
+    i=$dirWithFrames/$base
+    for h in $(seq 1 $num_ccd); do
+        temp_file=$destinationDir/temp_$name
+        astarithmetic $i -h$h $coadd -h1 - -o$temp_file
+        astfits $temp_file --copy=1 -o $destinationDir/$name
+        rm $temp_file
+    done
+}
+export -f subtractCoaddToSingleFrame
 
 changeNonNansOfFrameToOnes() {
   local a=$1
