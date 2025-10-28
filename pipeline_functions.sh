@@ -3442,7 +3442,7 @@ subtractCoaddToSingleFrame(){
 
     i=$dirWithFrames/$base
     for h in $(seq 1 $num_ccd); do
-        temp_file=$destinationDir/temp_$name
+        temp_file=$destinationDir/temp_$base
         astarithmetic $i -h$h $coadd -h1 - -o$temp_file
         astfits $temp_file --copy=1 -o $destinationDir/$name
         rm $temp_file
