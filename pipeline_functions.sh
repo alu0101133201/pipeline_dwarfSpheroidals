@@ -3171,16 +3171,24 @@ subtractCoaddToFrames() {
     local coadd=$2
     local destinationDir=$3
 
+    imagesToSubtract=()
     for i in $dirWithFrames/*.fits; do
         base=$( basename $i )
-        #tempFile=$destinationDir/tmp_$base
-        #astarithmetic $i $sumOfWeights -g1 / -o$tempFile
-        astarithmetic $i $coadd - -o$destinationDir/$base -g1
-        #rm $tempFile
+        imagesToSubtract+=("$base")
     done
+    printf "%s\n" "${imagesToSubtract[@]}" | parallel -j "$num_cpus" subtractCoaddToSingleFrame {} $dirWithFrames $coadd $destinationDir
 }
 export -f subtractCoaddToFrames
+subtractCoaddToSingleFrame(){
+    local base=$1
+    local dirWithFrames=$2
+    local coadd=$3
+    local destinationDir=$4
 
+    i=$dirWithFrames/$base
+    astarithmetic $i $coadd - -o$destinationDir/$base -g1
+}
+export -f subtractCoaddToSingleFrame
 
 computeMetricOfResiduals() {
     local dirWithFrames=$1
