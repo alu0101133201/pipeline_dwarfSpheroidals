@@ -971,7 +971,7 @@ runNoiseChiselOnFrame() {
             astwarp $imageToUse -h$h --scale=1/$blockScale --numthreads=$num_threads -o $wFile
             astnoisechisel $wFile -h1 $noiseChiselParams --numthreads=$num_threads -o $wMask
             astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=$h --numthreads=$num_threads -o $wMask2
-            astarithmetic $wMask2 -h1 set-i i i 0 gt 1 where -q float32 -o $outputDir/temp_"$baseName"
+            astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o $outputDir/temp_"$baseName"
             rm $wFile $wMask $wMask2
         fi
         astfits $outputDir/temp_"$baseName" --copy=1 -o $output

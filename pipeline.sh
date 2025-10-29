@@ -1363,7 +1363,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
       astnoisechisel $imToMask $noisechisel_param --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
       if [ "$blockScale" -gt 1 ]; then 
         astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
-        astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+        astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt i isnotblank and 1 where float32 -q -o $maskName
         rm $coaddDir/mask_unwarped.fits  $coaddDir/mask_warped.fits $coaddDir/coadd_blocked.fits
       else
         mv $coaddDir/mask_warped.fits $maskName
@@ -2119,7 +2119,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
       astnoisechisel $imToMask $noisechisel_param --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
       if [ "$blockScale" -gt 1 ]; then 
         astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
-        astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+        astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt i isnotblank and 1 where float32 -q -o $maskName
         rm $coaddDir/mask_unwarped.fits  $coaddDir/mask_warped.fits $coaddDir/coadd_blocked.fits
       else
         mv $coaddDir/mask_warped.fits $maskName
