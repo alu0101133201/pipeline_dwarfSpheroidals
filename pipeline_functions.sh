@@ -975,7 +975,18 @@ runNoiseChiselOnFrame() {
         astwarp $imageToUse --scale=1/$blockScale --numthreads=$num_threads -o $wFile
         astnoisechisel $wFile $noiseChiselParams --numthreads=$num_threads -o $wMask
         astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=1 --numthreads=$num_threads -o$wMask2
-        astarithmetic $wMask2 -h1 set-i i i 0 gt 1 where -q float32 -o$output
+        warp_status=$?
+        if [ $warp_status -ne 0 ]; then
+            wMaskTmp=$outputDir/mkWTmp_$baseName
+
+            echo "astwarp failed on $baseName (exit code $warp_status)" >&2
+            echo "This happens when images are not astrometrised. The second solution is to warp and then crop to the desired size"
+            astwarp $wMask -h1 --scale=$blockScale --gridhdu=1 --numthreads=$num_threads -o$wMaskTmp
+            astcrop $wMaskTmp --section="1:$detectorWidth,1:$detectorHeight" --mode=img -o $wMask2
+
+            rm $wMaskTmp
+        fi
+        astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o$output
         rm $wFile $wMask $wMask2
     fi
 }
@@ -1150,8 +1161,9 @@ computeSkyForFrame(){
         if ! [ "$inputImagesAreMasked" = true ]; then
             tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
             tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
-            runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale $noisechisel_param
+            runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale "$noisechisel_param"
             mv $noiseskydir/$1 $noiseskydir/$tmpMask #This is because of the output of runNoiseChiselOnFrame 
+            
             #astnoisechisel $i $noisechisel_param --numthreads=$num_threads -o $noiseskydir/$tmpMask
             astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
             imageToUse=$noiseskydir/$tmpMaskedImage
@@ -1276,7 +1288,7 @@ computeSky() {
         done
 
         printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_parallel" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "'$noisechisel_param'" "'$maskParams'"
-        
+        exit 0
         echo done > $noiseskydone
     fi
 }
@@ -3140,7 +3152,7 @@ produceHalfMaxRadVsMagForOurData() {
 }
 export -f produceHalfMaxRadVsMagForOurData
 
-buildCoadd() {
+stackWeightedImages() {
     local coaddir=$1
     local coaddName=$2
     local wdir=$3
@@ -3163,7 +3175,7 @@ buildCoadd() {
             echo done > $coaddone
     fi
 }
-export -f buildCoadd
+export -f stackWeightedImages
 
 subtractCoaddToFrames() {
     local dirWithFrames=$1
@@ -3813,3 +3825,88 @@ divideSkyBy9(){
     }' "$file" > "$output"
 }
 export -f divideSkyBy9
+
+buildCoadd(){
+    local fullGridDir=$1
+    local minRmsFileName=$2
+    local iteration=$3
+    local noiseskydir=$4
+
+    ##Upper and lower limits
+    echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+
+    clippingdir=$BDIR/clipping-outliers_it$iteration
+    clippingdone=$clippingdir/done.txt
+    sigmaForStdSigclip=3
+    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $fullGridDir $sigmaForStdSigclip 
+
+    ##Masking outliers
+    photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
+    photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
+    if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
+    removeOutliersFromWeightedFrames $fullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
+
+    ##Calculate weights
+    echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+
+    wdir=$BDIR/weight-dir_it$iteration
+    wonlydir=$BDIR/only-w-dir_it$iteration
+    wdone=$wdir/done.txt
+    wonlydone=$wonlydir/done.txt
+    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+    if ! [ -d $wdir ]; then mkdir $wdir; fi
+    computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
+
+    ##Final coadd
+    echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+    echo -e "\nBuilding coadd"
+    coaddDir=$BDIR/coadds_it$iteration
+    coaddDone=$coaddDir/done.txt
+    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
+    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
+
+    ##Exposure map
+    exposuremapDir=$coaddDir/"$objectName"_exposureMap
+    exposuremapdone=$coaddDir/done_exposreMap.txt
+    computeExposureMap $wdir $exposuremapDir $exposuremapdone
+
+    ##Residual coadd
+    framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+    framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.fits
+    if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+    if [ -f $framesWithCoaddSubtractedDone ]; then
+        echo -e "\n\tFrames with coadd subtracted already done\n"
+    else
+        sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
+
+        coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
+        astarithmetic $(ls -v $photCorrNoOutliersPxDir/entirecamera_*.fits) $(ls $photCorrNoOutliersPxDir/entirecamera_*.fits | wc -l) -g1 mean -o $coaddAv
+        subtractCoaddToFrames $fullGridDir $coaddAv $framesWithCoaddSubtractedDir 
+        astarithmetic $(ls -v $framesWithCoaddSubtractedDir/entirecamera_*.fits) $(ls $framesWithCoaddSubtractedDir/entirecamera_*.fits | wc -l) g1 sum -o$sumMosaicAfterCoaddSubtraction
+
+        echo "done" > $framesWithCoaddSubtractedDone
+    fi
+}
+export -f buildCoadd
+
+createBlocks(){
+    local fullGridDir=$1
+    local coaddSizeInPix=$2
+
+    #This function will generate a .txt file with the information of the blocks needed for making a mosaic combination
+    #Since RAM memory is limited, when images are large and there're a lot of them, RAM might not be enought to combine the 
+    #fullGrid frames. Because of that, we use a block strategy: divide the fullGrid image in blocks that will be treated separately and then
+    #stitched together.
+
+    #This function is to determine how many blocks are needed, their size and the crops.
+
+    availMemory_gb=$(awk '/MemAvailable/ {printf "%.3f \n", $2/1024/1024 }' /proc/meminfo)
+    safetyMem=25.0 #Gb
+    availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
+    echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
+
+    python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
+}
+export -f createBlocks

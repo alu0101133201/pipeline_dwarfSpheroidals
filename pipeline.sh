@@ -1092,7 +1092,7 @@ imagesAreMasked=false
 ringDir=$BDIR/ring
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
-#exit 0
+
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
@@ -1221,7 +1221,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
   
     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
-    buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
 
     maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
     if [ -f $maskName ]; then
@@ -1515,40 +1515,65 @@ h=0
 minRmsFileName=min_rms_it1.txt
 python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
+#The following functions for creating the coadd have been added into a single one called "buildCoadd()". 
+#Nevertheless, I'll let the body commented in case something is needed
+buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
 
-echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
-sigmaForStdSigclip=3
-clippingdir=$BDIR/clipping-outliers
-clippingdone=$clippingdir/done.txt
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
+######
+#echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+#sigmaForStdSigclip=3
+#clippingdir=$BDIR/clipping-outliers
+#clippingdone=$clippingdir/done.txt
+#buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
+#
+#
+#photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
+#photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
+#if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
+#removeOutliersFromWeightedFrames $photCorrfullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
+#
+#### Calculate the weights for the images based on the minimum rms ###
+#echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+#
+#wdir=$BDIR/weight-dir
+#wonlydir=$BDIR/only-w-dir
+#wdone=$wdir/done.txt
+#wonlydone=$wonlydir/done.txt
+#if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+#if ! [ -d $wdir ]; then mkdir $wdir; fi
+#computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
+#
+#echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
+#echo -e "\n·Building coadd"
+#coaddDir=$BDIR/coadds
+#coaddDone=$coaddDir/done.txt
+#coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it$iteration.fits
+#stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
+#exposuremapDir=$coaddDir/"$objectName"_exposureMap
+#exposuremapdone=$coaddDir/done_exposureMap.txt
+#computeExposureMap $wdir $exposuremapDir $exposuremapdone 
+#writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
+#framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
+#framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
+#if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+#if [ -f $framesWithCoaddSubtractedDone ]; then
+#    echo -e "\n\tFrames with coadd subtracted already generated\n"
+#else
+#  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
+#  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+#  
+#  coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
+#  astarithmetic $(ls -v $photCorrNoOutliersPxDir/*.fits) $(ls $photCorrNoOutliersPxDir/*.fits | wc -l) -g1 mean -o$coaddAv
+#  subtractCoaddToFrames $photCorrfullGridDir $coaddAv $framesWithCoaddSubtractedDir
+#  echo done > $framesWithCoaddSubtractedDone 
+#fi
 
-
-photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
-photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
-if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
-removeOutliersFromWeightedFrames $photCorrfullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
-
-### Calculate the weights for the images based on the minimum rms ###
-echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
-
-wdir=$BDIR/weight-dir
-wonlydir=$BDIR/only-w-dir
-wdone=$wdir/done.txt
-wonlydone=$wonlydir/done.txt
-if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-if ! [ -d $wdir ]; then mkdir $wdir; fi
-computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
-
-echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
-echo -e "\n·Building coadd"
-coaddDir=$BDIR/coadds
-coaddDone=$coaddDir/done.txt
-coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it$iteration.fits
-buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
+##We now need the coadd dir and the coadd name
+coaddDir=$BDIR/coadds_it$iteration
+coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
@@ -1582,12 +1607,6 @@ if ! [ -f $maskName ]; then
   echo -e "\tMask on 1st iteration has failed. Exiting with error code 47"
   exit 47
 fi
-
-exposuremapDir=$coaddDir/"$objectName"_exposureMap
-exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $wdir $exposuremapDir $exposuremapdone 
-
-
 #Compute surface brightness limit
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
@@ -1621,7 +1640,7 @@ keyWords=("FRAMES_COMBINED" \
           "WINDOW_SIZE" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
-numberOfFramesCombined=$(ls $BDIR/weight-dir/*.fits | wc -l)
+numberOfFramesCombined=$(ls $BDIR/weight-dir_it"$iteration"/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 
@@ -1638,31 +1657,7 @@ else
 fi
 
 
-writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
-framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
-framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
-if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
-if [ -f $framesWithCoaddSubtractedDone ]; then
-    echo -e "\n\tFrames with coadd subtracted already generated\n"
-else
-  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
-  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
-  
-  coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
-  astarithmetic $(ls -v $photCorrNoOutliersPxDir/*.fits) $(ls $photCorrNoOutliersPxDir/*.fits | wc -l) -g1 mean -o$coaddAv
-  subtractCoaddToFrames $photCorrfullGridDir $coaddAv $framesWithCoaddSubtractedDir
-  #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  #computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
-  #python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
-#
-  #sumMosaicAfterCoaddSubtractionPxTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubPxTagged_"$filter"_it$iteration.fits
-  #sumMosaicAfterCoaddSubtractionAperTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubAperTagged_"$filter"_it$iteration.fits
-  #framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
-  #if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
-  #computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionPxTagged $sumMosaicAfterCoaddSubtractionAperTagged $fwhmFolder "$noisechisel_param"
 
-  echo done > $framesWithCoaddSubtractedDone 
-fi
 
 
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1693,11 +1688,11 @@ find $BDIR/photCorrFullGrid-dir_noOutliersPx_it1 -type f ! -name 'done*' -exec r
 
 find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/framesWithCoaddSubtracted -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/framesWithCoaddSubtracted_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtractedTagged_it1 -type f ! -name 'done*' -exec rm {} \;
 
-find $BDIR/weight-dir -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/only-w-dir -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/weight-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/only-w-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
 if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
   find $BDIR/weight-dir_prephot -type f ! -name 'done*' -exec rm {} \;
@@ -1710,7 +1705,7 @@ fi
 cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
 # astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
-cp $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
+cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
 #astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
 # Then we apply the user-defined masks
@@ -1724,12 +1719,12 @@ for ((i=0; i<${#maskArray[@]}; i+=5)); do
 	pa="${maskArray[i+4]}"
 
 	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
 done
 if [ -f $CDIR/mask.fits ]; then
   #If a mask already exists, we combine the created one with the existing one
-  cp $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
-  astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
+  cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
+  astarithmetic $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits --quiet
 fi
 #exit 0
 ####### ITERATION 2 ######
@@ -1902,7 +1897,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     # Make the coadd
     coaddDone=$coaddDir/done.txt
     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
-    buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
 
     coaddDir=$BDIR/coadds-prephot_it$iteration
     maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
@@ -2130,35 +2125,10 @@ fi
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
-clippingdir=$BDIR/clipping-outliers_it$iteration
-clippingdone=$clippingdir/done_"$k".txt
-sigmaForStdSigclip=3
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
+buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
 
-photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
-photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
-if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
-removeOutliersFromWeightedFrames $photCorrfullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
-
-### Calculate the weights for the images based on the minimum rms ###
-echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
-
-wdir=$BDIR/weight-dir_it$iteration
-wonlydir=$BDIR/only-w-dir_it$iteration
-wdone=$wdir/done.txt
-wonlydone=$wonlydir/done.txt
-if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-if ! [ -d $wdir ]; then mkdir $wdir; fi
-computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
-
-echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-echo -e "\nBuilding coadd"
-coaddDir=$BDIR/coadds_it$iteration 
-coaddDone=$coaddDir/done.txt
-coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it$iteration.fits
-buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
+coaddDir=$BDIR/coadds_it$iteration
+coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 # noisechisel_param="--tilesize=30,30 --detgrowmaxholesize=5000 --dthresh=0.1 --snminarea=2 --rawoutput"
 # export noisechisel_param
@@ -2188,12 +2158,6 @@ else
   fi  
   rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
 fi
-
-exposuremapDir=$coaddDir/"$objectName"_exposureMap
-exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $wdir $exposuremapDir $exposuremapdone 
-
-
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
 if [ -f  $sblimitFile ]; then
@@ -2235,48 +2199,53 @@ else
   produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_DR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2" $tileSize $apertureUnits
 fi
 
-
-framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
-framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
-if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
-if [ -f $framesWithCoaddSubtractedDone ]; then
-    echo -e "\nFrames with coadd subtracted already generated\n"
-else
-  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
-  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
-  
-  coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
-  astarithmetic $(ls -v $photCorrNoOutliersPxDir/*.fits) $(ls $photCorrNoOutliersPxDir/*.fits | wc -l) -g1 mean -o$coaddAv
-  subtractCoaddToFrames $photCorrfullGridDir $coaddAv $framesWithCoaddSubtractedDir
-  #wdir_tosub=$BDIR/weight-dir_outliers_it$iteration 
-  #wonlydir_tosub=$BDIR/only-w-dir_outliers_it$iteration
-  #wdone=$wdir_tosub/done.txt
-  #wonlydone=$wonlydir_tosub/done.txt
-  #if ! [ -d $wonlydir_tosub ]; then mkdir $wonlydir_tosub; fi
-  #if ! [ -d $wdir_tosub ]; then mkdir $wdir_tosub; fi
-  #computeWeights $wdir_tosub $wdone $wonlydir_tosub $wonlydone $framesWithCoaddSubtractedDir $noiseskydir $iteration $minRmsFileName
- #
-  #weighted=$coaddDir/sub_w.fits
-  #weightsonly=$coaddDir/sub_wx.fits
-  #astarithmetic $(ls -v $wdir_tosub/*.fits) $(ls $wdir_tosub/*.fits | wc -l) -g1 sum -o$weighted
-  #astarithmetic $(ls -v $wonlydir_tosub/*.fits) $(ls $wonlydir_tosub/*.fits | wc -l) -g1 sum -o$weightsonly
-
-  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) -g1 sum -o$sumMosaicAfterCoaddSubtraction
-  
-  #rm $wdir_tosub/*.fits
-  #rm $wonlydir_tosub/*.fits
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  #computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
-  #python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
-
-  #sumMosaicAfterCoaddSubtractionPxTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubPxTagged_"$filter"_it$iteration.fits
-  ##sumMosaicAfterCoaddSubtractionAperTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubAperTagged_"$filter"_it$iteration.fits
-  #framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
-  #if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
-  #computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionPxTagged $sumMosaicAfterCoaddSubtractionAperTagged $fwhmFolder "$noisechisel_param"
-
-  echo "done" > $framesWithCoaddSubtractedDone
-fi
-
 endTime=$(TZ=UTC date +%D%T)
 echo "Pipeline ended at : ${endTime}"
+
+######## DO NOT REMOVE THIS COMMENTED LINES#########
+# They contain the code for the pixel tagged residuals
+
+
+#framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+#framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
+#if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+#if [ -f $framesWithCoaddSubtractedDone ]; then
+#    echo -e "\nFrames with coadd subtracted already generated\n"
+#else
+#  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
+#  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+#  
+#  coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
+#  astarithmetic $(ls -v $photCorrNoOutliersPxDir/*.fits) $(ls $photCorrNoOutliersPxDir/*.fits | wc -l) -g1 mean -o$coaddAv
+#  subtractCoaddToFrames $photCorrfullGridDir $coaddAv $framesWithCoaddSubtractedDir
+#  #wdir_tosub=$BDIR/weight-dir_outliers_it$iteration 
+#  #wonlydir_tosub=$BDIR/only-w-dir_outliers_it$iteration
+#  #wdone=$wdir_tosub/done.txt
+#  #wonlydone=$wonlydir_tosub/done.txt
+#  #if ! [ -d $wonlydir_tosub ]; then mkdir $wonlydir_tosub; fi
+#  #if ! [ -d $wdir_tosub ]; then mkdir $wdir_tosub; fi
+#  #computeWeights $wdir_tosub $wdone $wonlydir_tosub $wonlydone $framesWithCoaddSubtractedDir $noiseskydir $iteration $minRmsFileName
+# #
+#  #weighted=$coaddDir/sub_w.fits
+#  #weightsonly=$coaddDir/sub_wx.fits
+#  #astarithmetic $(ls -v $wdir_tosub/*.fits) $(ls $wdir_tosub/*.fits | wc -l) -g1 sum -o$weighted
+#  #astarithmetic $(ls -v $wonlydir_tosub/*.fits) $(ls $wonlydir_tosub/*.fits | wc -l) -g1 sum -o$weightsonly
+#
+#  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) -g1 sum -o$sumMosaicAfterCoaddSubtraction
+#  
+#  #rm $wdir_tosub/*.fits
+#  #rm $wonlydir_tosub/*.fits
+#  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+#  #computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
+#  #python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
+#
+#  #sumMosaicAfterCoaddSubtractionPxTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubPxTagged_"$filter"_it$iteration.fits
+#  ##sumMosaicAfterCoaddSubtractionAperTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubAperTagged_"$filter"_it$iteration.fits
+#  #framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
+#  #if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
+#  #computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionPxTagged $sumMosaicAfterCoaddSubtractionAperTagged $fwhmFolder "$noisechisel_param"
+#
+#  echo "done" > $framesWithCoaddSubtractedDone
+#fi
+
+
