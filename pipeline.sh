@@ -1515,10 +1515,55 @@ h=0
 minRmsFileName=min_rms_it1.txt
 python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
-#The following functions for creating the coadd have been added into a single one called "buildCoadd()". 
-#Nevertheless, I'll let the body commented in case something is needed
-buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
+echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
+# For large images and large number of them, it could be possible than RAM memory is not enough for stacking
+# Because of that, we have the function createBlocks(), to detect the number of blocks needed to divide the frames, and their respective crop sections
+createBlocks $photCorrFullGridDir $coaddSizePix
+numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
+#If number of blocks is equal to 1, we do not need to do anything weird
+if [ "$numBlocks" -eq 1 ]; then
+  #The following functions for creating the coadd have been added into a single one called "buildCoadd()". 
+  #Nevertheless, I'll let the body commented in case something is needed
+  buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
+else
+  while IFS=' ' read -r cropSection m n; do
+    sectionDone=$BDIR/coadds_"$m""$n"_it$iteration/done.txt
+    if [ -f $sectionDone ]; then
+      echo -e "Coadd for section {$cropSection} already done"
+    else
+      #First we crop into a single section
+      fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"
+      fullGridDone_sec=$fullGridDir_sec/done_crops.txt
+      if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
+      cropInSections $photCorrFullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
+      #Now we build the coadd
+      buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
+
+      #Finally, we move according to m and n the folders the coadd and remove intermediate folders
+      rm -rf $BDIR/clipping-outliers_it$iteration
+      rm -rf $BDIR/photCorrFullGridDir_noOutliersPx_it$iteration
+      rm -rf $BDIR/weight-dir_it$iteration
+      rm -rf $BDIR/only-w-dir_it$iteration
+      rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
+      rm -rf $fullGridDir_sec
+      mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
+    fi
+  done < "$BDIR/cropSections.txt"
+  #Now we stitch together all coadds, exposureMaps and residuals
+  coaddDir=$BDIR/coadds_it$iteration
+  if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
+  coaddName_nofolder="$objectName"_coadd_"$filter"_it"$iteration".fits
+  coaddDone=$coaddDir/done.txt
+  expMapName_nofolder=exposureMap.fits
+  expMapDone=$coaddDir/done_exposureMap.txt
+  residualsName_nofolder="$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
+  residualsDone=$coaddDir/done_residuals.txt
+
+  stitchFiles $coaddName_nofolder $numBlocks $coaddDir $coaddDone $iteration
+  stitchFiles $expMapName_nofolder $numBlocks $coaddDir $expMapDone $iteration
+  stitchFiles $residualsName_nofolder $numBlocks $coaddDir $residualsDone $iteration
+fi
 ######
 #echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
 #writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
@@ -2125,7 +2170,46 @@ fi
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
-buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
+numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
+
+
+if [ "$numBlocks" -eq 1 ]; then
+  buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
+else
+  while IFS=' ' read -r cropSection m n; do
+    sectionDone=$BDIR/coadds_"$m""$n"_it$iteration/done.txt
+    if [ -f $sectionDone ]; then
+      echo -e "Coadd for section {$cropSection} already done"
+    else
+      
+      fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"
+      fullGridDone_sec=$fullGridDir_sec/done_crops.txt
+      if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
+      cropInSections $photCorrFullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
+      
+      buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
+      rm -rf $BDIR/clipping-outliers_it$iteration
+      rm -rf $BDIR/photCorrFullGridDir_noOutliersPx_it$iteration
+      rm -rf $BDIR/weight-dir_it$iteration
+      rm -rf $BDIR/only-w-dir_it$iteration
+      rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
+      rm -rf $fullGridDir_sec
+      mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
+    fi
+  done < "$BDIR/cropSections.txt"
+  coaddDir=$BDIR/coadds_it$iteration
+  if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
+  coaddName_nofolder="$objectName"_coadd_"$filter"_it"$iteration".fits
+  coaddDone=$coaddDir/done.txt
+  expMapName_nofolder=exposureMap.fits
+  expMapDone=$coaddDir/done_exposureMap.txt
+  residualsName_nofolder="$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
+  residualsDone=$coaddDir/done_residuals.txt
+
+  stitchFiles $coaddName_nofolder $numBlocks $coaddDir $coaddDone $iteration
+  stitchFiles $expMapName_nofolder $numBlocks $coaddDir $expMapDone $iteration
+  stitchFiles $residualsName_nofolder $numBlocks $coaddDir $residualsDone $iteration
+fi
 
 coaddDir=$BDIR/coadds_it$iteration
 coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits

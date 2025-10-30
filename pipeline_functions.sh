@@ -3869,7 +3869,7 @@ buildCoadd(){
 
     ##Exposure map
     exposuremapDir=$coaddDir/"$objectName"_exposureMap
-    exposuremapdone=$coaddDir/done_exposreMap.txt
+    exposuremapdone=$coaddDir/done_exposureMap.txt
     computeExposureMap $wdir $exposuremapDir $exposuremapdone
 
     ##Residual coadd
@@ -3910,3 +3910,57 @@ createBlocks(){
     python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
 }
 export -f createBlocks
+
+cropInSections(){
+    local fullGridDir=$1
+    local section=$2
+    local outDir=$3
+    local cropDone=$4
+    
+    if [ -f $cropDone ]; then
+        echo -e "Crop has been alredy done"
+    else
+        imagesToCrop=()
+        for file in $fullGridDir/*.fits; do
+            base=$( basename $file )
+            imagesToCrop+=("$base")
+        done 
+        printf "%s\n" "${imagesToCrop[@]}" | parallel -j "$num_parallel" cropInSectionsSingleFrame {} $fullGridDir $section 
+        echo done > $cropDone
+    fi
+}
+export -f cropInSections
+
+cropInSectionsSingleFrame(){
+    local base=$1
+    local fullGridDir=$2
+    local section=$3
+    local outDir=$4
+
+    i=$fullGridDir/$base
+    out=$outDir/$base
+    astcrop $i -h1 --mode=img --section=$section --zeroisnotblank -o $out --numthreads=$num_threads
+}
+export -f cropInSectionsSingleFrame
+
+stitchFiles(){
+    local fileToStitch=$1
+    local numBlocks=$2
+    local outDir=$3
+    local stitchDone=$4
+    local iteration=$5
+
+    if [ -f $stitchDone ]; then
+        echo -e "File $fileToStitch already stitched"
+    else
+        stitchCommand=""
+        for m in $(seq 1 $numBlocks); do
+            for n in $(seq 1 $numBlocks); do
+                file=$BDIR/coadds_"$m""$n"_it"$iteration"/$fileToStitch
+                stitchCommand+="$file -h1 "
+            stitchCommand+="$numBlocks 2 stitch "
+        astarithmetic $stitchCommand $numBlocks 1 stitch -o $outDir/$fileToStitch
+        echo done > $stitchDone
+    fi
+}
+export -f stitchFiles
