@@ -3958,7 +3958,9 @@ stitchFiles(){
             for n in $(seq 1 $numBlocks); do
                 file=$BDIR/coadds_"$m""$n"_it"$iteration"/$fileToStitch
                 stitchCommand+="$file -h1 "
+            done
             stitchCommand+="$numBlocks 2 stitch "
+        done
         astarithmetic $stitchCommand $numBlocks 1 stitch -o $outDir/$fileToStitch
         echo done > $stitchDone
     fi
