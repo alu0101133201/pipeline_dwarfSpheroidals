@@ -881,7 +881,8 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
-#exit 0
+
+
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
@@ -931,6 +932,7 @@ else
   
   echo "done" > $catdone
 fi
+
 
 # We leave the variables of the catalogue names with the selected survey. This is will be used in next steps
 catName=$catdir/"$objectName"_"$surveyToUseInSolveField".fits
@@ -1091,6 +1093,7 @@ else
 fi
 
 
+
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
@@ -1119,8 +1122,6 @@ ringDir=$BDIR/ring
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
-
-
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
 noiseskyctedone=$noiseskyctedir/done_"$filter".txt
@@ -1128,8 +1129,6 @@ if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"
   computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 fi
-
-
 
 
 # Checking and removing bad frames based on the background value ------
@@ -1183,7 +1182,7 @@ else
   done
   methodToUse="sextractor"
 
-  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse $tileSize
+  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse "'$noisechisel_param'"
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
@@ -1568,7 +1567,7 @@ python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $no
 echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
 # For large images and large number of them, it could be possible than RAM memory is not enough for stacking
 # Because of that, we have the function createBlocks(), to detect the number of blocks needed to divide the frames, and their respective crop sections
-createBlocks $photCorrFullGridDir $coaddSizePix
+createBlocks $photCorrfullGridDir $coaddSizePx
 numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
 #If number of blocks is equal to 1, we do not need to do anything weird
@@ -1614,6 +1613,8 @@ else
   stitchFiles $expMapName_nofolder $numBlocks $coaddDir $expMapDone $iteration
   stitchFiles $residualsName_nofolder $numBlocks $coaddDir $residualsDone $iteration
 fi
+
+
 ######
 #echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
 #writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
@@ -1686,7 +1687,7 @@ else
     astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
     imToMask=$coaddDir/coadd_convolved.fits
   fi
-  astnoisechisel $imToMask --tilesize=15,15 --detgrowquant=0.3 --interpnumngb=6 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+  astnoisechisel $imToMask --tilesize=15,15 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
   if [ "$blockScale" -gt 1 ]; then
     astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
     astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
@@ -1702,6 +1703,8 @@ if ! [ -f $maskName ]; then
   echo -e "\tMask on 1st iteration has failed. Exiting with error code 47"
   exit 47
 fi
+
+
 #Compute surface brightness limit
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
@@ -1711,9 +1714,6 @@ if [ -f  $sblimitFile ]; then
 else
   surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
-
-
-
 
 
 times=($(getInitialMidAndFinalFrameTimes $INDIR))
@@ -1744,25 +1744,19 @@ comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N fr
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
-
-
-halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
-if [ -f $halfMaxRadForCoaddName ]; then
-  echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
-else
-  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath "coadd_it1" $tileSize $apertureUnits
-fi
-
-
-
-
+# halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it1.png
+# if [ -f $halfMaxRadForCoaddName ]; then
+#   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
+# else
+#   produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath "coadd_it1" $tileSize $apertureUnits
+# fi
 
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 fwhmPlotsWithCoadd=$diagnosis_and_badFilesDir/done_fwhmPlotswithCoadd.txt
 if ! [ -f $fwhmPlotsWithCoadd ]; then
   coaddFWHMDir=$BDIR/seeing_values_coadd
   if ! [ -d $coaddFWHMDir ]; then mkdir $coaddFWHMDir; fi
-  computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds $coaddFWHMDir 1 "sextractor" $tileSize
+  computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds_it1 $coaddFWHMDir 1 "sextractor" "$noisechisel_param"
   # The name of the script is confusing because this was not planned, but this is for generating the fwhm plot with the coadd fwhm on top of it
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing true $coaddFWHMDir
   echo "done" > $fwhmPlotsWithCoadd
@@ -1775,16 +1769,12 @@ find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -e
 rm $BDIR/noise-sky_it1/*.fits
 # find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
 
-find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/sub-sky-fullGrid_noOutliersPx_it1 -type f ! -name 'done*' -exec rm {} \;
-
 find $BDIR/photCorrFullGrid-dir_noOutliersPx_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtracted_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/framesWithCoaddSubtractedTagged_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/weight-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/only-w-dir_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1798,10 +1788,7 @@ fi
 ## This code is used for manually adding the user-defined masks to the mask from the coadd
 # First we save the original mask that noisechisel produces
 cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
-# astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
-
 cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
-#astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
 # Then we apply the user-defined masks
 valueToPut=1
@@ -1821,7 +1808,7 @@ if [ -f $CDIR/mask.fits ]; then
   cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
   astarithmetic $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits --quiet
 fi
-#exit 0
+
 ####### ITERATION 2 ######
 iteration=2
 entiredir_smallGrid=$BDIR/pointings_smallGrid
@@ -1886,11 +1873,12 @@ if [[ "$subtractStars" == "true" ]]; then
 else
   starsSub_small=$entiredir_smallGrid
 fi
-coaddDir=$BDIR/coadds
+coaddDir=$BDIR/coadds_it1
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 maskPointings $starsSub_small $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
@@ -2052,8 +2040,6 @@ calibratingMosaic=false
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
-
-
 if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
   computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
 fi
@@ -2088,6 +2074,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
   applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
 fi
+
 
 # Calibration
 iteration=2
@@ -2196,7 +2183,7 @@ fi # ---------------------------------------------------
 # We mask again the points in order to measure (after photometric calibration) the sky accurately
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
-maskName=$BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits
+maskName=$BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $BDIR/pointings_smallGrid
 
 
@@ -2219,6 +2206,7 @@ else
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
+
 
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -2288,6 +2276,7 @@ else
   stitchFiles $residualsName_nofolder $numBlocks $coaddDir $residualsDone $iteration
 fi
 
+
 coaddDir=$BDIR/coadds_it$iteration
 coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
@@ -2309,7 +2298,7 @@ else
     astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
     imToMask=$coaddDir/coadd_convolved.fits
   fi
-  astnoisechisel $imToMask --tilesize=15,15 --detgrowquant=0.3 --interpnumngb=6 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+  astnoisechisel $imToMask --tilesize=15,15 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
   if [ "$blockScale" -gt 1 ]; then
     astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
     astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
@@ -2353,12 +2342,12 @@ comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N fr
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
-halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it2.png
-if [ -f $halfMaxRadForCoaddName ]; then
-  echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
-else
-  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath "coadd_it2" $tileSize $apertureUnits
-fi
+# halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it2.png
+# if [ -f $halfMaxRadForCoaddName ]; then
+#   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
+# else
+#   produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath "coadd_it2" $tileSize $apertureUnits
+# fi
 
 endTime=$(TZ=UTC date +%D%T)
 echo "Pipeline ended at : ${endTime}"

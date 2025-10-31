@@ -983,6 +983,7 @@ runNoiseChiselOnFrame() {
         astwarp $imageToUse --scale=1/$blockScale --numthreads=$num_threads -o $wFile
         astnoisechisel $wFile $noiseChiselParams --numthreads=$num_threads -o $wMask
         astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=1 --numthreads=$num_threads -o$wMask2
+
         warp_status=$?
         if [ $warp_status -ne 0 ]; then
             wMaskTmp=$outputDir/mkWTmp_$baseName
@@ -1294,7 +1295,6 @@ computeSky() {
         done
 
         printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_parallel" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "'$noisechisel_param'" "'$maskParams'"
-        exit 0
         echo done > $noiseskydone
     fi
 }
@@ -1980,27 +1980,6 @@ prepareCalibrationData() {
     local sizeOfBrick=${20}
 
 
-    # echo $surveyForCalibration
-    # echo $referenceImagesForMosaic
-    # echo $aperturePhotDir
-    # echo $filter
-    # echo $ra
-    # echo $dec
-    # echo $mosaicDir
-    # echo $selectedSurveyStarsDir
-    # echo $rangeUsedSurveyDir
-    # echo $dataPixelScale
-    # echo $sizeOfOurFieldDegrees
-    # echo $gaiaCatalogue
-    # echo $surveyForSpectra
-    # echo $apertureUnits
-    # echo $folderWithTransmittances
-    # echo $filterCorrectionCoeff
-    # echo $calibrationBrightLimit
-    # echo $calibrationFaintLimit
-    # echo $mosaicDone
-    # echo $sizeOfBrick
-
 
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
     if [ -f $mosaicDone ]; then 
@@ -2206,7 +2185,7 @@ prepareSurveyDataForPhotometricCalibration() {
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
 
-
+    
     
     performAperturePhotometryToBricks $surveyImagesDir_g "$selectedSurveyStarsDir"_g "$aperturePhotDir"_g "g" $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration_g $selectedSurveyStarsDir"ForGAIACalibration_g" $aperturePhotDir"ForGAIACalibration_g" "g" $survey $numberOfApertureForRecuperateGAIA
@@ -2234,7 +2213,7 @@ prepareSurveyDataForPhotometricCalibration() {
 
     
     # These two ranges (14.5-15.5 for g and 13.65-15 for r) are tested that work for calibrating panstarrs to gaia in these bands. 
-    calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5 $survey
+    calibrationToGAIA $spectraDir $folderWithTransmittances "g" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_g $aperturePhotDir"ForGAIACalibration_g" 14.5 15.5 $survey   
     calibrationToGAIA $spectraDir $folderWithTransmittances "r" $ra $dec $mosaicDir $sizeOfFieldForCalibratingPANSTARRStoGAIA $magFromSpectraDir_r $aperturePhotDir"ForGAIACalibration_r" 14 15 $survey
 
     
@@ -2246,7 +2225,7 @@ prepareSurveyDataForPhotometricCalibration() {
     correctOffsetFromCatalogues $aperturePhotDir"_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
     correctOffsetFromCatalogues $aperturePhotDir"ForGAIACalibration_r" $offset_r $factorToApplyToCounts_r "beforeCorrectingPanstarrsGAIAOffset"
 
-   
+
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         : # Since the correct offset happens in the aperturePhotDir, this soft link has already been done
     else
@@ -2494,6 +2473,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         exit $erroNumber
     fi
     
+    
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o$mycatdir/match_"$a"_my_gaia.txt   
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
@@ -2501,7 +2481,6 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     std=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c5 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
     minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
     maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
-
 
     echo $s $std $minr $maxr > $mycatdir/range_"$a".txt
     asttable $outputCatalogue --range=HALF_MAX_RADIUS,$minr,$maxr -o $mycatdir/selected_"$a"_automatic.txt
@@ -3719,7 +3698,7 @@ computeFWHMSingleFrame(){
     local fwhmdir=$3
     local headerToUse=$4
     local methodToUse=$5
-    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
+    local noisechisel_param=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
     
     i=$framesForFWHMDir/$a
 
@@ -3727,7 +3706,7 @@ computeFWHMSingleFrame(){
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $fwhmdir $a FWHM )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
-        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $fwhmdir $a $headerToUse $tileSize FWHM )
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $fwhmdir $a $headerToUse FWHM "$noisechisel_param" )
     else
         errorNumber=9
         echo "Error, method for selecting stars and the range in the calibration not recognised"
@@ -4011,7 +3990,7 @@ buildCoadd(){
         coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
         astarithmetic $(ls -v $photCorrNoOutliersPxDir/entirecamera_*.fits) $(ls $photCorrNoOutliersPxDir/entirecamera_*.fits | wc -l) -g1 mean -o $coaddAv
         subtractCoaddToFrames $fullGridDir $coaddAv $framesWithCoaddSubtractedDir 
-        astarithmetic $(ls -v $framesWithCoaddSubtractedDir/entirecamera_*.fits) $(ls $framesWithCoaddSubtractedDir/entirecamera_*.fits | wc -l) g1 sum -o$sumMosaicAfterCoaddSubtraction
+        astarithmetic $(ls -v $framesWithCoaddSubtractedDir/entirecamera_*.fits) $(ls $framesWithCoaddSubtractedDir/entirecamera_*.fits | wc -l) -g1 sum -o$sumMosaicAfterCoaddSubtraction
 
         echo "done" > $framesWithCoaddSubtractedDone
     fi
