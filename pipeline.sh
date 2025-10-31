@@ -58,7 +58,8 @@ load_module $gnuastroModuleName
 astrometryModuleName="astrometry.net/0.94"
 load_module $astrometryModuleName
 
-
+scampModuleName="scamp/2.14.1"
+load_module $scampModuleName
 
 ########## Handling options and arguments ##########
 OPTSTRING=":h"
