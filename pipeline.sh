@@ -185,6 +185,7 @@ framesForCommonReductionDir=$BDIR/framesForCommonReduction
 export framesForCommonReductionDir
 
 # Function which processes a whole night
+
 oneNightPreProcessing() {
   local currentNight=$1
   local framesForCommonReductionDone=$framesForCommonReductionDir/done_"$filter"_ccd"$h"_n"$currentNight".txt
@@ -258,18 +259,11 @@ oneNightPreProcessing() {
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
-  
-  # The following lines are to check whether running flat has to apply here or not (even if selected, depending on the number
-  # of frames and the window size maybe it cannot be applied and it gives problems in the runningFlat function)
-  window_size=$(( (halfWindowSize * 2) + 1 ))
-  local RUNNING_FLAT_night=$RUNNING_FLAT
-  if [ "$n_exp" -le "$window_size" ]; then
-    RUNNING_FLAT_night=false
+  if [ -d $DARKDIR/night"$currentNight" ]; then
+    currentDARKDIR=$DARKDIR/night$currentNight
+  else
+    currentDARKDIR=$DARKDIR
   fi
-
-
-
-  currentDARKDIR=$DARKDIR/night$currentNight
   mdadir=$BDIR/masterdark_n$currentNight
   
   for h in 0; do
@@ -350,30 +344,16 @@ oneNightPreProcessing() {
   if [ -f $mbiascorrdone ]; then
     echo -e "\nScience images are already bias/dark corrected for night $currentNight and extension $h\n"
   else
+    framesToSubtract=()
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-      i=$currentINDIR/$base
-      out=$mbiascorrdir/$base
-      astarithmetic $i -h1 set-i $mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits  -h1  set-m \
-                i i $saturationThreshold gt i isblank or 2 dilate nan where m -  float32  \
-                -o $out
-
-      propagateKeyword $i $dateHeaderKey $out
-      propagateKeyword $i $airMassKeyWord $out
-      propagateKeyword $i $pointingRA $out
-      propagateKeyword $i $pointingDEC $out
-
-      # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
-      # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
-      # This is also done in the function maskImages()
-      if [ "$USE_COMMON_RING" = false ]; then
-        propagateKeyword $i $keyWordToDecideRing $out
-      fi
+      framesToSubtract+=("$base")
     done
+    dark=$mdadir/mdark_"$filter"_n"$currentNight"_ccd$h.fits 
+    printf "%s\n" "${framesToSubtract[@]}" | parallel -j "$num_cpus" subtractBiasFromFrame {} $dark $saturationThreshold $currentINDIR $mbiascorrdir
     echo done > $mbiascorrdone
   fi
   
- 
   
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
   echo -e "${GREEN} --- Flat iteration 1 --- ${NOCOLOUR}"
@@ -387,13 +367,11 @@ oneNightPreProcessing() {
     cp $commonRingDefinitionFile $ringdir/ring.txt 
     astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
   else
-      # We copy it anyway. The double ring is used in very specific cases (in this case only LeoII because of how
-      # the data was taken). And in compute sky we need to get the size of the ring, so we use it from the commonRing
-      # could make the code complex to use ring1 or ring2 if there's no common ring but since its something this specific...
-      cp $commonRingDefinitionFile $ringdir/ring.txt 
-    if [[ ! -f "$ringdir/ring_2.fits" || ! -f "$ringdir/ring_1.fits" ]]; then
-      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
-      astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
+    if [[ "$USE_COMMON_RING" = false ]]; then
+      if [[ ! -f "$ringdir/ring_2.fits" || ! -f "$ringdir/ring_1.fits" ]]; then
+        astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_2.fits $secondRingDefinitionFile
+        astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring_1.fits $firstRingDefinitionFile
+      fi
     fi
   fi
 
@@ -423,10 +401,10 @@ oneNightPreProcessing() {
     normaliseImagesWithRing $mbiascorrdir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit1done
   fi
-
+  
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     flatit1dir=$BDIR/flat-it1-Running_n$currentNight
     flatit1done=$flatit1dir/done_"$filter"_ccd"$h".txt
     iteration=1
@@ -450,8 +428,9 @@ oneNightPreProcessing() {
     echo "done" >> $flatit1WholeNightdone
   fi
 
+
   # Dividing the science images for the running it1 flat
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     flatit1imadir=$BDIR/flat-it1-Running-ima_n$currentNight
     flatit1imadone=$flatit1imadir/done_"$filter"_ccd"$h".txt
     if ! [ -d $flatit1imadir ]; then mkdir $flatit1imadir; fi
@@ -476,9 +455,8 @@ oneNightPreProcessing() {
   
   ########## Creating the it2 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
- 
   # Obtain a mask using noisechisel on the running flat images
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
     noiseit2done=$noiseit2dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $noiseit2dir ]; then mkdir $noiseit2dir; fi
@@ -490,12 +468,12 @@ oneNightPreProcessing() {
           base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
           frameNames+=("$base")
       done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1imadir $noiseit2dir "'$noisechisel_param'"
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit1imadir $noiseit2dir $blockScale "'$noisechisel_param'"
       echo done > $noiseit2done
     fi
   fi
 
-  
+
   # Obtain a mask using noisechisel on the whole night flat images
   noiseit2WholeNightDir=$BDIR/noise-it2-WholeNight_n$currentNight
   noiseit2WholeNightdone=$noiseit2WholeNightDir/done_"$filter"_ccd"$h".txt
@@ -508,13 +486,13 @@ oneNightPreProcessing() {
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
       frameNames+=("$base")
     done
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir "'$noisechisel_param'"
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir $blockScale "'$noisechisel_param'"
     echo done > $noiseit2WholeNightdone
   fi
 
 
   # Mask the images (running flat)
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
     maskedit2done=$maskedit2dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $maskedit2dir ]; then mkdir $maskedit2dir; fi
@@ -537,9 +515,8 @@ oneNightPreProcessing() {
     echo done > $maskedit2WholeNightdone
   fi
 
-
   # Normalising masked images (running flat)
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     normit2dir=$BDIR/norm-it2-Running-images_n$currentNight
     normit2done=$normit2dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $normit2dir ]; then mkdir $normit2dir; fi
@@ -564,7 +541,7 @@ oneNightPreProcessing() {
 
   
   # Combining masked normalized images to make it2 running flat
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     flatit2dir=$BDIR/flat-it2-Running_n$currentNight
     flatit2done=$flatit2dir/done_"$filter"_ccd"$h".txt
     iteration=2
@@ -590,7 +567,7 @@ oneNightPreProcessing() {
 
 
   # Dividing the science image by the it2 flat
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     flatit2imadir=$BDIR/flat-it2-Running-ima_n$currentNight
     flatit2imadone=$flatit2imadir/done_"$filter"_ccd"$h".txt
     if ! [ -d $flatit2imadir ]; then mkdir $flatit2imadir; fi
@@ -611,8 +588,10 @@ oneNightPreProcessing() {
     wholeNightFlatToUse=$flatit2WholeNightdir/flat-it2_wholeNight_n$currentNight.fits
     divideImagesByWholeNightFlat $mbiascorrdir $flatit2WholeNightimaDir $wholeNightFlatToUse $flatit2WholeNightimaDone
   fi
-  
 
+
+  
+  
   #  **** Decision note *****
   # We do here the check for bad frames in std and for not including them in the flat
   # This is done because the frames which have moved sections have a really bad impact in the flat
@@ -635,19 +614,19 @@ oneNightPreProcessing() {
   if [ -f $badFilesWarningsDone ]; then
       echo -e "\n\tFrames with strange background value and std values already cleaned\n"
   else
-    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
     numberOfStdForBadFrames=5
     python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $currentNight
     echo "done" > $badFilesWarningsDone
   fi
 
-
-
+  
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
+
   # Obtain a mask using noisechisel on the running flat images
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     noiseit3dir=$BDIR/noise-it3-Running_n$currentNight
     noiseit3done=$noiseit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $noiseit3dir ]; then mkdir $noiseit3dir; fi
@@ -659,7 +638,7 @@ oneNightPreProcessing() {
           base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
           frameNames+=("$base")
       done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2imadir $noiseit3dir "'$noisechisel_param'"
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit2imadir $noiseit3dir $blockScale "'$noisechisel_param'"
       echo done > $noiseit3done
     fi
   fi
@@ -678,13 +657,13 @@ oneNightPreProcessing() {
       frameNames+=("$base")
     done
 
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runNoiseChiselOnFrame {} $flatit2WholeNightimaDir $noiseit3WholeNightDir "'$noisechisel_param'"
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit2WholeNightimaDir $noiseit3WholeNightDir $blockScale "'$noisechisel_param'"
     echo done > $noiseit3WholeNightdone 
   fi
 
  
   # Mask the images (running flat)
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
     maskedit3done=$maskedit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $maskedit3dir ]; then mkdir $maskedit3dir; fi
@@ -710,7 +689,7 @@ oneNightPreProcessing() {
 
   
   # Normalising masked images (running flat)
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     normit3dir=$BDIR/norm-it3-Running-images_n$currentNight
     normit3done=$normit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $normit3dir ]; then mkdir $normit3dir; fi
@@ -742,10 +721,10 @@ oneNightPreProcessing() {
   removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
   removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
-
+  
 
   # Combining masked normalized images to make it3 flat
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
     flatit3BeforeCorrectiondone=$flatit3BeforeCorrectiondir/done_"$filter"_ccd"$h".txt
     iteration=3
@@ -773,26 +752,18 @@ oneNightPreProcessing() {
 
 
   # Correct the running flats using the whole night flat
-  if $RUNNING_FLAT_night; then
-    flatit3dir=$BDIR/flat-it3-Running_n$currentNight
-    flatit3done=$flatit3dir/done_"$filter"_ccd"$h".txt
+  flatit3dir=$BDIR/flat-it3-Running_n$currentNight
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
+    flatit3done=$flatit3dir/done_"$k"_ccd"$h".txt
     if ! [ -d $flatit3dir ]; then mkdir $flatit3dir; fi
     if [ -f $flatit3done ]; then
       echo -e "\nFlats iteration 3 are corrected using the flat of the whole night for night $currentNight and extension $h\n"
     else
+      imagesToCorrect=()
       for i in $flatit3BeforeCorrectiondir/*.fits; do
-
-        tmpRatio=$flatit3dir/tmpRatio.fits
-        astarithmetic $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits -h1 $i -h1 / -o$tmpRatio
-
-        # ****** Decision note *******
-        # The standard deviation of the ratio between the whole flat and the running flat is around 0.03.
-        # So choosing 0.85, which seems a reasonable value.
-        # Chose this value based on the standard deviation of your ratios, how these vary through the night and how aggresive u want to apply the correction
-        astarithmetic $i -h1 set-m  $tmpRatio -h1 set-f m f 0.85 lt nan where -o $flatit3dir/$(basename "$i")
-        propagateKeyword $i $dateHeaderKey $flatit3dir/$(basename "$i")
-        rm $tmpRatio
+        imagesToCorrect+=("$(basename $i)")
       done
+      printf "%s\n" "${imagesToCorrect[@]}" | parallel -j "$num_cpus" correctRunningFlatWithWholeNightFlat {} $flatit3BeforeCorrectiondir $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits $flatit3dir $dateHeaderKey
       echo done > $flatit3done
     fi
   fi
@@ -804,7 +775,7 @@ oneNightPreProcessing() {
   flatit3imadir=$BDIR/flat-it3-ima_n$currentNight
   flatit3imadone=$flatit3imadir/done_"$filter"_ccd"$h".txt
   if ! [ -d $flatit3imadir ]; then mkdir $flatit3imadir; fi
-  if $RUNNING_FLAT_night; then
+  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     if [ -f $flatit3imadone ]; then
       echo -e "\nScience images are divided by the it3 flat for night $currentNight and extension $h\n"
     else
@@ -826,33 +797,16 @@ oneNightPreProcessing() {
   if [ -f $maskedcornerdone ]; then
     echo -e "\nCorners are already masked for night $currentNight and extension $h\n"
   else
+    imagesForVignetting=()
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-
-      if $RUNNING_FLAT_night; then
-        if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-          currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_left_ccd"$h".fits
-        elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-          currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_right_ccd"$h".fits
-        else
-          currentFlatImage=$flatit3dir/flat-it3_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        fi
-      else
-        currentFlatImage=$flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits
-      fi
-
-      i=$flatit3imadir/$base
-      out=$maskedcornerdir/$base
-      astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f $lowerVignettingThreshold lt nan where set-n n f $upperVignettingThreshold gt nan where -o $out
-      propagateKeyword $i $airMassKeyWord $out 
-      propagateKeyword $i $dateHeaderKey $out
-      propagateKeyword $i $pointingRA $out
-      propagateKeyword $i $pointingDEC $out
+      imagesForVignetting+=("$base")
     done
+    printf "%s\n" "${imagesForVignetting[@]}" | parallel -j "$num_cpus" maskVignettingOnImages {} $flatit3imadir $maskedcornerdir $flatit3dir $flatit3WholeNightdir $RUNNING_FLAT $n_exp $currentNight $lowerVignettingThreshold $upperVignettingThreshold 
     echo done > $maskedcornerdone
   fi
 
- 
+  
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
   if [ -f $framesForCommonReductionDone ]; then
@@ -875,7 +829,6 @@ oneNightPreProcessing() {
     flock -u 200 
     exec 200>&- 
   fi
-  
   
 
   # # Removing intermediate information to save space - We maintain the final flats for checking them
