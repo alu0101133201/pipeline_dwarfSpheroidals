@@ -106,24 +106,37 @@ fi
 echo -e "\nNumber of CPUs allocated: $num_cpus"
 export num_cpus
 
+###For noisechisel runs: when we parallelize, we are parallelizing a process that already benefits from multi-threading
+#Because of that, using $num_cpu for both parallel jobs and --numthreads when parallelizing noisechisel is not optimal at all
+#We divide the num_cpus into 4 for num_threads and num_cpus/4 for jobs, if num_cpus>4
+max_thread_per_process=4
+if (( num_cpus < max_thread_per_process )); then
+  num_threads=$num_cpus
+  num_parallel=1
+else
+  num_threads=$max_thread_per_process
+  num_parallel=$(( num_cpus / num_threads ))
+fi
+export num_parallel
+export num_threads
 
 # ****** Decision note *******
 # Rebinned data
-tileSize=35 # 20 for the gtc osiris works fine
-noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
+#tileSize=35
+#noisechisel_param="--tilesize=$tileSize,$tileSize \
+#                    --detgrowmaxholesize=5000 \
+#                    --rawoutput"
 
 # # These paremeters are oriented to TST data at original resolution. 
 # astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-# tileSize=90
+# tileSize=15
 # noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                      --detgrowmaxholesize=5000 \
+#                      --detgrowquant=0.4 \
 #                      --rawoutput"
-export noisechisel_param
+#export noisechisel_param
 
-echo -e "\n-Noisechisel parameters used for masking:"
-echo -e "\t" $noisechisel_param
+#echo -e "\n-Noisechisel parameters used for masking:"
+#echo -e "\t" $noisechisel_param
 
 ######## Loading and transforming to needed format the user-defined masks to apply
 
@@ -868,8 +881,7 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
-
-
+#exit 0
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
@@ -970,13 +982,18 @@ if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
-  frameNames=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-      base=$a.fits
-      i=$framesForCommonReductionDir/$base
-      frameNames+=("$i")
-  done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
+  if [ "$telescope" == "TST" ] || [ "$telescope" == "TTT3_ikon" ] || [ "$telescope" == "TTT3_QHY" ]; then
+    #This 2 telescopes on a monolitic detector come astrometrized, so we skip solve-field
+    cp $framesForCommonReductionDir/*.fits $astroimadir/
+  else
+    frameNames=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+        base=$a.fits
+        i=$framesForCommonReductionDir/$base
+        frameNames+=("$i")
+    done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
+  fi
   echo done > $astroimadone
 fi
 
@@ -1100,7 +1117,7 @@ echo -e "·Modelling the background for subtracting it"
 imagesAreMasked=false
 ringDir=$BDIR/ring
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
 
 
@@ -1109,7 +1126,7 @@ noiseskyctedir=$BDIR/noise-sky_it1_cte
 noiseskyctedone=$noiseskyctedir/done_"$filter".txt
 if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
   echo -e "\nModelling the background for the bad frame detection"
-  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 fi
 
 
@@ -1188,7 +1205,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     echo -e "\n Coadd pre-photometry already done\n"
   else
     imagesAreMasked=false
-    computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+    computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
     subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
     subskyfullGridDone=$subskyfullGrid_dir/done.txt
@@ -1234,7 +1251,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
   
     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
-    buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
 
     maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
     if [ -f $maskName ]; then
@@ -1315,7 +1332,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   calibratingMosaic=true
   imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
   computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
+                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 fi
 
 
@@ -1331,7 +1348,7 @@ imagesForCalibration=$subskySmallGrid_dir
 calibratingMosaic=false
 
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
+                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
 
 
@@ -1513,7 +1530,7 @@ echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
 
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
@@ -1548,76 +1565,143 @@ h=0
 minRmsFileName=min_rms_it1.txt
 python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
+echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
+# For large images and large number of them, it could be possible than RAM memory is not enough for stacking
+# Because of that, we have the function createBlocks(), to detect the number of blocks needed to divide the frames, and their respective crop sections
+createBlocks $photCorrFullGridDir $coaddSizePix
+numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
-echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
-sigmaForStdSigclip=3
-clippingdir=$BDIR/clipping-outliers
-clippingdone=$clippingdir/done.txt
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
+#If number of blocks is equal to 1, we do not need to do anything weird
+if [ "$numBlocks" -eq 1 ]; then
+  #The following functions for creating the coadd have been added into a single one called "buildCoadd()". 
+  #Nevertheless, I'll let the body commented in case something is needed
+  buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
+else
+  while IFS=' ' read -r cropSection m n; do
+    sectionDone=$BDIR/coadds_"$m""$n"_it$iteration/done.txt
+    if [ -f $sectionDone ]; then
+      echo -e "Coadd for section {$cropSection} already done"
+    else
+      #First we crop into a single section
+      fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"
+      fullGridDone_sec=$fullGridDir_sec/done_crops.txt
+      if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
+      cropInSections $photCorrFullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
+      #Now we build the coadd
+      buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
 
+      #Finally, we move according to m and n the folders the coadd and remove intermediate folders
+      rm -rf $BDIR/clipping-outliers_it$iteration
+      rm -rf $BDIR/photCorrFullGridDir_noOutliersPx_it$iteration
+      rm -rf $BDIR/weight-dir_it$iteration
+      rm -rf $BDIR/only-w-dir_it$iteration
+      rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
+      rm -rf $fullGridDir_sec
+      mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
+    fi
+  done < "$BDIR/cropSections.txt"
+  #Now we stitch together all coadds, exposureMaps and residuals
+  coaddDir=$BDIR/coadds_it$iteration
+  if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
+  coaddName_nofolder="$objectName"_coadd_"$filter"_it"$iteration".fits
+  coaddDone=$coaddDir/done.txt
+  expMapName_nofolder=exposureMap.fits
+  expMapDone=$coaddDir/done_exposureMap.txt
+  residualsName_nofolder="$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
+  residualsDone=$coaddDir/done_residuals.txt
 
-photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
-photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
-if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
-removeOutliersFromWeightedFrames $photCorrfullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
+  stitchFiles $coaddName_nofolder $numBlocks $coaddDir $coaddDone $iteration
+  stitchFiles $expMapName_nofolder $numBlocks $coaddDir $expMapDone $iteration
+  stitchFiles $residualsName_nofolder $numBlocks $coaddDir $residualsDone $iteration
+fi
+######
+#echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+#sigmaForStdSigclip=3
+#clippingdir=$BDIR/clipping-outliers
+#clippingdone=$clippingdir/done.txt
+#buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
+#
+#
+#photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
+#photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
+#if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
+#removeOutliersFromWeightedFrames $photCorrfullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
+#
+#### Calculate the weights for the images based on the minimum rms ###
+#echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+#
+#wdir=$BDIR/weight-dir
+#wonlydir=$BDIR/only-w-dir
+#wdone=$wdir/done.txt
+#wonlydone=$wonlydir/done.txt
+#if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+#if ! [ -d $wdir ]; then mkdir $wdir; fi
+#computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
+#
+#echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
+#echo -e "\n·Building coadd"
+#coaddDir=$BDIR/coadds
+#coaddDone=$coaddDir/done.txt
+#coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it$iteration.fits
+#stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
+#exposuremapDir=$coaddDir/"$objectName"_exposureMap
+#exposuremapdone=$coaddDir/done_exposureMap.txt
+#computeExposureMap $wdir $exposuremapDir $exposuremapdone 
+#writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
+#framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
+#framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
+#if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+#if [ -f $framesWithCoaddSubtractedDone ]; then
+#    echo -e "\n\tFrames with coadd subtracted already generated\n"
+#else
+#  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
+#  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+#  
+#  coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
+#  astarithmetic $(ls -v $photCorrNoOutliersPxDir/*.fits) $(ls $photCorrNoOutliersPxDir/*.fits | wc -l) -g1 mean -o$coaddAv
+#  subtractCoaddToFrames $photCorrfullGridDir $coaddAv $framesWithCoaddSubtractedDir
+#  echo done > $framesWithCoaddSubtractedDone 
+#fi
 
-### Calculate the weights for the images based on the minimum rms ###
-echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
-
-wdir=$BDIR/weight-dir
-wonlydir=$BDIR/only-w-dir
-wdone=$wdir/done.txt
-wonlydone=$wonlydir/done.txt
-if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-if ! [ -d $wdir ]; then mkdir $wdir; fi
-computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
-
-echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
-echo -e "\n·Building coadd"
-coaddDir=$BDIR/coadds
-coaddDone=$coaddDir/done.txt
-coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it$iteration.fits
-buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
+##We now need the coadd dir and the coadd name
+coaddDir=$BDIR/coadds_it$iteration
+coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+  ## If block scale is greater than 1, we apply the block
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddName --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+    imToMask=$coaddDir/coadd_blocked.fits
+  else
+    imToMask=$coaddName
+  fi
+  ### Second. If a kernel exists in the configuration file, we apply it
+  kernelFile=$CDIR/kernel.fits
+  if [ -f $kernelFile ]; then
+    astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
+    imToMask=$coaddDir/coadd_convolved.fits
+  fi
+  astnoisechisel $imToMask --tilesize=15,15 --detgrowquant=0.3 --interpnumngb=6 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
+    astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+    rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits
+  else
+    mv $coaddDir/mask_warped.fits $maskName
+  fi  
+  rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
 fi
 
 #astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
-if [ -f $maskName ]; then
-  echo -e "\tThe mask of the weighted coadd is already done"
-else
-  #We assume that if this works for this iteration, then the next one will need at least same parameters
-  tileSize=$((tileSize - 5))
-  noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+if ! [ -f $maskName ]; then
+  echo -e "\tMask on 1st iteration has failed. Exiting with error code 47"
+  exit 47
 fi
-if [ -f $maskName ]; then
-  echo -e "\tThe mask of the weighted coadd is already done"
-else
-  #We assume that if this works for this iteration, then the next one will need at least same parameters
-  tileSize=$((tileSize - 5))
-  noisechisel_param="--tilesize=$tileSize,$tileSize \
-                    --erode=1 \
-                    --detgrowmaxholesize=5000 \
-                    --rawoutput"
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus  -o $maskName
-fi
-
-exposuremapDir=$coaddDir/"$objectName"_exposureMap
-exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $wdir $exposuremapDir $exposuremapdone 
-
-
 #Compute surface brightness limit
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
@@ -1653,7 +1737,7 @@ keyWords=("FRAMES_COMBINED" \
           "WINDOW_SIZE" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
-numberOfFramesCombined=$(ls $BDIR/weight-dir/*.fits | wc -l)
+numberOfFramesCombined=$(ls $BDIR/weight-dir_it"$iteration"/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 
@@ -1670,32 +1754,7 @@ else
 fi
 
 
-writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
-framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
-framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
-if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
-if [ -f $framesWithCoaddSubtractedDone ]; then
-    echo -e "\n\tFrames with coadd subtracted already generated\n"
-else
-  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
-  subtractCoaddToFrames $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
 
-  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
-
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
-  python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
-
-
-  # This takes a long time, only doing it in the second iteration
-  # sumMosaicAfterCoaddSubtractionPxTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubPxTagged_"$filter"_it$iteration.fits
-  # sumMosaicAfterCoaddSubtractionAperTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubAperTagged_"$filter"_it$iteration.fits
-  # framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
-  # if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
-  # computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionPxTagged $sumMosaicAfterCoaddSubtractionAperTagged $fwhmFolder "$noisechisel_param"
-
-  echo done > $framesWithCoaddSubtractedDone 
-fi
 
 
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1712,6 +1771,9 @@ fi
 
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
+#find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
+rm $BDIR/noise-sky_it1/*.fits
+# find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
 
 find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/sub-sky-smallGrid_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1721,11 +1783,11 @@ find $BDIR/photCorrFullGrid-dir_noOutliersPx_it1 -type f ! -name 'done*' -exec r
 
 find $BDIR/my-catalog-halfmaxradius_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/match-decals-myData_it1 -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/framesWithCoaddSubtracted -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/framesWithCoaddSubtracted_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/framesWithCoaddSubtractedTagged_it1 -type f ! -name 'done*' -exec rm {} \;
 
-find $BDIR/weight-dir -type f ! -name 'done*' -exec rm {} \;
-find $BDIR/only-w-dir -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/weight-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/only-w-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
 if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
   find $BDIR/weight-dir_prephot -type f ! -name 'done*' -exec rm {} \;
@@ -1735,11 +1797,11 @@ fi
 
 ## This code is used for manually adding the user-defined masks to the mask from the coadd
 # First we save the original mask that noisechisel produces
-mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
-astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
+cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
+# astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
-mv $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
-astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
+cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
+#astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits 1 x float32 -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits --quiet
 
 # Then we apply the user-defined masks
 valueToPut=1
@@ -1751,30 +1813,93 @@ for ((i=0; i<${#maskArray[@]}; i+=5)); do
 	axisRatio="${maskArray[i+3]}"
 	pa="${maskArray[i+4]}"
 
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
 done
-
+if [ -f $CDIR/mask.fits ]; then
+  #If a mask already exists, we combine the created one with the existing one
+  cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
+  astarithmetic $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits --quiet
+fi
+#exit 0
 ####### ITERATION 2 ######
 iteration=2
 entiredir_smallGrid=$BDIR/pointings_smallGrid
+num_ccd=1
+export num_ccd
+subtractStars=false
 
-# We mask the pointings in order to measure (before photometric calibration) the sky accurately
-# MASK FROM THE NORMAL COADD
+if [[ "$subtractStars" == "true" ]]; then
+  echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
+  ###We will make the following:
+  ##  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
+  ##  # If AZ exist in the catalog we will measure the profile in azimuth
+  ##  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
+  ##  # Finally, we will subtract from all the frames where the star is, and continue to the next one
+  ##  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
+  ##
+  input_subStar_small=$entiredir_smallGrid
+  starsToSubtract=$BDIR/starsToSubtract.txt
+  psfFile=$CDIR/PSF_"$filter".fits
+  psfRadFile=$CDIR/RP_PSF_"$filter".fits
+  radiusToSearch=$(awk -v r="$sizeOfOurFieldDegrees" 'BEGIN { printf "%.6f", r/2 }')
+  query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToSearch --column=ra,dec,phot_g_mean_mag"
+  if ! [ -f $starsToSubtract ]; then
+    astquery $query_param -o$CDIR/starsToSubtract_temp.fits
+    asttable $CDIR/starsToSubtract_temp.fits --range=3,0:6 --sort=3 -o$starsToSubtract
+    rm $CDIR/starsToSubtract_temp.fits
+  fi
+  starId=0
+  while IFS= read -r line; do
+    #We skip the lines that contain info about the columns
+    [[ $line =~ ^#.*$ ]] && continue
+
+    ((starId++))
+    outputDir_small=$BDIR/pointings_smallGrid_sub$starId
+  #  #outputDir_full=$BDIR/pointings_fullGrid_sub$starId
+    subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId
+    
+    #if (( $(echo "$starId == 1" | bc -l) )); then exit 0; fi
+    #Sanity check: if something fail we insert an exit
+    for file in $outputDir_small/*.fits; do
+            nhdu=$( astfits $file --numhdus -q )
+            if [ $nhdu -lt $((num_ccd+1)) ]; then
+                    echo "Some frames have failed in the subtraction of star {$starId}"
+                    exit 23
+            fi
+    done
+
+    if ! (( $(echo "$starId == 1" | bc -l) )); then
+              rm $input_subStar_small/*.fits
+  #           #rm $input_subStar_full/*.fits
+
+    fi
+    input_subStar_small=$outputDir_small
+  #  #input_subStar_full=$outputDir_full
+  done < $starsToSubtract
+
+
+
+  # We mask the pointings in order to measure (before photometric calibration) the sky accurately
+  # MASK FROM THE NORMAL COADD
+  starsSub_small=$outputDir_small
+else
+  starsSub_small=$entiredir_smallGrid
+fi
 coaddDir=$BDIR/coadds
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+maskPointings $starsSub_small $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
-imagesAreMasked=false # They are masked, but we run and apply noisechisel mask anyway to improve it if possible
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+imagesAreMasked=true # They are masked, but we run and apply noisechisel mask anyway to improve it if possible
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT wholeImage $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
-subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT 
+subtractSky $starsSub_small $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT 
 
 
 if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
@@ -1783,16 +1908,16 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
   smallPointings_maskedDir=$BDIR/pointings_smallGrid_maskedPrephot_it$iteration
   maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-  maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+  maskPointings $starsSub_small $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
   noiseskydir=$BDIR/noise-sky_maskPrephot_it$iteration
   noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
   imagesAreMasked=false
-  computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+  computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
   subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_maskPrephot_it$iteration
   subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
-  subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+  subtractSky $starsSub_small $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
 
   ### BUILD COADD PREPHOT IT2 ####
   echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
@@ -1816,7 +1941,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     maskPointings $subskySmallGrid_dir $subSkyPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
     imagesAreMasked=false
-    computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+    computeSky $subSkyPointings_maskedDir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
     
     subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_maskPrephot_it$iteration
     subskyfullGridDone=$subskyfullGrid_dir/done.txt
@@ -1867,7 +1992,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     # Make the coadd
     coaddDone=$coaddDir/done.txt
     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
-    buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
 
     coaddDir=$BDIR/coadds-prephot_it$iteration
     maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
@@ -1903,7 +2028,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   calibratingMosaic=true
   imagesForCalibration=$BDIR/coaddForCalibration_it$iteration
   computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
+                            $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 fi
 
 sigmaForStdSigclip=2
@@ -1925,7 +2050,7 @@ mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
 imagesForCalibration=$BDIR/sub-sky-smallGrid_it$iteration
 calibratingMosaic=false
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic
+                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
 
 
@@ -2078,23 +2203,32 @@ maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPo
 noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
 noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "$noisechisel_param" "$maskParams"
+computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true wholeImage -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt
 if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
-smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra $dec
+smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra_gal $dec_gal
 
+fwhmFolder=$BDIR/seeing_values
+badFilesWarningsFile=identifiedBadFrames_fwhm_it2.txt
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue_it2.txt
+if [ -f $badFilesWarningsDone ]; then
+    echo -e "\nbadFiles warning already done\n"
+else
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
+  echo done > $badFilesWarningsDone
+fi
 
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-rejectedFramesDir=$BDIR/rejectedFrames
+rejectedFramesDir=$BDIR/rejectedFrames_it"$iteration"
 if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 prefixOfTheFilesToRemove="entirecamera_"
 # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
 # removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
 # removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+rejectedByBackgroundFWHM=identifiedBadFrames_fwhm_it2.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
 rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness_it$iteration.txt
@@ -2103,54 +2237,88 @@ removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badF
 rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor_it$iteration.txt
 removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
 removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
-
+##If we have detected read error:
+rejectedByReadError=identifiedBadFrames_readError.txt
+if [ -f $diagnosis_and_badFilesDir/$rejectedByReadError ]; then
+  removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByReadError $prefixOfTheFilesToRemove
+  removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByReadError $prefixOfTheFilesToRemove
+fi
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
-sigmaForStdSigclip=3
-clippingdir=$BDIR/clipping-outliers_it$iteration
-clippingdone=$clippingdir/done_"$filter".txt
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrfullGridDir $sigmaForStdSigclip
+numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
-photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
-photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
-if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
-removeOutliersFromWeightedFrames $photCorrfullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
 
-### Calculate the weights for the images based on the minimum rms ###
-echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+if [ "$numBlocks" -eq 1 ]; then
+  buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
+else
+  while IFS=' ' read -r cropSection m n; do
+    sectionDone=$BDIR/coadds_"$m""$n"_it$iteration/done.txt
+    if [ -f $sectionDone ]; then
+      echo -e "Coadd for section {$cropSection} already done"
+    else
+      
+      fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"
+      fullGridDone_sec=$fullGridDir_sec/done_crops.txt
+      if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
+      cropInSections $photCorrFullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
+      
+      buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
+      rm -rf $BDIR/clipping-outliers_it$iteration
+      rm -rf $BDIR/photCorrFullGridDir_noOutliersPx_it$iteration
+      rm -rf $BDIR/weight-dir_it$iteration
+      rm -rf $BDIR/only-w-dir_it$iteration
+      rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
+      rm -rf $fullGridDir_sec
+      mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
+    fi
+  done < "$BDIR/cropSections.txt"
+  coaddDir=$BDIR/coadds_it$iteration
+  if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
+  coaddName_nofolder="$objectName"_coadd_"$filter"_it"$iteration".fits
+  coaddDone=$coaddDir/done.txt
+  expMapName_nofolder=exposureMap.fits
+  expMapDone=$coaddDir/done_exposureMap.txt
+  residualsName_nofolder="$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
+  residualsDone=$coaddDir/done_residuals.txt
 
-wdir=$BDIR/weight-dir_it$iteration
-wonlydir=$BDIR/only-w-dir_it$iteration
-wdone=$wdir/done.txt
-wonlydone=$wonlydir/done.txt
-if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-if ! [ -d $wdir ]; then mkdir $wdir; fi
-computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
+  stitchFiles $coaddName_nofolder $numBlocks $coaddDir $coaddDone $iteration
+  stitchFiles $expMapName_nofolder $numBlocks $coaddDir $expMapDone $iteration
+  stitchFiles $residualsName_nofolder $numBlocks $coaddDir $residualsDone $iteration
+fi
 
-echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-echo -e "\nBuilding coadd"
-coaddDir=$BDIR/coadds_it$iteration 
-coaddDone=$coaddDir/done.txt
-coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it$iteration.fits
-buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
+coaddDir=$BDIR/coadds_it$iteration
+coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 # noisechisel_param="--tilesize=30,30 --detgrowmaxholesize=5000 --dthresh=0.1 --snminarea=2 --rawoutput"
 # export noisechisel_param
 if [ -f $maskName ]; then
   echo "The mask of the weighted coadd is already done"
 else
-  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+  ## If block scale is greater than 1, we apply the block
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddName --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+    imToMask=$coaddDir/coadd_blocked.fits
+  else
+    imToMask=$coaddName
+  fi
+  ### Second. If a kernel exists in the configuration file, we apply it
+  kernelFile=$CDIR/kernel.fits
+  if [ -f $kernelFile ]; then
+    astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
+    imToMask=$coaddDir/coadd_convolved.fits
+  fi
+  astnoisechisel $imToMask --tilesize=15,15 --detgrowquant=0.3 --interpnumngb=6 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+  if [ "$blockScale" -gt 1 ]; then
+    astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
+    astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+    rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits
+  else
+    mv $coaddDir/mask_warped.fits $maskName
+  fi  
+  rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
 fi
-
-exposuremapDir=$coaddDir/"$objectName"_exposureMap
-exposuremapdone=$coaddDir/done_exposureMap.txt
-computeExposureMap $wdir $exposuremapDir $exposuremapdone 
-
-
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
 if [ -f  $sblimitFile ]; then
@@ -2192,31 +2360,53 @@ else
   produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_"$surveyToUseInSolveField".fits $toleranceForMatching $pythonScriptsPath "coadd_it2" $tileSize $apertureUnits
 fi
 
-
-framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
-framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
-if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
-if [ -f $framesWithCoaddSubtractedDone ]; then
-    echo -e "\nFrames with coadd subtracted already generated\n"
-else
-  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
-  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
-  subtractCoaddToFrames $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
-
-  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) sum -g1 -o$sumMosaicAfterCoaddSubtraction
-  
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
-  python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
-
-  sumMosaicAfterCoaddSubtractionPxTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubPxTagged_"$filter"_it$iteration.fits
-  sumMosaicAfterCoaddSubtractionAperTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubAperTagged_"$filter"_it$iteration.fits
-  framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
-  if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
-  computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionPxTagged $sumMosaicAfterCoaddSubtractionAperTagged $fwhmFolder "$noisechisel_param"
-
-  echo "done" > $framesWithCoaddSubtractedDone
-fi
-
 endTime=$(TZ=UTC date +%D%T)
 echo "Pipeline ended at : ${endTime}"
+
+######## DO NOT REMOVE THIS COMMENTED LINES#########
+# They contain the code for the pixel tagged residuals
+
+
+#framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+#framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
+#if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+#if [ -f $framesWithCoaddSubtractedDone ]; then
+#    echo -e "\nFrames with coadd subtracted already generated\n"
+#else
+#  sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
+#  photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+#  
+#  coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
+#  astarithmetic $(ls -v $photCorrNoOutliersPxDir/*.fits) $(ls $photCorrNoOutliersPxDir/*.fits | wc -l) -g1 mean -o$coaddAv
+#  subtractCoaddToFrames $photCorrfullGridDir $coaddAv $framesWithCoaddSubtractedDir
+#  #wdir_tosub=$BDIR/weight-dir_outliers_it$iteration 
+#  #wonlydir_tosub=$BDIR/only-w-dir_outliers_it$iteration
+#  #wdone=$wdir_tosub/done.txt
+#  #wonlydone=$wonlydir_tosub/done.txt
+#  #if ! [ -d $wonlydir_tosub ]; then mkdir $wonlydir_tosub; fi
+#  #if ! [ -d $wdir_tosub ]; then mkdir $wdir_tosub; fi
+#  #computeWeights $wdir_tosub $wdone $wonlydir_tosub $wonlydone $framesWithCoaddSubtractedDir $noiseskydir $iteration $minRmsFileName
+# #
+#  #weighted=$coaddDir/sub_w.fits
+#  #weightsonly=$coaddDir/sub_wx.fits
+#  #astarithmetic $(ls -v $wdir_tosub/*.fits) $(ls $wdir_tosub/*.fits | wc -l) -g1 sum -o$weighted
+#  #astarithmetic $(ls -v $wonlydir_tosub/*.fits) $(ls $wonlydir_tosub/*.fits | wc -l) -g1 sum -o$weightsonly
+#
+#  astarithmetic $(ls -v $framesWithCoaddSubtractedDir/*.fits) $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l) -g1 sum -o$sumMosaicAfterCoaddSubtraction
+#  
+#  #rm $wdir_tosub/*.fits
+#  #rm $wonlydir_tosub/*.fits
+#  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+#  #computeMetricOfResiduals $photCorrfullGridDir $coaddName $framesWithCoaddSubtractedDir
+#  #python3 $pythonScriptsPath/diagnosis_metricDistributionOfResiduals.py $framesWithCoaddSubtractedDir $diagnosis_and_badFilesDir
+#
+#  #sumMosaicAfterCoaddSubtractionPxTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubPxTagged_"$filter"_it$iteration.fits
+#  ##sumMosaicAfterCoaddSubtractionAperTagged=$coaddDir/"$objectName"_sumMosaicAfterCoaddSubAperTagged_"$filter"_it$iteration.fits
+#  #framesWithCoaddSubtractedTaggedDir=$BDIR/framesWithCoaddSubtractedTagged_it$iteration
+#  #if ! [ -d $framesWithCoaddSubtractedTaggedDir ]; then mkdir $framesWithCoaddSubtractedTaggedDir; fi
+#  #computeSumMosaicAfterCoaddSubtractionWithTracesIndicated $framesWithCoaddSubtractedDir $framesWithCoaddSubtractedTaggedDir $sumMosaicAfterCoaddSubtractionPxTagged $sumMosaicAfterCoaddSubtractionAperTagged $fwhmFolder "$noisechisel_param"
+#
+#  echo "done" > $framesWithCoaddSubtractedDone
+#fi
+
+

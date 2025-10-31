@@ -126,6 +126,8 @@ outputConfigurationVariablesInformation() {
         "·The background is modelled as a constant:$MODEL_SKY_AS_CONSTANT"
         "  If so, the sky estimation method is:$sky_estimation_method"
         "  Otherwise, the polynomial degree is:$polynomialDegree"
+        "  Noisechisel will be run with the following params: $noisechisel_param"
+        "  Prior to noisechisel, a block will be applied with value: $blockScale (1=No block)"
         " "
         "·Indices scales for astrometrisation"
         "  Lowest index:$lowestScaleForIndex"
@@ -241,6 +243,8 @@ checkIfAllVariablesAreSet() {
                 MODEL_SKY_AS_CONSTANT \
                 sky_estimation_method \
                 polynomialDegree \
+                noisechisel_param \
+                blockScale \
                 filter \
                 pixelScale \
                 detectorWidth \
@@ -413,7 +417,27 @@ checkIfAllTheTransmittancesNeededAreGiven() {
     fi
 }
 export -f checkIfAllTheTransmittancesNeededAreGiven
+subtractBiasFromFrame(){
+    local base=$1
+    local dark=$2
+    local satThres=$3
+    local inputDir=$4
+    local outDir=$5
 
+    i=$inputDir/$base
+    out=$outDir/$base
+    astarithmetic $i -h1 set-i $dark -h1 set-m \
+              i i $satThres gt i isblank or 2 dilate nan where m - float32 \
+              -o $out
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $pointingRA $out
+    propagateKeyword $i $pointingDEC $out
+    if [ "$USE_COMMON_RING" = false ]; then
+        propagateKeyword $i $keyWordToDecideRing $out
+    fi
+}
+export -f subtractBiasFromFrame
 # Functions used in Flat
 maskImages() {
     local inputDirectory=$1
@@ -421,24 +445,35 @@ maskImages() {
     local outputDirectory=$3
     local useCommonRing=$4
     local keyWordToDecideRing=$5
-
+    images=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$inputDirectory/$base
-        out=$outputDirectory/$base
-        astarithmetic $i -h1 $masksDirectory/$base -hDETECTIONS 1 eq nan where float32 -o $out -q
-       
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $dateHeaderKey $out 
-        # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
-        # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
-        if [ "$useCommonRing" = false ]; then
-            propagateKeyword $i $keyWordToDecideRing $out
-        fi
+        images+=("$base")
     done
+    printf "%s\n" "${images[@]}" | parallel -j "$num_cpus" maskIndividualImage {} $inputDirectory $masksDirectory $outputDirectory $useCommonRing $keyWordToDecideRing
+    
 }
 export -f maskImages
+maskIndividualImage() {
+    local base=$1
+    local inputDirectory=$2
+    local masksDirectory=$3
+    local outputDirectory=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    i=$inputDirectory/$base
+    out=$outputDirectory/$base
+    astarithmetic $i -h1 $masksDirectory/$base -h1 1 eq nan where float32 -o $out -q
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $dateHeaderKey $out 
+    # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
+    # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
+    if [ "$useCommonRing" = false ]; then
+        propagateKeyword $i $keyWordToDecideRing $out
+    fi
+}
+export -f maskIndividualImage
 
 getInitialMidAndFinalFrameTimes() {
   local directoryWithNights=$1
@@ -683,21 +718,37 @@ normaliseImagesWithRing() {
     local keyWordThreshold=$8
     local keyWordValueForFirstRing=$9
     local keyWordValueForSecondRing=${10}
-
+    imagesToNormalise=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-
-        me=$(getMedianValueInsideRing $i $commonRing  $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $outputDir)
-        astarithmetic $i -h1 $me / -o $out
-
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $dateHeaderKey $out
+        imagesToNormalise+=("$base")
     done
+    printf "%s\n" "${imagesToNormalise[@]}" | parallel -j "$num_cpus" normaliseIndividualImageWithRing {} $imageDir $outputDir $useCommonRing $commonRing $doubleRing_first $doubleRing_second $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing
+    
 }
 export -f normaliseImagesWithRing
+normaliseIndividualImageWithRing() {
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local useCommonRing=$4
+    local commonRing=$5
+    local doubleRing_first=$6
+    local doubleRing_second=$7
+    local keyWordToDecideRing=$8
+    local keyWordThreshold=$9
+    local keyWordValueForFirstRing=$10
+    local keyWordValueForSecondRing=${11}
+    i=$imageDir/$base
+    out=$outputDir/$base
+    me=$(getMedianValueInsideRing $i $commonRing $doubleRing_first $doubleRing_second $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $outputDir)
+    astarithmetic $i -h1 $me / -o $out
+
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $dateHeaderKey $out
+}
+export -f normaliseIndividualImageWithRing
 
 calculateFlat() {
     local flatName="$1"
@@ -745,6 +796,7 @@ calculateRunningFlat() {
 
 
     echo "Computing non-common flats - iteration $iteration"
+    #aValues=()
     for a in $(seq 1 $n_exp); do
         if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($n_exp - $halfWindowSize))" ]; then
             leftLimit=$(( a - $halfWindowSize - 1))
@@ -753,75 +805,198 @@ calculateRunningFlat() {
             tmpIndex=$(( a - 1 ))
             propagateKeyword "${fileArray[$tmpIndex]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits"
         fi
+    #    aValues+=("$a")
     done
+    #printf "%s\n" "${aValues[@]}" | parallel -j "$num_cpus" calculateNonCommonFlat {} $outputDir $iteration $fileArray
+    #seq 1 $n_exp | parallel -j "$num_cpus" calculateNonCommonFlat {} "$outputDir" "$iteration" "$normalisedDir" "$h" "$n_exp"
     echo done > $doneFile
 }
 export -f calculateRunningFlat
+calculateNonCommonFlat() {
+    local a=$1
+    local outputDir=$2
+    local iteration=$3
+    local normalisedDir=$4
+    local h=$5
+    local n_exp=$6
+
+    fileArray=($(ls -v "$normalisedDir"/*Decals-"$filter"_n*_f*_ccd"$h".fits))
+    windowSize=$(( (halfWindowSize * 2) + 1 ))
+    echo "$n_exp" >> test.txt
+    if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($n_exp - $halfWindowSize))" ]; then
+        
+        leftLimit=$(( a - halfWindowSize - 1 ))
+        calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits" "${fileArray[@]:$leftLimit:$windowSize}"
+        tmpIndex=$(( a - 1 ))
+        propagateKeyword "${fileArray[$tmpIndex]}" "$dateHeaderKey" "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits"
+    fi
+}
+export -f calculateNonCommonFlat
 
 divideImagesByRunningFlats(){
     local imageDir=$1
     local outputDir=$2
     local flatDir=$3
     local flatDone=$4
-
+    imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-       
-        # -- NOTE ---
-        # At the beginning we were using the first commented block. Each image with its flat
-        # The thing is that we use the onOff strategy sometimes the matching between the frames and the 
-        # flats is not that perfect... That's why I relax the checks and if something has no counterpart the right running flat is used
-
-        if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_left_ccd"$h".fits
-        elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_right_ccd"$h".fits
-        else
-            flatToUse=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        fi
-        astarithmetic $i -h1 $flatToUse -h1 / -o $out
-
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $pointingRA $out
-        propagateKeyword $i $pointingDEC $out
+        imagesToDivide+=("$base")
     done
+    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByRunningFlats {} $imageDir $outputDir $flatDir $n_exp $currentNight $iteration $h
     echo done > $flatDone
 }
 export -f divideImagesByRunningFlats
-
+divideIndividualImageByRunningFlats(){
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local flatDir=$4
+    local n_exp=$5
+    local currentNight=$6
+    local iteration=$7
+    local h=$8
+    i=$imageDir/$base
+    out=$outputDir/$base
+    a="${base#*_f}"
+    a="${a%%_ccd*}"
+    # -- NOTE ---
+    # At the beginning we were using the first commented block. Each image with its flat
+    # The thing is that we use the onOff strategy sometimes the matching between the frames and the 
+    # flats is not that perfect... That's why I relax the checks and if something has no counterpart the right running flat is used
+    
+    if [ "$a" -le "$((halfWindowSize + 1))" ]; then
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits
+    elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits
+    else
+        flatToUse=$flatDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+    fi
+    astarithmetic $i -h1 $flatToUse -h1 / -o $out
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $pointingRA $out
+    propagateKeyword $i $pointingDEC $out    
+}
+export -f divideIndividualImageByRunningFlats
 divideImagesByWholeNightFlat(){
     local imageDir=$1
     local outputDir=$2
     local flatToUse=$3
     local flatDone=$4
-
+    imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-        i=$imageDir/$base
-        out=$outputDir/$base
-
-        astarithmetic $i -h1 $flatToUse -h1 / -o $out
-        propagateKeyword $i $dateHeaderKey $out
-        propagateKeyword $i $airMassKeyWord $out
-        propagateKeyword $i $pointingRA $out
-        propagateKeyword $i $pointingDEC $out
+        imagesToDivide+=("$base")
     done
+    printf "%s\n" "${imagesToDivide[@]}" | parallel -j "$num_cpus" divideIndividualImageByWholeNightFlat {} $imageDir $outputDir $flatToUse
+        
     echo done > $flatDone
 }
 export -f divideImagesByWholeNightFlat
+divideIndividualImageByWholeNightFlat(){
+    local base=$1
+    local imageDir=$2
+    local outputDir=$3
+    local flatToUse=$4
+    i=$imageDir/$base
+    out=$outputDir/$base
 
+    astarithmetic $i -h1 $flatToUse -h1 / -o $out
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $airMassKeyWord $out
+    propagateKeyword $i $pointingRA $out
+    propagateKeyword $i $pointingDEC $out    
+}
+export -f divideIndividualImageByWholeNightFlat
+
+correctRunningFlatWithWholeNightFlat() {
+    local base=$1
+    local beforeDir=$2
+    local wholeNightFlat=$3
+    local outputDir=$4
+    local dateHeaderKey=$5
+
+    i=$beforeDir/$base
+    out=$outputDir/$base
+    tmpRatio=$outputDir/tmpRatio_$base
+    astarithmetic $wholeNightFlat -h1 $i -h1 / -o $tmpRatio
+    astarithmetic $i -h1 set-m $tmpRatio -h1 set-f m f 0.85 lt nan where -o $out
+    propagateKeyword $i $dateHeaderKey $out
+    rm $tmpRatio
+
+}
+export -f correctRunningFlatWithWholeNightFlat
+
+maskVignettingOnImages() {
+    local base=$1
+    local imaDir=$2 
+    local outDir=$3
+    local flatDir=$4
+    local wholeFlatDir=$5
+    local runningFlat=$6
+    local n_exp=$7
+    local currentNight=$8
+    local lowerVignettingThreshold=$9
+    local upperVignettingThreshold=${10}
+    a="${base#*_f}"
+    a="${a%%_ccd*}"
+    if $runningFlat; then
+      if [ "$a" -le "$((halfWindowSize + 1))" ]; then
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_left_ccd0.fits
+      elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_right_ccd0.fits
+      else
+        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_f"$a"_ccd0.fits
+      fi
+    else
+      currentFlatImage=$wholeFlatDir/flat-it3_wholeNight_n$currentNight.fits
+    fi 
+    i=$imaDir/$base
+    out=$outDir/$base
+    astarithmetic $i -h1 set-m $currentFlatImage -h1 set-f m f $lowerVignettingThreshold lt nan where set-n n f $upperVignettingThreshold gt nan where -o $out
+    propagateKeyword $i $airMassKeyWord $out 
+    propagateKeyword $i $dateHeaderKey $out
+    propagateKeyword $i $pointingRA $out
+    propagateKeyword $i $pointingDEC $out
+}
+export -f maskVignettingOnImages
 runNoiseChiselOnFrame() {
     local baseName=$1
     local inputFileDir=$2
     local outputDir=$3
-    local noiseChiselParams=$4
+    local blockScale=$4
+    local noiseChiselParams=$5
+
+    ###If a block scale is given, we will block, highlighting LSB regions, detect, and un-block the mask
 
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
-    astnoisechisel $imageToUse $noiseChiselParams --numthreads=$num_cpus -o $output
+
+    if [ "$blockScale" -eq 1 ]; then
+        #No block will be applied
+        astnoisechisel $imageToUse $noiseChiselParams --numthreads=$num_threads -o $output
+    else
+        wFile=$outputDir/imW_$baseName
+        wMask=$outputDir/mkW_$baseName
+        wMask2=$outputDir/mkW2_$baseName
+        astwarp $imageToUse --scale=1/$blockScale --numthreads=$num_threads -o $wFile
+        astnoisechisel $wFile $noiseChiselParams --numthreads=$num_threads -o $wMask
+        astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=1 --numthreads=$num_threads -o$wMask2
+        warp_status=$?
+        if [ $warp_status -ne 0 ]; then
+            wMaskTmp=$outputDir/mkWTmp_$baseName
+
+            echo "astwarp failed on $baseName (exit code $warp_status)" >&2
+            echo "This happens when images are not astrometrised. The second solution is to warp and then crop to the desired size"
+            astwarp $wMask -h1 --scale=$blockScale --gridhdu=1 --numthreads=$num_threads -o$wMaskTmp
+            astcrop $wMaskTmp --section="1:$detectorWidth,1:$detectorHeight" --mode=img -o $wMask2
+
+            rm $wMaskTmp
+        fi
+        astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o$output
+        rm $wFile $wMask $wMask2
+    fi
 }
 export -f runNoiseChiselOnFrame
 
@@ -979,9 +1154,10 @@ computeSkyForFrame(){
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
-    local noisechisel_param=${15}
-    local manualMaskParams=${16}
-
+    local blockScale=${15}
+    local noisechisel_param=${16}
+    local manualMaskParams=${17}
+    
 
     # Masking the frames if they are not already 
     i=$entiredir/$1
@@ -990,22 +1166,23 @@ computeSkyForFrame(){
     if ! [ "$inputImagesAreMasked" = true ]; then
         tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
         tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
-        astnoisechisel $i $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
+        runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale "$noisechisel_param"
+        mv $noiseskydir/$1 $noiseskydir/$tmpMask #This is because of the output of runNoiseChiselOnFrame 
+        
+        #astnoisechisel $i $noisechisel_param --numthreads=$num_threads -o $noiseskydir/$tmpMask
         astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
         imageToUse=$noiseskydir/$tmpMaskedImage
         rm -f $noiseskydir/$tmpMask
-
         # manual masks defined by the user
         valueToPut=nan
         read -r -a maskArray <<< "$manualMaskParams"
         for ((i=0; i<${#maskArray[@]}; i+=5)); do
-            ra_mask="${maskArray[i]}"
-            dec_mask="${maskArray[i+1]}"
+            ra="${maskArray[i]}"
+            dec="${maskArray[i+1]}"
             r="${maskArray[i+2]}"
             axisRatio="${maskArray[i+3]}"
             pa="${maskArray[i+4]}"
-
-            python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra_mask $dec_mask $r $axisRatio $pa
+            python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
         done
     else    
         imageToUse=$i
@@ -1039,7 +1216,7 @@ computeSkyForFrame(){
 
             ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
             echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
-            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
+            astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --numthreads=$num_threads -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
             
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
@@ -1057,7 +1234,7 @@ computeSkyForFrame(){
        
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
             sky=$(echo $base | sed 's/.fits/_sky.fits/')
-            astnoisechisel $imageToUse --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
+            astnoisechisel $imageToUse --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_threads -o $noiseskydir/$base
             mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
             std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
 
@@ -1101,9 +1278,10 @@ computeSky() {
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
-    local noisechisel_param=${15}
-    local maskParams=${16}
-
+    local blockScale=${15}
+    local noisechisel_param=${16}
+    local maskParams=${17}
+    
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
         echo -e "\n\tScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
@@ -1112,9 +1290,11 @@ computeSky() {
         for a in $( ls $framesToUseDir/*.fits ); do
             base=$( basename $a )
             framesToComputeSky+=("$base")
+            #computeSkyForFrame $base $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $noisechisel_param $maskParams
         done
 
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" "'$maskParams'"
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_parallel" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "'$noisechisel_param'" "'$maskParams'"
+        exit 0
         echo done > $noiseskydone
     fi
 }
@@ -1623,9 +1803,8 @@ selectStarsAndSelectionRangeSurvey() {
         fi
 
         headerWithData=0 # After decompressing the data ends up in the hdu 0
-        noisechiselTileSize=50
-
-        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $noisechiselTileSize $apertureUnits
+        local noisechisel_param="--tilesize=50,50 --rawoutput"
+        printf "%s\n" "${brickList[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $dirWithBricks $cataloguedir $headerWithData $methodToUse $apertureUnits "$noisechisel_param"
         echo "done" > $starSelectionDone
     fi
 }
@@ -2297,16 +2476,17 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     local framesForCalibrationDir=$2
     local mycatdir=$3
     local headerToUse=$4
-    local methodToUse=$5
-    local tileSize=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
-    local apertureUnits=$7
+    local methodToUse=$5          
+    local apertureUnits=$6
+    local noisechisel_param=$7 # This parameter will only be used if the catalogue is being generated with noisechisel
+    
 
     i=$framesForCalibrationDir/$a
 
     if [[ "$methodToUse" == "sextractor" ]]; then
         outputCatalogue=$( generateCatalogueFromImage_sextractor $i $mycatdir $a $apertureUnits )
     elif [[ "$methodToUse" == "noisechisel" ]]; then
-        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse $tileSize $apertureUnits )
+        outputCatalogue=$( generateCatalogueFromImage_noisechisel $i $mycatdir $a $headerToUse $apertureUnits "$noisechisel_param" )
     else
         errorNumber=9
         echo "Error, method for selecting stars and the range in the calibration not recognised"
@@ -2333,8 +2513,8 @@ selectStarsAndSelectionRangeOurData() {
     local framesForCalibrationDir=$2
     local mycatdir=$3
     local methodToUse=$4
-    local tileSize=$5
-    local apertureUnits=$6
+    local apertureUnits=$5
+    local noisechisel_param=$6
 
     mycatdone=$mycatdir/done.txt
     if ! [ -d $mycatdir ]; then mkdir $mycatdir; fi
@@ -2348,7 +2528,7 @@ selectStarsAndSelectionRangeOurData() {
         done
 
         headerWithData=1
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $tileSize $apertureUnits
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $apertureUnits "$noisechisel_param"
         echo done > $mycatdone
     fi
 }
@@ -2474,6 +2654,7 @@ buildOurCatalogueOfMatchedSources() {
         for a in $( ls $framesForCalibrationDir/*.fits); do
             frameName=$( basename $a )
             framesToUse+=("$frameName")
+            #buildOurCatalogueOfMatchedSourcesForFrame $frameName $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
         done
 
         printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
@@ -2665,21 +2846,20 @@ computeCalibrationFactors() {
     local alphatruedir=${11}
     local brightLimit=${12}
     local faintLimit=${13}
-    local tileSize=${14}
-    local apertureUnits=${15}
-    local numberOfApertureUnitsForCalibration=${16}
-    local calibratingMosaic=${17}
-  
-
-
+    local apertureUnits=${14}
+    local numberOfApertureUnitsForCalibration=${15}
+    local calibratingMosaic=${16}
+    local noisechisel_param=${17}
+    
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
-    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $tileSize $apertureUnits
-
+    selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $apertureUnits "$noisechisel_param"
+    
 
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
-
+    
+    #if [ $iteration -eq 2 ]; then exit; fi
     # If we are calibrating with spectra we just have the whole catalogue of the field
     # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
     if ! [ -d $prepareCalibrationCataloguePerFrame ]; then mkdir $prepareCalibrationCataloguePerFrame; fi
@@ -3099,7 +3279,7 @@ produceHalfMaxRadVsMagForOurData() {
 }
 export -f produceHalfMaxRadVsMagForOurData
 
-buildCoadd() {
+stackWeightedImages() {
     local coaddir=$1
     local coaddName=$2
     local wdir=$3
@@ -3122,19 +3302,32 @@ buildCoadd() {
             echo done > $coaddone
     fi
 }
-export -f buildCoadd
+export -f stackWeightedImages
 
 subtractCoaddToFrames() {
     local dirWithFrames=$1
+    #local sumOfWeights=$2
     local coadd=$2
     local destinationDir=$3
 
+    imagesToSubtract=()
     for i in $dirWithFrames/*.fits; do
-        astarithmetic $i $coadd - -o$destinationDir/$( basename $i ) -g1
+        base=$( basename $i )
+        imagesToSubtract+=("$base")
     done
+    printf "%s\n" "${imagesToSubtract[@]}" | parallel -j "$num_cpus" subtractCoaddToSingleFrame {} $dirWithFrames $coadd $destinationDir
 }
 export -f subtractCoaddToFrames
+subtractCoaddToSingleFrame(){
+    local base=$1
+    local dirWithFrames=$2
+    local coadd=$3
+    local destinationDir=$4
 
+    i=$dirWithFrames/$base
+    astarithmetic $i $coadd - -o$destinationDir/$base -g1
+}
+export -f subtractCoaddToSingleFrame
 
 computeMetricOfResiduals() {
     local dirWithFrames=$1
@@ -3236,7 +3429,7 @@ prepareIndividualResidualWithTags() {
     
     tagIndividualResidualBasedOnPixels $i $residualFramesTaggedDir $residualMasked $frameNumber
     numberOfFWHMusedForApertures=2
-    tagIndividualResidualsBasedOnApertures $i $residualFramesTaggedDir $tmpMask $numberOfFWHMusedForApertures $frameNumber $fwhmDir seg_$base cat_$base 
+    #tagIndividualResidualsBasedOnApertures $i $residualFramesTaggedDir $tmpMask $numberOfFWHMusedForApertures $frameNumber $fwhmDir seg_$base cat_$base 
 
     rm $residualFramesTaggedDir/$tmpMask $residualFramesTaggedDir/$residualMasked $residualFramesTaggedDir/seg_$base $residualFramesTaggedDir/cat_$base
 }
@@ -3257,7 +3450,7 @@ computeSumMosaicAfterCoaddSubtractionWithTracesIndicated() {
     printf "%s\n" "${frames[@]}" | parallel -j "$num_cpus" prepareIndividualResidualWithTags {} $residualFramesTaggedDir $fwhmFolder "'$noisechisel_param'"
 
     astarithmetic $(ls -v $residualFramesTaggedDir/pxTagged*.fits) $(ls $residualFramesTaggedDir/pxTagged*.fits | wc -l) sum -g1 -o$finalResidualOutputpx
-    astarithmetic $(ls -v $residualFramesTaggedDir/apertureTagged*.fits) $(ls $residualFramesTaggedDir/apertureTagged*.fits | wc -l) sum -g1 -o$finalResidualOutputAper
+    #astarithmetic $(ls -v $residualFramesTaggedDir/apertureTagged*.fits) $(ls $residualFramesTaggedDir/apertureTagged*.fits | wc -l) sum -g1 -o$finalResidualOutputAper
 }
 export -f computeSumMosaicAfterCoaddSubtractionWithTracesIndicated
 
@@ -3270,7 +3463,7 @@ changeNonNansOfFrameToOnes() {
   frame=$framesDir/entirecamera_$a.fits
   output=$outputDir/exposure_tmp_$a.fits
 
-  astarithmetic $frame $frame isnotblank 1 where --output=$output -g1
+  astarithmetic $frame $frame isblank not 1 where --output=$output -g1
 }
 export -f changeNonNansOfFrameToOnes
 
@@ -3330,12 +3523,12 @@ generateCatalogueFromImage_noisechisel() {
     local a=$3
 
     local header=$4
-    local tileSize=$5
-    local apertureUnitsToCalculate=$6
+    local apertureUnitsToCalculate=$5
+    local noisechisel_param=$6
 
     astmkprof --kernel=gaussian,1.5,3 --oversample=1 -o $outputDir/kernel_$a.fits 1>/dev/null
     astconvolve $image -h$header --kernel=$outputDir/kernel_$a.fits --domain=spatial --output=$outputDir/convolved_$a.fits 1>/dev/null
-    astnoisechisel $image -h$header -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits --tilesize=$tileSize,$tileSize --numthreads=$num_cpus 1>/dev/null
+    astnoisechisel $image -h$header -o $outputDir/det_$a.fits --convolved=$outputDir/convolved_$a.fits $noisechisel_param --numthreads=$num_cpus 1>/dev/null
     astsegment $outputDir/det_$a.fits -o $outputDir/seg_$a.fits --gthresh=-15 --objbordersn=0 1>/dev/null
 
     if [ $apertureUnitsToCalculate == "FWHM" ]; then
@@ -3375,7 +3568,7 @@ generateCatalogueFromImage_sextractor(){
             reCol=$(echo "$line" | awk '{print $2}')
         fi
     done <<< $headerLines
-
+    
     # We divide the fwhm by 2 so we have a radius
     # this is done here even if Re is chosen because then, when a column is removed, the column number changes and it's simpler to do it here
     awk -v col="$fwhmCol" '{ $col = $col / 2; print }' $outputDir/"$a"_tmp.cat > $outputDir/"$a"_tmp2.cat
@@ -3392,7 +3585,7 @@ generateCatalogueFromImage_sextractor(){
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
-
+    
     # Headers to mimic the noisechisel format. Change between MacOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS (BSD sed)
@@ -3558,3 +3751,345 @@ computeFWHMSingleFrame(){
     rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue 
 }
 export -f computeFWHMSingleFrame
+
+subtractStars(){
+    local inputFolder_small=$1
+    local starLine=$2
+    local psf=$3
+    local psfProfile=$4
+    local outputDir_small=$5
+    local starId=$6
+
+    starRa=$(echo "$starLine" | awk '{print $1}')
+    starDec=$(echo "$starLine" | awk '{print $2}')
+    starMag=$(echo "$starLine" | awk '{print $3}')
+    echo -e "Star $starId: RA=$starRa DEC=$starDec MAG=$starMag "
+    echo -e "·Locating star in CCDs and computing profiles"
+    profileFolder=$BDIR/profileStar_"$starId"
+    profileDone=$profileFolder/done.txt
+    starLocationFile=$profileFolder/starlocation.txt
+    if ! [ -d $profileFolder ]; then mkdir $profileFolder; fi
+    if [ -f $profileDone ]; then
+        echo -e "Profiles of star {$starId} already computed"
+    else
+        if ! [ -f $starLocationFile ]; then
+            for a in $(seq 1 $totalNumberOfFrames); do
+                image=$inputFolder_small/entirecamera_"$a".fits
+                #We are gonna do the following: we generate circles where PSF reaches 26.5 mag arcsec^-2, ie, ~50 times lower than typical
+                # sky background (THis is literally by eye)
+                circleRad=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile 24 $pixelScale)
+                python3 $pythonScriptsPath/check_starLocation.py $image $starLocationFile $num_ccd $starRa $starDec $circleRad
+            done
+        fi
+        
+        cat "$starLocationFile" | parallel -j "$num_cpus" buildProfileForFrame {} "$starRa" "$starDec" "$starId" "$profileFolder" 
+        echo done > $profileDone
+    fi
+    echo -e "·Computing Scale Factor"
+    ###NOTE: the fitting algorithm benefits from paralelization inside python, instead of parallelizing python execution
+    scaleDir=$BDIR/scaleStar_$starId
+    scaleDone=$scaleDir/done.txt
+    if ! [ -d $scaleDir ]; then mkdir $scaleDir; fi
+    if [ -f $scaleDone ]; then
+        echo -e "Scale factors already computed for Star {$starId}"
+    else
+        ###If there is not star, we put the scale in 0
+        
+        framesToComputeScale=()
+        for a in $(seq 1 $totalNumberOfFrames); do
+            framesToComputeScale+=("$a")
+        done
+        printf "%s\n" "${framesToComputeScale[@]}" | parallel -j "$num_parallel" computeStarScaleForFrame {} $profileFolder $scaleDir $inputFolder_small $psfProfile $starMag 
+        
+        echo done > $scaleDone
+    fi
+    #if [ "$starId" == "2" ]; then exit 0; fi
+    echo -e "·Subtracting star from frames"
+    limMag=32 #bellow surface brightness limit
+
+    if ! [ -d $outputDir_small ]; then mkdir $outputDir_small; fi
+    #if ! [ -d $outputDir_full ]; then mkdir $outputDir_full; fi
+    subtractionDone=$outputDir_small/done.txt
+    if [ -f $subtractionDone ]; then
+        echo -e "Subtraction of Star $starId already done"
+    else
+        ##First step: create the PSFfile
+        psfCrop=$outputDir_small/PSF.fits
+        
+        rCrop=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile $limMag $pixelScale )
+        
+        starMag_dec=$(printf "%.10f" "$starMag")
+        if (( $(echo "$rCrop == 0" | bc -l) )); then
+            
+            cp "$psfFile" "$psfCrop"
+        elif (( $(echo "$starMag_dec < 4" | bc -l) )); then
+            
+            cp "$psfFile" "$psfCrop"
+        else
+            
+            rWidth=$((2*rCrop))
+            astcrop $psfFile --mode=img --center=18001,18001 --width=$rWidth,$rWidth --zeroisnotblank -o$outputDir_small/temp.fits
+            echo "1 $rCrop $rCrop 5 $rCrop 0.0 0 1 1 1" | astmkprof --background=$outputDir_small/temp.fits --mforflatpix --clearcanvas -o$outputDir_small/mask.fits
+            astarithmetic $outputDir_small/temp.fits $outputDir_small/mask.fits -g1 0 eq nan where -q -o$psfCrop
+            rm $outputDir_small/temp.fits $outputDir_small/mask.fits
+        fi
+        
+
+        for a in $(seq 1 $totalNumberOfFrames); do
+           subtractStarFromFrame $a $psfCrop $scaleDir $inputFolder_small $outputDir_small $starRa $starDec
+           #subtractStarFromFrame $a $psfCrop $scaleDir $inputFolder_full $outputDir_full $starRa $starDec
+        done
+        rm $psfCrop
+        echo done > $subtractionDone
+    fi
+
+}
+export -f subtractStars
+subtractStarFromFrame() {
+    local a=$1
+    local psf=$2
+    local scale_folder=$3
+    local input_folder=$4
+    local output_folder=$5
+    local star_ra=$6
+    local star_dec=$7
+
+    base=entirecamera_"$a"
+    image=$input_folder/"$base".fits
+    scale_text=$scale_folder/scale_"$base".txt
+    output=$output_folder/"$base".fits
+    scale=$(awk 'NR=='1'{print $1}' $scale_text)
+    if (( $(echo "$scale == 0" | bc -l) )); then
+        cp $image $output
+    else
+        astfits $image --copy=0 --primaryimghdu -o$output
+        for h in $(seq 1 $num_ccd); do
+
+
+            output_temp=$output_folder/"$base"_temp.fits
+            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp
+            astfits $output_temp --copy=1 -o$output
+            gain=$(astfits $image -h$h --keyvalue=GAIN -q)
+            astfits $output -h$h --write=GAIN,$gain
+            rm $output_temp
+        done
+    fi
+}
+export -f subtractStarFromFrame
+computeStarScaleForFrame() {
+    local a=$1
+    local profileFolder=$2
+    local scaleDir=$3 
+    local inputFolder_small=$4 
+    local psfProfile=$5
+    local starMag=$6
+    scale_text_base=$scaleDir/scale_entirecamera
+    profile=$profileFolder/RP_entirecamera_"$a".fits
+    scale_text="$scale_text_base"_"$a".txt
+    if ! [ -f $profile ]; then
+        echo "0.000" > $scale_text
+    else
+
+                ###First step: measure a rough approach of the background
+        sky_it1=$BDIR/noise-sky_it1/entirecamera_"$a".txt
+        sky_mean=$(awk 'NR=='1'{print $2}' $sky_it1)
+        sky_std=$(awk 'NR=='1'{print $3}' $sky_it1)
+        ##We will range ±500
+        scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale)
+        echo "$scale" > $scale_text
+        
+    fi
+}
+export -f computeStarScaleForFrame
+
+buildProfileForFrame(){
+    local line="$1"
+    local starRa="$2"
+    local starDec="$3"
+    local starId="$4"
+    local profileFolder="$5"
+
+    imageProf=$(echo "$line" | awk '{print $1}')
+    imageProf=$( basename $imageProf )
+    #Careful with hardcoding here: this is optimized for TST
+    rp_params="$line --mode=wcs --center=$starRa,$starDec --rmax=8000 --undersample=5 --measure=sigclip-mean,sigclip-std "
+    starAz_file=$CDIR/star"$starId"_az.txt
+    if [ -f $starAz_file ]; then
+        starAz=$(awk 'NR=='1'{print $1}' $starAz_file)
+        rp_params+="--azimuth=$starAz "
+    fi
+    astscript-radial-profile $rp_params --output=$profileFolder/RP_$imageProf
+
+}
+export -f buildProfileForFrame
+
+###Functions for nominal with 3by3 reslts
+warpMaskForFrame(){
+    local frame=$1
+    local maskDir_33=$2
+    local outputDir=$3
+    local threads=$4
+    local dataDir=$5
+    orImage=$dataDir/$frame
+
+    astwarp $maskDir_33/$frame -h1 --gridfile=$orImage --numthreads=$threads --output=$outputDir/$frame
+    
+    #astcrop $outputDir/temp_$frame --mode=img --section=1:$detectorWidth,1:$detectorHeight --zeroisnotblank -o$outputDir/$frame
+    #rm $outputDir/temp_$frame
+}
+export -f warpMaskForFrame
+divideSkyBy9(){
+    local basefile=$1
+    local inputDir=$2
+    local outputDir=$3
+    
+    file=$inputDir/$basefile
+    output=$outputDir/$basefile
+    awk '{
+        if ($2 ~/^[-0-9.]+$/) {
+            $2 = $2 / 9;
+        print $0
+    }' "$file" > "$output"
+}
+export -f divideSkyBy9
+
+buildCoadd(){
+    local fullGridDir=$1
+    local minRmsFileName=$2
+    local iteration=$3
+    local noiseskydir=$4
+
+    ##Upper and lower limits
+    echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+
+    clippingdir=$BDIR/clipping-outliers_it$iteration
+    clippingdone=$clippingdir/done.txt
+    sigmaForStdSigclip=3
+    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $fullGridDir $sigmaForStdSigclip 
+
+    ##Masking outliers
+    photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
+    photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
+    if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
+    removeOutliersFromWeightedFrames $fullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
+
+    ##Calculate weights
+    echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+
+    wdir=$BDIR/weight-dir_it$iteration
+    wonlydir=$BDIR/only-w-dir_it$iteration
+    wdone=$wdir/done.txt
+    wonlydone=$wonlydir/done.txt
+    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+    if ! [ -d $wdir ]; then mkdir $wdir; fi
+    computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
+
+    ##Final coadd
+    echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+    echo -e "\nBuilding coadd"
+    coaddDir=$BDIR/coadds_it$iteration
+    coaddDone=$coaddDir/done.txt
+    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
+    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
+
+    ##Exposure map
+    exposuremapDir=$coaddDir/"$objectName"_exposureMap
+    exposuremapdone=$coaddDir/done_exposureMap.txt
+    computeExposureMap $wdir $exposuremapDir $exposuremapdone
+
+    ##Residual coadd
+    framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+    framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.fits
+    if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+    if [ -f $framesWithCoaddSubtractedDone ]; then
+        echo -e "\n\tFrames with coadd subtracted already done\n"
+    else
+        sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
+
+        coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
+        astarithmetic $(ls -v $photCorrNoOutliersPxDir/entirecamera_*.fits) $(ls $photCorrNoOutliersPxDir/entirecamera_*.fits | wc -l) -g1 mean -o $coaddAv
+        subtractCoaddToFrames $fullGridDir $coaddAv $framesWithCoaddSubtractedDir 
+        astarithmetic $(ls -v $framesWithCoaddSubtractedDir/entirecamera_*.fits) $(ls $framesWithCoaddSubtractedDir/entirecamera_*.fits | wc -l) g1 sum -o$sumMosaicAfterCoaddSubtraction
+
+        echo "done" > $framesWithCoaddSubtractedDone
+    fi
+}
+export -f buildCoadd
+
+createBlocks(){
+    local fullGridDir=$1
+    local coaddSizeInPix=$2
+
+    #This function will generate a .txt file with the information of the blocks needed for making a mosaic combination
+    #Since RAM memory is limited, when images are large and there're a lot of them, RAM might not be enought to combine the 
+    #fullGrid frames. Because of that, we use a block strategy: divide the fullGrid image in blocks that will be treated separately and then
+    #stitched together.
+
+    #This function is to determine how many blocks are needed, their size and the crops.
+
+    availMemory_gb=$(awk '/MemAvailable/ {printf "%.3f \n", $2/1024/1024 }' /proc/meminfo)
+    safetyMem=25.0 #Gb
+    availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
+    echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
+
+    python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
+}
+export -f createBlocks
+
+cropInSections(){
+    local fullGridDir=$1
+    local section=$2
+    local outDir=$3
+    local cropDone=$4
+    
+    if [ -f $cropDone ]; then
+        echo -e "Crop has been alredy done"
+    else
+        imagesToCrop=()
+        for file in $fullGridDir/*.fits; do
+            base=$( basename $file )
+            imagesToCrop+=("$base")
+        done 
+        printf "%s\n" "${imagesToCrop[@]}" | parallel -j "$num_parallel" cropInSectionsSingleFrame {} $fullGridDir $section 
+        echo done > $cropDone
+    fi
+}
+export -f cropInSections
+
+cropInSectionsSingleFrame(){
+    local base=$1
+    local fullGridDir=$2
+    local section=$3
+    local outDir=$4
+
+    i=$fullGridDir/$base
+    out=$outDir/$base
+    astcrop $i -h1 --mode=img --section=$section --zeroisnotblank -o $out --numthreads=$num_threads
+}
+export -f cropInSectionsSingleFrame
+
+stitchFiles(){
+    local fileToStitch=$1
+    local numBlocks=$2
+    local outDir=$3
+    local stitchDone=$4
+    local iteration=$5
+
+    if [ -f $stitchDone ]; then
+        echo -e "File $fileToStitch already stitched"
+    else
+        stitchCommand=""
+        for m in $(seq 1 $numBlocks); do
+            for n in $(seq 1 $numBlocks); do
+                file=$BDIR/coadds_"$m""$n"_it"$iteration"/$fileToStitch
+                stitchCommand+="$file -h1 "
+            done
+            stitchCommand+="$numBlocks 2 stitch "
+        done
+        astarithmetic $stitchCommand $numBlocks 1 stitch -o $outDir/$fileToStitch
+        echo done > $stitchDone
+    fi
+}
+export -f stitchFiles
