@@ -1570,6 +1570,8 @@ echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
 createBlocks $photCorrfullGridDir $coaddSizePx
 numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
+
+
 #If number of blocks is equal to 1, we do not need to do anything weird
 if [ "$numBlocks" -eq 1 ]; then
   #The following functions for creating the coadd have been added into a single one called "buildCoadd()". 
@@ -1585,13 +1587,13 @@ else
       fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"
       fullGridDone_sec=$fullGridDir_sec/done_crops.txt
       if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
-      cropInSections $photCorrFullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
+      cropInSections $photCorrfullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
       #Now we build the coadd
       buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
-
+      
       #Finally, we move according to m and n the folders the coadd and remove intermediate folders
       rm -rf $BDIR/clipping-outliers_it$iteration
-      rm -rf $BDIR/photCorrFullGridDir_noOutliersPx_it$iteration
+      rm -rf $BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
       rm -rf $BDIR/weight-dir_it$iteration
       rm -rf $BDIR/only-w-dir_it$iteration
       rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
@@ -1599,6 +1601,8 @@ else
       mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
     fi
   done < "$BDIR/cropSections.txt"
+
+  
   #Now we stitch together all coadds, exposureMaps and residuals
   coaddDir=$BDIR/coadds_it$iteration
   if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
@@ -1699,10 +1703,10 @@ else
 fi
 
 #astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
-if ! [ -f $maskName ]; then
-  echo -e "\tMask on 1st iteration has failed. Exiting with error code 47"
-  exit 47
-fi
+# if ! [ -f $maskName ]; then
+#   echo -e "\tMask on 1st iteration has failed. Exiting with error code 47"
+#   exit 47
+# fi
 
 
 #Compute surface brightness limit
@@ -1737,7 +1741,7 @@ keyWords=("FRAMES_COMBINED" \
           "WINDOW_SIZE" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
-numberOfFramesCombined=$(ls $BDIR/weight-dir_it"$iteration"/*.fits | wc -l)
+numberOfFramesCombined=$(ls $BDIR/photCorrFullGrid-dir_it$iteration/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 
@@ -2235,8 +2239,8 @@ fi
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
-numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
+numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
 if [ "$numBlocks" -eq 1 ]; then
   buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
@@ -2250,11 +2254,11 @@ else
       fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"
       fullGridDone_sec=$fullGridDir_sec/done_crops.txt
       if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
-      cropInSections $photCorrFullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
-      
+      cropInSections $photCorrfullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
       buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
+
       rm -rf $BDIR/clipping-outliers_it$iteration
-      rm -rf $BDIR/photCorrFullGridDir_noOutliersPx_it$iteration
+      rm -rf $BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
       rm -rf $BDIR/weight-dir_it$iteration
       rm -rf $BDIR/only-w-dir_it$iteration
       rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
@@ -2262,6 +2266,7 @@ else
       mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
     fi
   done < "$BDIR/cropSections.txt"
+
   coaddDir=$BDIR/coadds_it$iteration
   if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
   coaddName_nofolder="$objectName"_coadd_"$filter"_it"$iteration".fits
@@ -2335,7 +2340,7 @@ keyWords=("FRAMES_COMBINED" \
           "WINDOW_SIZE" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
-numberOfFramesCombined=$(ls $BDIR/weight-dir_it$iteration/*.fits | wc -l)
+numberOfFramesCombined=$(ls $BDIR/photCorrFullGrid-dir_it$iteration/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 
