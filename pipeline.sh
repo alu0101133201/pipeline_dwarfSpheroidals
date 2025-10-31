@@ -1042,7 +1042,7 @@ else
     echo -e "\tSExtractor + scamp iteration $i"
 
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
-    scamp -c $scampcfg $(ls -v $sexdir/*.cat)
+    scamp -c $scampcfg -NTHREADS=$SLURM_CPUS_PER_TASK $(ls -v $sexdir/*.cat)
     cp $sexdir/*.head $astroimadir
     mv *.pdf $scampres/
     mv scamp.xml $scampdir
