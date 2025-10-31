@@ -1042,7 +1042,7 @@ else
     echo -e "\tSExtractor + scamp iteration $i"
 
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
-    scamp -c $scampcfg -NTHREADS=$SLURM_CPUS_PER_TASK $(ls -v $sexdir/*.cat)
+    scamp -c $scampcfg -NTHREADS=$num_cpus $(ls -v $sexdir/*.cat)
     cp $sexdir/*.head $astroimadir
     mv *.pdf $scampres/
     mv scamp.xml $scampdir
@@ -1088,7 +1088,7 @@ else
       imagesToWarp+=($folderWithFramesToWarp/$base)
   done
 
-  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $pipelinePath
+  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $num_cpus
   rm -rf $entiredir_fullGrid
   echo done > $entiredone
 fi

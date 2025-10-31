@@ -1037,6 +1037,7 @@ warpImage() {
     local ra=$4
     local dec=$5
     local coaddSizePx=$6
+    local num_cpus=$7
 
     # ****** Decision note *******
     # We need to regrid the frames into the final coadd grid. But if we do this right now we will be processing
@@ -1051,7 +1052,7 @@ warpImage() {
 
     # Resample into the final grid
     SWARP_CMD=$( detect_swarp )
-    $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    $SWARP_CMD -c $swarpcfg $imageToSwarp -NTHREADS $num_cpus -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
 
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
