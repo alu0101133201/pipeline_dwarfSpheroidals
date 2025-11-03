@@ -1042,7 +1042,7 @@ else
     echo -e "\tSExtractor + scamp iteration $i"
 
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
-    scamp -c $scampcfg -NTHREADS=$num_cpus $(ls -v $sexdir/*.cat)
+    scamp -c $scampcfg $sexdir/*.cat -NTHREADS=$num_cpus
     cp $sexdir/*.head $astroimadir
     mv *.pdf $scampres/
     mv scamp.xml $scampdir
@@ -1092,7 +1092,6 @@ else
   rm -rf $entiredir_fullGrid
   echo done > $entiredone
 fi
-
 
 
 # Checking bad astrometrised frames ------
@@ -1268,7 +1267,6 @@ fi
 
 
 
-
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
@@ -1371,7 +1369,6 @@ if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFac
 fi
 
 
-
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1450,16 +1447,15 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
 fi
 
 # Half-Max-Radius vs magnitude plots of our calibrated data
-halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
-halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
-if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
-if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
-   echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
-else
-  produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_gaia.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits $mycatdir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames
-  echo done > $halfMaxRadiusVsMagnitudeOurDataDone
-fi
-
+# halfMaxRadiusVsMagnitudeOurDataDir=$diagnosis_and_badFilesDir/halfMaxRadVsMagPlots_ourData
+# halfMaxRadiusVsMagnitudeOurDataDone=$halfMaxRadiusVsMagnitudeOurDataDir/done_halfMaxRadVsMagPlots.txt
+# if ! [ -d $halfMaxRadiusVsMagnitudeOurDataDir ]; then mkdir $halfMaxRadiusVsMagnitudeOurDataDir; fi
+# if [ -f $halfMaxRadiusVsMagnitudeOurDataDone ]; then
+#    echo -e "\nHalf max radius vs magnitude plots for our calibrated data already done"
+# else
+#   produceHalfMaxRadVsMagForOurData $photCorrSmallGridDir $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_gaia.fits $toleranceForMatching $pythonScriptsPath $num_cpus 30 $apertureUnits $mycatdir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames
+#   echo done > $halfMaxRadiusVsMagnitudeOurDataDone
+# fi
 
 
 # Getting depth, mask and adding keywords to the calibrated coadd prephot
