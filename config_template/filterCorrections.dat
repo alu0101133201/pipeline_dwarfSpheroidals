@@ -24,3 +24,9 @@ reference survey: panstarrs
 g: -0.014, 0.0084, -0.0013
 r: -0.0046, 0.013, -0.00082
 i: 0.044, -0.0072, -0.00077
+
+telescope: OSIRIS
+reference survey: panstarrs
+g: 0.0074, 0.0068, -0.0036
+r: 0.11, -0.066, 0.035
+i: 0.044, -0.025, 0.0067
