@@ -416,7 +416,7 @@ subtractBiasFromFrame(){
                   -o $outDir/temp_$base
             astfits $outDir/temp_$base --copy=1 -o $out
             rm $outDir/temp_$base
-            propagateKeyword $i $gain $out $H
+            propagateKeyword $i $gain $out $h
         fi
     done
 }
@@ -3692,18 +3692,36 @@ prepareRingTemplate(){
     local template=$1
     local imageDir=$2
     local ringDir=$3
+    local overscan=$4
+    local trimseckey=$5
     x_camera=$(awk '{print $2}' $template)
     y_camera=$(awk '{print $3}' $template)
     radius=$(awk '{print $5}' $template)
     oneImage=$(ls $imageDir/*.fit* | head -1)
-    
+    ###Maybe there's a lot of overscan. Due to that, we will crop with the overscan prior to anything
+    if [[ "$overscan" == "YES" ]]; then
+        image_nocroped=$oneImage
+        oneImage=$ringDir/tmpImage.fits
+        for h in $(seq 1 $num_ccd); do
+            trsec=$(eval "astfits $image_nocroped -h$h --keyvalue=$trimseckey -q")
+            trsec=${trsec//[\[\]]/}
+            oneImage_tmp=$ringDir/tmpImage_ccd"$h".fits
+            astcrop $image_nocroped -h$h --mode=img --section=$trsec -o $oneImage_tmp
+            astfits $oneImage_tmp --copy=1 -o $oneImage
+            rm $oneImage_tmp
+        done
+    fi
+        
+
     for h in $(seq 1 $num_ccd); do
         eval $(python3 $pythonScriptsPath/singleCameratoCCD_cordtransform.py $oneImage $h $x_camera $y_camera)
         base="${template%.txt}"
         out_ring=$ringDir/"$base"_ccd"$h".txt
         echo "1 $x_det $y_det 6 $radius 1 1 1 1 1" > $out_ring
     done
-
+    if [[ "$overscan" == "YES" ]]; then
+        rm $oneImage
+    fi
 }
 export -f prepareRingTemplate
 

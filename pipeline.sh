@@ -194,7 +194,7 @@ else
       cp $DIR/$commonRingDefinitionFile $DIR/"$base"_ccd"$h".txt
     else
       #We use data from night1, we in the end have data of the same camera always, and that is what matters
-      prepareRingTemplate $commonRingDefinitionFile $INDIRo/night1 $DIR
+      prepareRingTemplate $commonRingDefinitionFile $INDIRo/night1 $DIR $overscan $trimsecKey
     fi
   else
     base_first="${firstRingDefinitionFile%.txt}"
@@ -204,8 +204,8 @@ else
       cp $DIR/$secondRingDefinitionFile $DIR/"$base_second"_ccd"$h".txt
     else
       #We use data from night1, we in the end have data of the same camera always, and that is what matters
-      prepareRingTemplate $firstRingDefinitionFile $INDIRo/night1 $DIR
-      prepareRingTemplate $secondRingDefinitionFile $INDIRo/night1 $DIR
+      prepareRingTemplate $firstRingDefinitionFile $INDIRo/night1 $DIR $overscan $trimsecKey
+      prepareRingTemplate $secondRingDefinitionFile $INDIRo/night1 $DIR $overscan $trimsecKey
     fi
   fi
   echo done > $ringtempDone
@@ -458,7 +458,7 @@ oneNightPreProcessing() {
       rm $ringdir/*temp*
     done
   fi
-  
+
   ########## Creating the it1 master flat image ##########
 
   # ****** Decision note *******
