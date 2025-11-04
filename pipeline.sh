@@ -437,8 +437,11 @@ oneNightPreProcessing() {
   # We create the .fits ring image based on how the normalisation is going to be done
   ringdir=$BDIR/ring
   if ! [ -d $ringdir ]; then mkdir $ringdir; fi
+  lockfile="$ringdir"/lockfile
+  exec 200>$lockfile
+  flock -x 200
   if ! [ -f "$ringdir/ring.fits" ] && ! [ -f "$ringdir/ring_1.fits" ] && ! [ -f "$ringdir/ring_2.fits" ]; then
-
+    
     for h in $(seq 1 $num_ccd); do
       if [ "$USE_COMMON_RING" = true ]; then
         base="${commonRingDefinitionFile%.txt}"
@@ -458,7 +461,10 @@ oneNightPreProcessing() {
       rm $ringdir/*temp*
     done
   fi
-
+  flock -u 200
+  exec 200>&-
+  
+  #Parallel condition. If $ringdir/ring.fits or ring_1 or ring_2, we wait
   ########## Creating the it1 master flat image ##########
 
   # ****** Decision note *******
@@ -902,6 +908,10 @@ oneNightPreProcessing() {
   if [ -f $framesForCommonReductionDone ]; then
     echo -e "\nFrames already placed in the folder for frames prepared to common reduction"
   else
+    lockfile="$framesForCommonReductionDir/lockfile"
+    exec 200>$lockfile
+    flock -x 200
+
     initialValue=$( getHighestNumberFromFilesInFolder $framesForCommonReductionDir )
     
     for a in $(seq 1 $n_exp); do
@@ -930,6 +940,9 @@ oneNightPreProcessing() {
 
     done
     echo "done" > $framesForCommonReductionDone
+
+    flock -u 200
+    exec 200>&-
   fi
 
   # # Removing intermediate information to save space
@@ -965,7 +978,7 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
-
+#exit 0
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
