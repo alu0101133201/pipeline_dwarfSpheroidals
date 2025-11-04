@@ -1075,7 +1075,7 @@ if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
   #LBT frames are already astrometrized, so we will take advantage of that info
-  if [ "$telescope" == "LBT" ]; then
+  if [ "$telescope" == "LBT" ] || [ "$telescope" == "OSIRIS" ]; then
     cp $gaincordir/*.fits $astroimadir/
   else
     frameNames=()
