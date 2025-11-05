@@ -5,9 +5,6 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from astropy.io import fits
-from astropy.stats import sigma_clipped_stats
-from astropy.stats import sigma_clip
-
 from matplotlib.ticker import MultipleLocator
 from astropy.visualization import astropy_mpl_style
 
@@ -54,20 +51,34 @@ def calculateFreedmanBins(data, initialValue = None):
     else:
         bins = [initialValue]
 
-    binWidht = astropy.stats.freedman_bin_width(data)
+    binWidth = astropy.stats.freedman_bin_width(data)
+    if binWidth == 0 or np.isnan(binWidth):
+        binWidth = 1
+        
     while(bins[-1] <= max(data)):
-        bins.append(bins[-1] + binWidht)
+        bins.append(bins[-1] + binWidth)
 
     return(bins)
 
 def extractFactorsFromFile(file):
     starsUsed = []
-    with open(file, 'r') as f:
-        for line in f:
-            splittedLine = line.split()
-            if (len(splittedLine) == 4): # If the file has been correctly created it has 4 fields
-                starsUsed.append(float(splittedLine[-1]))
+    try:
+        with open(file, 'r') as f:
+            for line in f:
+                splittedLine = line.split()
+                if (len(splittedLine) == 4): # If the file has been correctly created it has 4 fields
+                    starsUsed.append(float(splittedLine[-1]))
+    except (OSError, ValueError) as e:
+        print(f"Error reading file {file}: {e}")
     return(np.array(starsUsed))
+
+def saveHistogram(starsUsed, myBins, outputFileName):
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    ax.set_title("Number of stars used in each frame for calibration")
+    configureAxis(ax, 'Number of Stars used', '', logScale=False)
+    ax.hist(starsUsed, bins=myBins, color="teal")
+    plt.savefig(outputFileName)
+
 
 fileWithFactors = sys.argv[1]
 outputFileName  = sys.argv[2]
@@ -76,10 +87,4 @@ setMatplotlibConf()
 
 starsUsed = extractFactorsFromFile(fileWithFactors)
 myBins = calculateFreedmanBins(starsUsed)
-
-
-fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-ax.set_title("Number of stars used in each frame for calibration")
-configureAxis(ax, 'Number of Stars used', '', logScale=False)
-ax.hist(starsUsed, bins=myBins, color="teal")
-plt.savefig(outputFileName)
+saveHistogram(starsUsed, myBins, outputFileName)

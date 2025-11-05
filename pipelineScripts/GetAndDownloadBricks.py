@@ -8,12 +8,25 @@
 # The rest of the tables can be checked in "https://datalab.noirlab.edu/query.php"
 
 import os
-import numpy as np
-from io import StringIO
-from dl import queryClient as qc
-from astropy.table import Table
+import math
 import requests
+
+import numpy as np
+
+from io import StringIO
+from astropy.io import fits
+from astropy import units as u
+from astropy.table import Table
+from astroquery.sdss import SDSS
+from dl import queryClient as qc
+from astropy import coordinates as coords
+from concurrent.futures import ThreadPoolExecutor
+
 ### Get brick names utilities ###
+
+
+
+# DECALS --------------------------------------------------------------------------------
 
 # This function retrieves the brick name to which the coordinate provided belongs
 # Arguments:
@@ -219,6 +232,8 @@ def getBlockFromBrick(brickName):
     return(brickName[:3])
 
 
+# PANSTARRS --------------------------------------------------------------------------------
+
 ##Functions for get Panstarrs images
 def getPanstarrsQuery(tra, tdec, size=3600, filters="grizy", format="fits", imagetypes="stack"):
     ps1filename="https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
@@ -241,8 +256,8 @@ def getPanstarrsQuery(tra, tdec, size=3600, filters="grizy", format="fits", imag
     return tab
 
 
-def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filters):
-    #We want panstarrs bricks of 3600 pix = 900 arcsec = 0.25deg. Field of fiew is up to now square
+def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filters,size):
+    #We want panstarrs bricks of 1000 pix = 250 arcsec = 0.07deg. Field of fiew is up to now square
     isRaList = isinstance(firstPoint, (list, np.ndarray, tuple))
     isDecList = isinstance(secondPoint, (list, np.ndarray, tuple))
     if ((not isRaList) and (not isDecList)):
@@ -255,19 +270,20 @@ def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filter
     raMin, raMax = (firstPointRa, secondPointRa) if (firstPointRa < secondPointRa) else (secondPointRa, firstPointRa)
     decMin, decMax = (firstPointDec, secondPointDec) if (firstPointDec < secondPointDec) else (secondPointDec, firstPointDec)
     dRA=raMax-raMin #Field of fiew is up to now square
-    nBricks=dRA // 0.25 #Number of bricks per row
-    if dRA % 0.25 >0:
+    size_deg=float(size)*0.25/3600
+    nBricks=dRA // size_deg #Number of bricks per row
+    if dRA % size_deg >0:
         nBricks+=1
-    overlap_factor=(0.25*nBricks-dRA)/(nBricks-1) #In a world where dRA//0.25!=0 we need to overlap in order to end in the raMax
+    overlap_factor=(size_deg*nBricks-dRA)/(nBricks-1) #In a world where dRA//0.25!=0 we need to overlap in order to end in the raMax
     tra=[]; tdec=[]
     for brick in range(int(nBricks)):
         #initial position will be raMin or decMin+(0.25-overlap_factor)*brick
-        iniRa=raMin+(0.25-overlap_factor)*brick
+        iniRa=raMin+(size_deg-overlap_factor)*brick
         for brick in range(int(nBricks)):
-            iniDec=decMin+(0.25-overlap_factor)*brick
+            iniDec=decMin+(size_deg-overlap_factor)*brick
         #We want to store the central position: ini+0.25/2=ini+0.125
-            tra.append(iniRa+0.125); tdec.append(iniDec+0.125)
-    tab_panstarrs=getPanstarrsQuery(tra,tdec,filters="".join(filters))
+            tra.append(iniRa+size_deg/2); tdec.append(iniDec+size_deg/2)
+    tab_panstarrs=getPanstarrsQuery(tra,tdec,size,filters="".join(filters))
     bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
     bricksRA=[ra for ra in tab_panstarrs['ra']]
     bricksDec=[dec for dec in tab_panstarrs['dec']]
@@ -278,10 +294,10 @@ def getPanstarrsBricksFromRegionDefinedByTwoPoints(firstPoint,secondPoint,filter
     
     return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
 
-def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters):
+def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters,size):
     if isinstance(raCen,np.floating):
         raCen=[raCen]; decCen=[decCen]
-    tab_panstarrs=getPanstarrsQuery(raCen,decCen,filters="".join(filters))
+    tab_panstarrs=getPanstarrsQuery(raCen,decCen,size,filters="".join(filters))
     bricks_fullNames=[fname for fname in tab_panstarrs['filename']]
     bricksRA=[ra for ra in tab_panstarrs['ra']]
     bricksDec=[dec for dec in tab_panstarrs['dec']]
@@ -293,10 +309,10 @@ def getPanstarrsBricksFromCentralPoint(raCen,decCen,filters):
     return(np.array(bricks_fullNames),np.array(bricksRA),np.array(bricksDec),np.array(bricksNames))
 
 
-def downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDEC,destinationFolder,overwrite=True):
+def downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDEC,destinationFolder,size,overwrite=True):
     
     fitscut="https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
-    size=3600
+    
     urlbase="{}?size={}&format={}".format(fitscut,size,"fits")
     url="{}&ra={}&dec={}&red={}".format(urlbase,brickRA,brickDEC,brick_fullName)
     #r=requests.get(url)
@@ -307,3 +323,95 @@ def downloadBrickPanstarrs(brick_fullName,brickName,brickRA,brickDEC,destination
     except:
         raise Exception(f"Unable to download brick {brickName}")
     return()
+
+
+
+# SDSS --------------------------------------------------------------------------------
+
+def querySDSSbricks(center_ra, center_dec, radius_deg):  
+    sql = f"""
+    SELECT field, ra, dec
+    FROM Field
+    WHERE
+        ACOS(
+            SIN(RADIANS(dec)) * SIN(RADIANS({center_dec})) +
+            COS(RADIANS(dec)) * COS(RADIANS({center_dec})) *
+            COS(RADIANS(ra - {center_ra}))
+        ) < RADIANS({radius_deg})
+    """
+    result = SDSS.query_sql(sql)
+    return result
+
+
+def download_field_image(field_id, ra, dec, downloadDestination, band='r', data_release='DR17'):
+    position = coords.SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
+    SDSS.SDSS_MIRROR = f"http://skyserver.sdss.org/{data_release.lower()}"
+    
+    try:
+        images = SDSS.get_images(coordinates=position, radius=0.05 * u.deg, band=band)
+    except Exception as e:
+        print(f"SDSS query failed for field {field_id} at RA={ra}, Dec={dec}: {e}")
+        return
+    
+    if not images:
+        print(f"No image found for field {field_id} at RA={ra}, Dec={dec}")
+        return
+    
+    filename = f"sdss_field{field_id}_{data_release.lower()}.{band}.fits"
+    images[0].writeto(downloadDestination + "/" + filename, overwrite=True)
+    print(f"Saved field {field_id} image to {filename}")
+
+
+def download_fields_mosaic(center_ra, center_dec, radius_deg, downloadDestination, bands, data_release=17):
+    bricks = querySDSSbricks(center_ra, center_dec, radius_deg)
+
+    def download_task(row, band):
+        field_id = row['field']
+        ra = row['ra']
+        dec = row['dec']
+        download_field_image(field_id, ra, dec, downloadDestination, band=band, data_release=f"DR{data_release}")
+        return f"sdss_field{field_id}_dr{data_release}.{band}", ra, dec
+
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(download_task, row, band) for band in bands for row in bricks]
+        results = [f.result() for f in futures]
+
+    names, ras, decs = zip(*results) if results else ([], [], [])
+    return np.array(names), np.array(ras), np.array(decs)
+
+# This function is needed because even if we are querying to SDSS database for the different fields in the area,
+# some of these fields (with different identifiers) download exactly the same brick. So we download everything and
+# remove the duplicates (I've no time for thinking/doing a cleaner solution)
+def remove_duplicate_bricks(download_folder, tolerance_arcsec=1.0):
+    tolerance_deg = tolerance_arcsec / 3600.0
+
+    coord_map = {}
+    fits_files = [f for f in os.listdir(download_folder) if f.endswith('.fits')]
+
+    for filename in fits_files:
+        filepath = os.path.join(download_folder, filename)
+        try:
+            with fits.open(filepath) as hdul:
+                header = hdul[0].header
+                ra = header.get('RA')  # RA center
+                dec = header.get('DEC') # Dec center
+                if ra is None or dec is None:
+                    print(f"Warning: No RA/DEC in {filename}, skipping.")
+                    continue
+        except Exception as e:
+            print(f"Error reading {filename}: {e}")
+            continue
+
+        # Remove duplicates
+        duplicate_found = False
+        for existing_ra, existing_dec in coord_map.keys():
+            delta_ra = abs(existing_ra - ra) * 3600.0  # in arcsec (approx)
+            delta_dec = abs(existing_dec - dec) * 3600.0
+            if delta_ra < tolerance_arcsec and delta_dec < tolerance_arcsec:
+                print(f"Duplicate detected: {filename} matches {coord_map[(existing_ra, existing_dec)]}")
+                os.remove(filepath)
+                duplicate_found = True
+                break
+
+        if not duplicate_found:
+            coord_map[(ra, dec)] = filename

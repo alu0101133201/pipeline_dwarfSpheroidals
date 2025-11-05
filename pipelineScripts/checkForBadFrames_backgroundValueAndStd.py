@@ -65,8 +65,8 @@ def getBadAstrometrisedFrames(file):
 
 
 def getFilenameWithPattern(folderPath, n):
-    pattern1 = re.compile(rf"\bf{n}\b.*\.fits\b", re.IGNORECASE)  # Match "f<number>" as a whole word
-    pattern2 = re.compile(rf"\b{n}\b.*\.fits\b", re.IGNORECASE)  # Match "<number>" as a whole word
+    pattern1 = re.compile(rf"\bf{n}\b.*\.fits\b", re.IGNORECASE) 
+    pattern2 = re.compile(rf"\b{n}\b.*\.fits\b", re.IGNORECASE)  
 
     for filename in os.listdir(folderPath):
         if pattern1.search(filename):
@@ -143,8 +143,8 @@ def saveHistogram(values, badAstrometrisedIndices, imageName, title, labelX):
     max_bin_height = counts.max() + 5
     ax.set_ylim(0, max_bin_height)
 
-    if (len(badAstrometrisedIndices) != 0):
-        ax.hist(values[badAstrometrisedIndices], bins=myBins, color='blue', label='Rejected due to Astrometry')
+    # if (len(badAstrometrisedIndices) != 0):
+    #     ax.hist(values[badAstrometrisedIndices], bins=myBins, color='blue', label='Rejected due to Astrometry')
 
     ax.legend(fontsize=18)
     plt.savefig(imageName)
@@ -187,7 +187,6 @@ def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     frameNumber = obtainNumberFromFrame(currentFile)
     fitsFileNamePattern = getFilenameWithPattern(airMassesFolder, frameNumber)
     fitsFilePath = os.path.join(airMassesFolder, fitsFileNamePattern)
-
     airMass = obtainKeyWordFromFits(fitsFilePath, airMassKeyWord)
     return(airMass)
 
@@ -244,20 +243,20 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
 
-    astrometryRejectedValues        = [x for x in values[astrometryRejectedIndices]]  if len(astrometryRejectedIndices) > 0 else []
-    astrometryRejectedFiles         = [x for x in files[astrometryRejectedIndices]]   if len(astrometryRejectedIndices) > 0 else []
+    # astrometryRejectedValues        = [x for x in values[astrometryRejectedIndices]]  if len(astrometryRejectedIndices) > 0 else []
+    # astrometryRejectedFiles         = [x for x in files[astrometryRejectedIndices]]   if len(astrometryRejectedIndices) > 0 else []
 
-    for j in range(len(astrometryRejectedFiles)):
-        match=re.search(pattern, astrometryRejectedFiles[j])
-        frame=match.group(1)
-        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-        date=obtainKeyWordFromFits(file,'DATE-OBS')
-        air=obtainKeyWordFromFits(file,'AIRMASS')
-        date_ok=datetime.fromisoformat(date)
-        ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
-        ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
-        if j==0:
-            ax[0].legend(fontsize=18)
+    # for j in range(len(astrometryRejectedFiles)):
+    #     match=re.search(pattern, astrometryRejectedFiles[j])
+    #     frame=match.group(1)
+    #     file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+    #     date=obtainKeyWordFromFits(file,'DATE-OBS')
+    #     air=obtainKeyWordFromFits(file,'AIRMASS')
+    #     date_ok=datetime.fromisoformat(date)
+    #     # ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
+    #     # ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
+    #     if j==0:
+    #         ax[0].legend(fontsize=18)
 
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
@@ -303,21 +302,15 @@ def saveValuesVSStats(values, STD, Skew, kurto, backgroundRejectedIndices, stdRe
         ax[2].scatter(negKurto_bckvals,negKurto_vals,marker='s',s=120,edgecolor='k',color='lightsalmon',label='Negative values')
         ax[2].legend(fontsize=20)
     
-
-    #if (len(backgroundRejectedIndices) != 0):
-    #    ax[0].scatter(np.sqrt(values)[backgroundRejectedIndices], STD[backgroundRejectedIndices], s=120, marker="X", edgecolor='k',color='darkred')
-    #    ax[1].scatter(values[backgroundRejectedIndices], np.abs(Skew[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred', label="Rejected by background value")
-    #    ax[2].scatter(values[backgroundRejectedIndices], np.abs(kurto[backgroundRejectedIndices]), s=120, marker="X", edgecolor='k',color='darkred')
-        
     if (len(stdRejectedIndices) != 0):
         ax[0].scatter(np.sqrt(values)[stdRejectedIndices], STD[stdRejectedIndices], s=120, marker="D", edgecolor='k',color='gold')
         ax[1].scatter(values[stdRejectedIndices], np.abs(Skew[stdRejectedIndices]), s=120, marker="D", edgecolor='k',color='gold', label="Rejected by background std")
         ax[2].scatter(values[stdRejectedIndices], np.abs(kurto[stdRejectedIndices]), s=120, marker="D", edgecolor='k',color='gold')
 
-    if (len(badAstrometrisedIndices) != 0):
-        ax[0].scatter(np.sqrt(values)[badAstrometrisedIndices], STD[badAstrometrisedIndices], s=350, lw=1.5, edgecolor='blue', facecolors='none')
-        ax[1].scatter(values[badAstrometrisedIndices], np.abs(Skew[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none', label="Rejected by astrometry")
-        ax[2].scatter(values[badAstrometrisedIndices], np.abs(kurto[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none')
+    # if (len(badAstrometrisedIndices) != 0):
+    #     ax[0].scatter(np.sqrt(values)[badAstrometrisedIndices], STD[badAstrometrisedIndices], s=350, lw=1.5, edgecolor='blue', facecolors='none')
+    #     ax[1].scatter(values[badAstrometrisedIndices], np.abs(Skew[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none', label="Rejected by astrometry")
+    #     ax[2].scatter(values[badAstrometrisedIndices], np.abs(kurto[badAstrometrisedIndices]), s=350, lw=1.5, edgecolor='blue', facecolors='none')
 
     ax[1].legend(fontsize=20)
     plt.tight_layout()
@@ -334,6 +327,14 @@ def getIndicesOfFiles(files, filesNames):
                 indices.append(j)
     return(np.array(indices))
 
+def writeMetricToFile(outputPath, fileNames, values):
+    if (len(fileNames) != len(values)):
+        raise ValueError(f"Length mismatch: {len(fileNames)} filenames and {len(values)} values")
+    
+    with open(outputPath, 'w') as file:
+        for name, val in zip(fileNames, values):
+            file.write(f"{name} {val}\n")
+
 
 HDU_TO_FIND_AIRMASS = 1
 
@@ -342,15 +343,12 @@ folderWithFramesWithAirmasses = sys.argv[2] # The airmasses are in the header of
 airMassKeyWord                = sys.argv[3]
 outputFolder                  = sys.argv[4]
 
-
-
 setMatplotlibConf()
 
 # 0.- Get frames identified as candidates for rejection in previous step (at this point, only astrometrisation)
 basAstrometrisedFile = outputFolder + "/identifiedBadFrames_astrometry.txt"
 badAstrometrisedFrames = getBadAstrometrisedFrames(basAstrometrisedFile)
 badAstrometrisedFrames = [folderWithSkyEstimations + "/entirecamera_" + x[:-1] + ".txt" for x in badAstrometrisedFrames]
-
 
 # 1.- Obtain the normalised background values and std values ------------------
 files = []
@@ -371,32 +369,20 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
     backgroundSkews.append(currentSkew)
     backgroundKurtos.append(currentKurto)
 
-
-
 files = np.array(files)
 originalBackgroundValues   = np.array(originalBackgroundValues)
 normalisedBackgroundValues = np.array(normalisedBackgroundValues)
 backgroundStds             = np.array(backgroundStds)
 backgroundSkews            = np.array(backgroundSkews)
 backgroundKurtos           = np.array(backgroundKurtos)
-print("\n\n")
 
-with open(outputFolder + "/stdValues.dat", 'w') as file:
-    for i in range(len(backgroundStds)):
-        file.write(files[i] + " " + str(backgroundStds[i]) + '\n')
-
-with open(outputFolder + "/skewnessValues.dat", 'w') as file:
-    for i in range(len(backgroundSkews)):
-        file.write(files[i] + " " + str(backgroundSkews[i]) + '\n')
-
-with open(outputFolder + "/kurtosisValues.dat", 'w') as file:
-    for i in range(len(backgroundKurtos)):
-        file.write(files[i] + " " + str(backgroundKurtos[i]) + '\n')
+writeMetricToFile(outputFolder + "/stdValues.dat", files, backgroundStds)
+writeMetricToFile(outputFolder + "/skewnessValues.dat", files, backgroundSkews)
+writeMetricToFile(outputFolder + "/kurtosisValues.dat", files, backgroundKurtos)
 
 badAstrometrisedIndices   = getIndicesOfFiles(files, badAstrometrisedFrames)
 
-
-# Plots of parameters as a function of time
+# 2.- Plots 
 saveParameterEvolution(files, originalBackgroundValues, "Background", outputFolder+"/backgroundEvolution_original.png", badAstrometrisedIndices)
 saveParameterEvolution(files, normalisedBackgroundValues, "Background", outputFolder+"/backgroundEvolution_normalised.png", badAstrometrisedIndices)
 saveParameterEvolution(files, backgroundStds, "STD", outputFolder+"/stdEvolution.png", badAstrometrisedIndices)

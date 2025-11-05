@@ -61,6 +61,7 @@ columnWithYCoordPx  = int(sys.argv[8])
 columnWithXCoordWCS = int(sys.argv[9])
 columnWithYCoordWCS = int(sys.argv[10])
 
+
 imageData, shape, wcs = getImageData(image, dataHdu)
 
 x, y = getCoordinatesFromCatalogue(catalogue, columnWithXCoordPx, columnWithYCoordPx)
@@ -69,6 +70,9 @@ z = np.array([(x[i], y[i]) for i in range(len(x))])
 ra, dec = getCoordinatesFromCatalogue(catalogue, columnWithXCoordWCS, columnWithYCoordWCS)
 zCoord = np.array([(ra[i], dec[i]) for i in range(len(x))])
 
+if len(x) == 0 or len(y) == 0 or len(ra) == 0 or len(dec) == 0:
+    writeDataToCatalogue(output, [], x, y, ra, dec, [], [])
+    exit()
 
 sigmaClip = SigmaClip(sigma=3.0, maxiters=3)
 innerAnnulus = 3*aperture_radius_px

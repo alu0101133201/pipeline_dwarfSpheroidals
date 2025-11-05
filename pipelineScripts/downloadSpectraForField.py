@@ -105,17 +105,13 @@ dec         = float(sys.argv[4])
 sizeOfField = float(sys.argv[5])
 survey      = sys.argv[6]
 
-
 SPECTRA_DIR = spectraDir
-
 halfSizeOfFild = sizeOfField / 2
 
 raMin  = ra - halfSizeOfFild
 raMax  = ra + halfSizeOfFild
 decMin = dec - halfSizeOfFild
 decMax = dec + halfSizeOfFild
-
-
 
 if (survey == "SDSS"):
     downloadAllSDSSSpectra(mosaicDir, raMin, raMax, decMin, decMax)
