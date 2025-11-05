@@ -249,9 +249,9 @@ oneNightPreProcessing() {
         checkIfExist_DATEOBS $DATEOBS
         
 	      if [[ $dateHeaderKey =~ ^MJD ]]; then
-          unixTimeInSeconds=$(astarithmetic $DATEOBS 40587 - 86400 x -q)
+          unixTimeInSeconds=$(astarithmetic $DATEOBS 40587 - 86400 x -q | awk '{printf "%.0f", $1}')
           unixTimeInSeconds=$(printf "%.0f" "$unixTimeInSeconds")
-          
+				
 	      else
 	        ## MACOS does not support -d in date, so it is better to use coreutils:gdata
 	        if [[ $OSTYPE == 'darwin'* ]]; then
@@ -978,7 +978,6 @@ for currentNight in $(seq 1 $numberOfNights); do
 done
 printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
 
-#exit 0
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
