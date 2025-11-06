@@ -1506,7 +1506,7 @@ if ! [ -f $BDIR/commonCalibrationFactor_it$iteration.txt ]; then
     computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
   fi
 fi
-exit 0
+#exit 0
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
@@ -1528,7 +1528,7 @@ else
   done
   echo "done" > $backgroundBrightnessDone
 fi 
-exit 0
+#exit 0
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
