@@ -222,7 +222,7 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
     time = np.array(time)
 
 
-    with open(destinationFolder + "/cfactors.txt", "w") as file:
+    with open(destinationFolder_h + "/cfactors.txt", "w") as file:
         for a, b, c in zip(time, airMass, cfactors):
             file.write(f"{a}\t{b}\t{c}\n")  # Tab-separated columns
 
@@ -580,15 +580,15 @@ rejectedFrames_CalibrationFactor=np.array([])
 if (useCommonCalibrationFactorFlag):
     with open(commonCalibrationFactorFile) as f:
         fileContent = f.read().split()
-        commonCalibrationFactorValue = float(fileContent[0])
-        calibrationFactorsStd = float(fileContent[1])
+        commonCalibrationFactorValue = float(fileContent[2*h-2])
+        calibrationFactorsStd = float(fileContent[2*h-1])
 
         # 3.5.-  Identify frames that are outside the Nsigma limit of the dist
         numberOfSigma = 3
         badFilesCalibrationFactor, _ = identifyBadFramesBasedOnCalibrationFactors(totalCalibrationFactors, commonCalibrationFactorValue, calibrationFactorsStd, numberOfSigma)
 
         pattern = r"\d+"
-        with open(destinationFolder + "/" + outputFileCalibrationFactors, 'w') as file:
+        with open(destinationFolder_h + "/" + outputFileCalibrationFactors, 'w') as file:
             for fileName in badFilesCalibrationFactor:
                 match = re.search(pattern, fileName)
                 result = match.group(0)
@@ -608,13 +608,13 @@ magnitudesPerArcSecSqOriginal = countsToSurfaceBrightnessUnits(valuesCalibratedO
 magnitudesPerArcSecSqNormalised = countsToSurfaceBrightnessUnits(valuesCalibratedNormalised, arcsecPerPx)
 
 # 5.- Saving background magnitudes
-with open(destinationFolder + "/backgroundMagnitudes.dat", 'w') as f:
+with open(destinationFolder_h + "/backgroundMagnitudes.dat", 'w') as f:
     for i in range(len(magnitudesPerArcSecSqNormalised)):
         f.write(str(files[i]) + " " + str(magnitudesPerArcSecSqNormalised[i]) + ("\n"))
 badFilesBackground, _, _ = identifyBadFramesBasedOnBackgroundBrightness(files, magnitudesPerArcSecSqNormalised, maxmimumBackgroundBrightness)
 
 pattern = r"\d+"
-with open(destinationFolder + "/" + outputFileBackground, 'w') as file:
+with open(destinationFolder_h + "/" + outputFileBackground, 'w') as file:
     for fileName in badFilesBackground:
         match = re.search(pattern, fileName)
         result = match.group(0)

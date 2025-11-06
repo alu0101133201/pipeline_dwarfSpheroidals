@@ -1273,22 +1273,31 @@ export iterationsForStdSigClip
 
 # Checking and removing bad frames based on the FWHM value ------
 fwhmFolder=$BDIR/seeing_values
+fwhmDone=$fwhmFolder/done.txt
 badFilesWarningsFile=identifiedBadFrames_fwhm.txt
 badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
 if [ -f $badFilesWarningsDone ]; then
     echo -e "\nbadFiles warning already done\n"
 else
   if ! [ -d $fwhmFolder ]; then mkdir $fwhmFolder; fi
-  imagesToFWHM=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-    base="$a".fits
-    imagesToFWHM+=("$base")
-  done
-  methodToUse="sextractor"
-  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 0 $methodToUse $tileSize "NO"
+  if  [ -f $fwhmDone ]; then
+    echo -e "\nFWHM already computed"
+  else
+    imagesToFWHM=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+      base="$a".fits
+      imagesToFWHM+=("$base")
+    done
+    methodToUse="sextractor"
+    printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 0 $methodToUse $tileSize "NO"
+    echo done > $fwhmDone
+  fi
   
   for h in $(seq 1 $num_ccd); do  
     python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $maximumSeeing $framesForCommonReductionDir $h $airMassKeyWord $dateHeaderKey $pixelScale
+    if ! [ -f $diagnosis_and_badFilesDir/CCD"$h"/$badFilesWarningFile ]; then
+      touch $diagnosis_and_badFilesDir/CCD"$h"/$badFilesWarningFile
+    fi
   done
   echo done > $badFilesWarningsDone
 fi
@@ -1518,7 +1527,7 @@ else
   done
   echo "done" > $backgroundBrightnessDone
 fi 
-
+#exit 0
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration

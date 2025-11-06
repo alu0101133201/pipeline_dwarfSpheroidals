@@ -971,6 +971,18 @@ runNoiseChiselOnFrame() {
             astwarp $imageToUse -h$h --scale=1/$blockScale --numthreads=$num_threads -o $wFile
             astnoisechisel $wFile -h1 $noiseChiselParams --numthreads=$num_threads -o $wMask
             astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=$h --numthreads=$num_threads -o $wMask2
+            warp_status=$?
+            if [ $warp_status -ne 0 ]; then
+                wMaskTmp=$outputDir/mkWTmp_$baseName
+                NAXIS1=$(gethead $imageToUse -x $h NAXIS1)
+                NAXIS2=$(gethead $imageToUse -x $h NAXIS2)
+                echo "astwarp failed on $baseName (exit code $warp_status)" >&2
+                echo "This happens when images are not astrometrised. The second solution is to warp and then crop to the desired size"
+                astwarp $wMask -h1 --scale=$blockScale --gridhdu=1 --numthreads=$num_threads -o$wMaskTmp
+                astcrop $wMaskTmp --section="1:$NAXIS1,1:$NAXIS2" --mode=img -o $wMask2
+
+                rm $wMaskTmp
+            fi
             astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o $outputDir/temp_"$baseName"
             rm $wFile $wMask $wMask2
         fi
@@ -3699,7 +3711,7 @@ prepareRingTemplate(){
     radius=$(awk '{print $5}' $template)
     oneImage=$(ls $imageDir/*.fit* | head -1)
     ###Maybe there's a lot of overscan. Due to that, we will crop with the overscan prior to anything
-    if [[ "$overscan" == "YES" ]]; then
+    if [[ "$overscan" == "YES" ]] && [[ "$telescope" != "INTWFC" ]]; then
         image_nocroped=$oneImage
         oneImage=$ringDir/tmpImage.fits
         for h in $(seq 1 $num_ccd); do
@@ -3711,7 +3723,7 @@ prepareRingTemplate(){
             rm $oneImage_tmp
         done
     fi
-        
+      
 
     for h in $(seq 1 $num_ccd); do
         eval $(python3 $pythonScriptsPath/singleCameratoCCD_cordtransform.py $oneImage $h $x_camera $y_camera)

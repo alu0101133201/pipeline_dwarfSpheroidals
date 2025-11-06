@@ -118,7 +118,7 @@ def saveHistogram(allData, median, std, fwhmRejectedIndices, astrometryRejectedI
     plt.savefig(imageName)
     return()
     
-def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices,  imageName,airKey,dateKey):
+def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices,  imageName,airKey,dateKey,fwhmToReject):
     
     fig, ax = plt.subplots(2, 1, figsize=(20,10))
     configureAxis(ax[0], 'UTC', 'FWHM (arcsec)',logScale=False)
@@ -177,7 +177,8 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices,  imag
         ax[0].scatter(date_ok, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry' if (j==0) else "")
         ax[1].scatter(air, astrometryRejectedValues[j],facecolors='none', lw=1.5, edgecolor='blue',color='blue',s=350,zorder=6,label='Rejected by astrometry'  if (j==0) else "")
         
-    
+    ax[0].axhline(fwhmToReject,0,1,linestyle='--',linewidth=1,color='k',label='Rejection threshold')
+    ax[1].axhline(fwhmToReject,0,1,linestyle='--',linewidth=1,color='k',label='Rejection threshold')
     ax[0].legend(fontsize=15, loc="upper right")
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
@@ -265,8 +266,9 @@ rejectedAstrometrisedFrames = getRejectedFramesFromFile(rejectedAtrometryFile)
 # 1.- Obtain the FWHM values ------------------------
 fwhmValues = np.array([])
 for currentFile in glob.glob(folderWithFWHM + "/fwhm_*.txt"):
-    print(currentFile)
+    
     fwhmValue = retrieveFWHMValues(currentFile,h,arcsecPerPix)
+    
     if (not math.isnan(fwhmValue)):
         fwhmValues = np.concatenate((fwhmValues, [fwhmValue]))
 
@@ -278,7 +280,7 @@ allData.to_csv(outputFolder_ccd+"/FileFWHMtable.csv")
 fwhmRejectedIndices            = getIndicesOfFiles(allData, badFilesFWHM)
 astrometryRejectedIndices      = getIndicesOfFiles(allData, rejectedAstrometrisedFrames)
 
-saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices,  outputFolder_ccd+"/fwhmEvol.png",airMassKey,dateHeaderKey)
+saveFWHMevol(allData, fwhmRejectedIndices, astrometryRejectedIndices,  outputFolder_ccd+"/fwhmEvol.png",airMassKey,dateHeaderKey,fwhmToReject)
 
 pattern = r"\d+"
 with open(outputFolder_ccd + "/" + outputFile, 'w') as file:
