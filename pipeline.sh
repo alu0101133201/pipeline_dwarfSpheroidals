@@ -1434,7 +1434,7 @@ prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $apertureP
                                             $pixelScale $sizeOfOurFieldDegrees $catName_gaia $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
                                             $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
 
-
+#exit 0
 # Calibration of coadd prephot
 if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
   num_ccd_old=$num_ccd
@@ -1480,7 +1480,7 @@ writeTimeOfStepToFile "Computing calibration factors for individual frames" $fil
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
-
+#exit 0
 
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1506,7 +1506,7 @@ if ! [ -f $BDIR/commonCalibrationFactor_it$iteration.txt ]; then
     computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
   fi
 fi
-
+exit 0
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
 if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then

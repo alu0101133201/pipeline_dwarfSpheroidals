@@ -2143,7 +2143,7 @@ prepareCalibrationData() {
                                                 $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
                                                 $calibrationBrightLimit $calibrationFaintLimit $sizeOfBrick
         fi
-        
+        #exit 0
         echo done > $mosaicDone
     fi
 }
@@ -2325,14 +2325,18 @@ prepareSurveyDataForPhotometricCalibration() {
     performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration_g $selectedSurveyStarsDir"ForGAIACalibration_g" $aperturePhotDir"ForGAIACalibration_g" "g" $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDir_r "$selectedSurveyStarsDir"_r "$aperturePhotDir"_r "r" $survey $numberOfApertureForRecuperateGAIA
     performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration_r $selectedSurveyStarsDir"ForGAIACalibration_r" $aperturePhotDir"ForGAIACalibration_r" "r" $survey $numberOfApertureForRecuperateGAIA
+    
+    #Remove those files where there is no match between catalogues
+    python3 $pythonScriptsPath/checkApertureCatalogues.py "$aperturePhotDir"_g "$aperturePhotDir"_r $surveyImagesDir_g $surveyImagesDir_r g r
     if [[ ("$filter" == "g") || ("$filter" == "r") ]]; then
         [ -L $aperturePhotDir ] || ln -s "$aperturePhotDir"_$filter $aperturePhotDir
         [ -L $aperturePhotDir"ForGAIACalibration" ] || ln -s $aperturePhotDir"ForGAIACalibration_"$filter $aperturePhotDir"ForGAIACalibration"
     else
         performAperturePhotometryToBricks $surveyImagesDir $selectedSurveyStarsDir $aperturePhotDir $filter $survey $numberOfApertureForRecuperateGAIA
         performAperturePhotometryToBricks $surveyImagesDirForGaiaCalibration $selectedSurveyStarsDir"ForGAIACalibration" $aperturePhotDir"ForGAIACalibration" $filter $survey $numberOfApertureForRecuperateGAIA
+        python3 $pythonScriptsPath/checkApertureCatalogues.py "$aperturePhotDir"_g $aperturePhotDir $surveyImagesDir_g $surveyImagesDir g "$filter"
     fi
-    
+    #exit 0
     # As mentioned in other comments and in the README, our reference framework is gaia, so I compute any offset to the 
     # photometry of PANSTARRS and GAIA magnitudes (from spectra) and correct it
     spectraDir=$mosaicDir/gaiaSpectra
@@ -2364,7 +2368,7 @@ prepareSurveyDataForPhotometricCalibration() {
 
     computeColoursAndAddThemToCatalogues $aperturePhotDir $aperturePhotDir"_g" $aperturePhotDir"_r" $filter
     applyColourcorrectionToAllCatalogues $aperturePhotDir "$filterCorrectionCoeff"
-
+     
     ##Decision note: I'm gonna create multiple frame_bricks_association_ccd$h.txt for each ccd, i think it will be easier
     for imagesHdu in $(seq 1 $num_ccd); do
     
@@ -2386,7 +2390,7 @@ applyColourcorrectionToAllCatalogues() {
         echo -e "\n\tThe magnitude and flux correction based on the flux already applied\n"
     else
         parallel applyColourcorrectionToSingleCatalogue ::: $catDir/*.cat ::: "$filterCorrectionCoeff"
-
+        
         # for i in $catDir/*.cat; do
         #     applyColourcorrectionToSingleCatalogue $i "$filterCorrectionCoeff"
         # done
@@ -2408,7 +2412,7 @@ applyColourcorrectionToSingleCatalogue() {
         colour=$(echo "$line" | awk '{if (NF>=8) print $8; else print "nan"}')
         flux=$(echo "$line" | awk '{print $7}')
         magnitude=$(echo "$line" | awk '{print $6}')
-
+        
         if [[ "$colour" == "nan" || -z "$colour" ]]; then
             echo "$line"
         else
@@ -2416,6 +2420,7 @@ applyColourcorrectionToSingleCatalogue() {
             factorToApply=$( awk -v magCorr="$magnitudeCorrection" 'BEGIN {print 10^(-magCorr/2.5)}' )
             newMag=$( awk -v currentMag="$magnitude" -v magCorr="$magnitudeCorrection" 'BEGIN {print currentMag - magCorr}')
             newFlux=$( awk -v currentFlux="$flux" -v factor="$factorToApply" 'BEGIN {print currentFlux / factor}')
+            
             new_line=$(echo "$line" | awk -v newMag="$newMag" -v newFlux="$newFlux" '{
                         $6 = newMag;  # Replace magnitude column
                         $7 = newFlux
@@ -2434,7 +2439,8 @@ getColourCorrectionFromPolynomial() {
     local x=$2
     local power=0
     local result=0
-
+    
+    LC_NUMERIC=C
     IFS=',' read -r -a coeffs_array <<< "$coeffs"
     x=$(printf "%f" "$x") # This is needed in case $x is given for transforming $x from scientific notation to normal, so bc can handle it
 
@@ -2462,11 +2468,13 @@ computeColoursAndAddThemToCatalogues() {
     else
         for i in "$cataloguesDir_g"/*.g.cat; do
             fileName=$( basename "$i" .g.cat )
-
+            
             if [ ! -f "$cataloguesToUseDir/$fileName.$filt.cat" ] || [ ! -f "$cataloguesDir_r/$fileName.r.cat" ]; then
+                echo $fileName
                 errorCode=999
                 echo "ERROR - Catalogues in the different filters for calibration are not equal (missing a catalogue in some filter). We should never get there. Exiting with errorCode $errorCode"
-                exit 999
+                #exit 999
+                continue
             fi
 
             fileNameInitial=$cataloguesToUseDir/$fileName.$filt.cat
@@ -2852,14 +2860,24 @@ combineCatalogues() {
     #     asttablePrompt+=" --catrowfile=$cataloguesDir/$brick.cat"
     # done
 
-    firstBrick=${bricks[0]}
-   
-    asttablePrompt="asttable $cataloguesDir/$firstBrick.cat -o$outputDir/$catalogueName.cat"
-    
+    firstBrick=""
+    asttablePrompt="asttable"
 
-    remainingBricks=$(echo "$bricks" | cut -d' ' -f2-)  # Get the rest of the bricks
-    for brick in "${bricks[@]}"; do  # Iterate over remaining bricks
-        asttablePrompt+=" --catrowfile=$cataloguesDir/$brick.cat"
+    for brick in "${bricks[@]}"; do
+        catFile="$cataloguesDir/$brick.cat"
+        
+        # When doing the wholePhtometryCatalog, the check for -gt 8 is because there are 8 header lines. If the table is empty for some reason we
+        # get core dumped... So I just skip it if its empty
+        if [ -s "$catFile" ] && [ "$(wc -l < "$catFile")" -gt 8 ]; then
+            if [ -z "$firstBrick" ]; then
+                firstBrick="$brick"
+                asttablePrompt+=" $catFile -o$outputDir/$catalogueName.cat"
+            else
+                asttablePrompt+=" --catrowfile=$catFile"
+            fi
+        else
+            echo "Skipping empty catalogue: $catFile"
+        fi
     done
 
     $asttablePrompt
