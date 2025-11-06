@@ -961,6 +961,7 @@ maskVignettingOnImages() {
     propagateKeyword $i $pointingDEC $out
 }
 export -f maskVignettingOnImages
+
 runNoiseChiselOnFrame() {
     local baseName=$1
     local inputFileDir=$2
@@ -987,13 +988,15 @@ runNoiseChiselOnFrame() {
         warp_status=$?
         if [ $warp_status -ne 0 ]; then
             wMaskTmp=$outputDir/mkWTmp_$baseName
+            wMaskTmp2=$outputDir/mkWTmp2_$baseName
 
             echo "astwarp failed on $baseName (exit code $warp_status)" >&2
             echo "This happens when images are not astrometrised. The second solution is to warp and then crop to the desired size"
             astwarp $wMask -h1 --scale=$blockScale --gridhdu=1 --numthreads=$num_threads -o$wMaskTmp
-            astcrop $wMaskTmp --section="1:$detectorWidth,1:$detectorHeight" --mode=img -o $wMask2
+            astarithmetic $wMaskTmp -h1 set-i i i isblank 1 where -o $wMaskTmp2
+            astcrop $wMaskTmp2 --section="1:$detectorWidth,1:$detectorHeight" --mode=img -o $wMask2
 
-            rm $wMaskTmp
+            rm $wMaskTmp $wMaskTmp2
         fi
         astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o$output
         rm $wFile $wMask $wMask2

@@ -675,6 +675,7 @@ oneNightPreProcessing() {
     echo done > $noiseit3WholeNightdone 
   fi
 
+
  
   # Mask the images (running flat)
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
@@ -882,6 +883,7 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
+
 
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
@@ -1264,7 +1266,6 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     computeExposureMap $wdir $exposuremapDir $exposuremapdone
   fi
 fi
-
 
 
 #### PHOTOMETRIC CALIBRATION  ####
