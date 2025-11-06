@@ -1252,6 +1252,7 @@ else
   fi
   for h in $(seq 1 $num_ccd); do
     diagnosis_and_badFilesDir_ccd=$diagnosis_and_badFilesDir/CCD"$h"
+    if ! [ -d $diagnosis_and_badFilesDir_ccd ]; then mkdir $diagnosis_and_badFilesDir_ccd; fi
     python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $framesForCommonReductionDir $airMassKeyWord $diagnosis_and_badFilesDir_ccd $h $dateHeaderKey
   done
   echo done > $badFilesWarningsDone
@@ -1295,7 +1296,7 @@ else
   
   for h in $(seq 1 $num_ccd); do  
     python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $maximumSeeing $framesForCommonReductionDir $h $airMassKeyWord $dateHeaderKey $pixelScale
-    if ! [ -f $diagnosis_and_badFilesDir/CCD"$h"/$badFilesWarningFile ]; then
+    if ! [ -f "$diagnosis_and_badFilesDir/CCD"$h"/$badFilesWarningFile" ]; then
       touch $diagnosis_and_badFilesDir/CCD"$h"/$badFilesWarningFile
     fi
   done
@@ -1527,7 +1528,7 @@ else
   done
   echo "done" > $backgroundBrightnessDone
 fi 
-#exit 0
+exit 0
 
 echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
