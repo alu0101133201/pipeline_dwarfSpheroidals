@@ -1743,8 +1743,8 @@ if [ -f $maskName ]; then
 else
   #If block scale is greater than 1, we apply the block
   if [ "$blockScale" -gt 1 ]; then
-    astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus-o $coaddDir/coadd_blocked.fits
-    imToMask=$coaddDir/coaddBlocked.fits
+    astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+    imToMask=$coaddDir/coadd_blocked.fits
   else
     imToMask=$coaddName
   fi
