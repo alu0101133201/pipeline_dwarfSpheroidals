@@ -1802,14 +1802,16 @@ for ((i=0; i<${#maskArray[@]}; i+=5)); do
 	axisRatio="${maskArray[i+3]}"
 	pa="${maskArray[i+4]}"
 
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
-	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
+	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
 done
+
 if [ -f $CDIR/mask.fits ]; then
   #If a mask already exists, we combine the created one with the existing one
   cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
   astarithmetic $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits --quiet
 fi
+
 
 ####### ITERATION 2 ######
 iteration=2
@@ -1875,6 +1877,7 @@ if [[ "$subtractStars" == "true" ]]; then
 else
   starsSub_small=$entiredir_smallGrid
 fi
+
 coaddDir=$BDIR/coadds_it1
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
