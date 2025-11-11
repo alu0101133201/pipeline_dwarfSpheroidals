@@ -58,6 +58,12 @@ load_module $gnuastroModuleName
 astrometryModuleName="astrometry.net/0.94"
 load_module $astrometryModuleName
 
+scampModuleName="scamp/2.14.1"
+load_module $scampModuleName
+
+sexModuleName="sextractor/2.29.0"
+load_module $sexModuleName
+
 # Needed if using the SIE software
 # pythonModuleName="python"
 # load_module $pythonModuleName
