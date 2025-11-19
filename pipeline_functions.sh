@@ -1122,10 +1122,10 @@ removeBadFramesFromReduction() {
     local prefixOfFilesToRemove=$5
 
     filePath=$badFilesWarningDir/$badFilesWarningFile
-
-    while IFS= read -r file_name; do
+    while IFS= read -r file_name || [ -n "$file_name" ]; do
         file_name=$(basename "$file_name")
         fileName=$prefixOfFilesToRemove"${file_name%.*}".fits
+
         if [ -f $sourceToRemoveFiles/$fileName ]; then
             mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
         fi
@@ -1289,7 +1289,7 @@ computeSky() {
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
-        echo -e "\n\tScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
+        echo -e "\n\tScience images have the sky already computed\n"
     else
         framesToComputeSky=()
         for a in $( ls $framesToUseDir/*.fits ); do
@@ -1329,6 +1329,8 @@ subtractSkyForFrame() {
         else
             python3 $pythonScriptsPath/moveSurfaceFitToFullGrid.py $input $i 1 $NAXIS1_image $NAXIS2_image $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
             astarithmetic $input -h1 $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits" -h1 - -o$output
+            astarithmetic $input -h1 $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits" -h1 - -o$output
+
             rm $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
         fi
     fi

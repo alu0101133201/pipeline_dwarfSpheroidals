@@ -268,10 +268,9 @@ oneNightPreProcessing() {
       echo done > $renamedone
   fi
 
-
   # -------------------------------------------------------
   # Number of exposures of the current night
-  n_exp=$(ls -v $currentINDIRo/*.fits | wc -l)
+  n_exp=$(ls -v $currentINDIR/*.fits | wc -l)
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
   if [ -d $DARKDIR/night"$currentNight" ]; then
     currentDARKDIR=$DARKDIR/night$currentNight
@@ -367,7 +366,6 @@ oneNightPreProcessing() {
     printf "%s\n" "${framesToSubtract[@]}" | parallel -j "$num_cpus" subtractBiasFromFrame {} $dark $saturationThreshold $currentINDIR $mbiascorrdir
     echo done > $mbiascorrdone
   fi
-  
   
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
   echo -e "${GREEN} --- Flat iteration 1 --- ${NOCOLOUR}"
@@ -732,11 +730,10 @@ oneNightPreProcessing() {
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
   badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd_n$currentNight.txt
   rejectedFramesDir=$BDIR/rejectedFrames_std_preFlat_n$currentNight.txt
+  prefix="$objectName"-Decals-"$filter"_n"$currentNight"_f
   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-  removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-  removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-
-  
+  removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile $prefix
+  removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile $prefix
 
   # Combining masked normalized images to make it3 flat
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
@@ -751,8 +748,7 @@ oneNightPreProcessing() {
     fi
   fi
 
-
-  
+    
   # We also compute the flat using all the frames of the night.
   flatit3WholeNightdir=$BDIR/flat-it3-WholeNight_n$currentNight
   flatit3WholeNightdone=$flatit3WholeNightdir/done_"$filter"_ccd"$h".txt
@@ -766,10 +762,11 @@ oneNightPreProcessing() {
   fi
 
 
+
   # Correct the running flats using the whole night flat
   flatit3dir=$BDIR/flat-it3-Running_n$currentNight
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    flatit3done=$flatit3dir/done_"$k"_ccd"$h".txt
+    flatit3done=$flatit3dir/done_"$filter"_ccd"$h".txt
     if ! [ -d $flatit3dir ]; then mkdir $flatit3dir; fi
     if [ -f $flatit3done ]; then
       echo -e "\nFlats iteration 3 are corrected using the flat of the whole night for night $currentNight and extension $h\n"
@@ -782,7 +779,6 @@ oneNightPreProcessing() {
       echo done > $flatit3done
     fi
   fi
-
   
   # Dividing the science image by the it3 flat
   # If running flat selected, we use it to produce the final flatted images
@@ -800,6 +796,7 @@ oneNightPreProcessing() {
       wholeNightFlatToUse=$flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits
       divideImagesByWholeNightFlat $mbiascorrdir $flatit3imadir $wholeNightFlatToUse $flatit3imadone
   fi
+
 
   
   ########## Masking the vignetting zones ##########
@@ -820,7 +817,6 @@ oneNightPreProcessing() {
     printf "%s\n" "${imagesForVignetting[@]}" | parallel -j "$num_cpus" maskVignettingOnImages {} $flatit3imadir $maskedcornerdir $flatit3dir $flatit3WholeNightdir $RUNNING_FLAT $n_exp $currentNight $lowerVignettingThreshold $upperVignettingThreshold 
     echo done > $maskedcornerdone
   fi
-
   
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
@@ -845,7 +841,6 @@ oneNightPreProcessing() {
     exec 200>&- 
   fi
   
-
   # # Removing intermediate information to save space - We maintain the final flats for checking them
   # rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/bias-corrected_n$currentNight
@@ -883,8 +878,6 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
-
-
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
@@ -1053,8 +1046,6 @@ else
 fi
 
 
-
-
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
 writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # Warp the data so we can:
@@ -1070,6 +1061,8 @@ if ! [ -d "$BDIR/astro-ima" ]; then
 else
   folderWithFramesToWarp=$BDIR/astro-ima
 fi
+
+
 
 entiredir_smallGrid=$BDIR/pointings_smallGrid
 entiredone=$entiredir_smallGrid/done_.txt
@@ -1190,7 +1183,6 @@ else
 fi
 
 
-
 if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
   echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
   writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
@@ -1205,19 +1197,24 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   if [ -f $coaddDone ]; then
     echo -e "\n Coadd pre-photometry already done\n"
   else
-    imagesAreMasked=false
-    computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
+    # imagesAreMasked=false
+    # computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
+    
+    noisesky_prephot=$noiseskydir
+
 
     subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
     subskyfullGridDone=$subskyfullGrid_dir/done.txt
     if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
     smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
-
+    
+    
     rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
     echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
     diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
     if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
     
+
     prefixOfTheFilesToRemove="entirecamera_"
     # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
     # removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
@@ -1235,6 +1232,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
     clippingdone=$clippingdir/done.txt
     buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $subskyfullGrid_dir $sigmaForStdSigclip
 
+    
     subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
     subSkyNoOutliersPxDone=$subSkyNoOutliersPxDir/done.txt
     if ! [ -d $subSkyNoOutliersPxDir ]; then mkdir $subSkyNoOutliersPxDir; fi
@@ -1885,6 +1883,7 @@ maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 maskPointings $starsSub_small $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
 
+
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 imagesAreMasked=true # They are masked, but we run and apply noisechisel mask anyway to improve it if possible
@@ -2023,6 +2022,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
   computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
                             $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 fi
+
 
 sigmaForStdSigclip=2
 iterationsForStdSigClip=3
@@ -2197,10 +2197,12 @@ noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true wholeImage -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
+
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt
 if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
 smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra_gal $dec_gal
+
 
 fwhmFolder=$BDIR/seeing_values
 badFilesWarningsFile=identifiedBadFrames_fwhm_it2.txt
@@ -2236,6 +2238,7 @@ if [ -f $diagnosis_and_badFilesDir/$rejectedByReadError ]; then
   removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByReadError $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByReadError $prefixOfTheFilesToRemove
 fi
+
 
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName

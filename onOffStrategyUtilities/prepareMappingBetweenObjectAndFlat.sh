@@ -174,6 +174,7 @@ correctObjectsAndFlatsMissing() {
 }
 export -f correctObjectsAndFlatsMissing
 
+
 divideFlatAndObjects() {
     local -n flatArray=$1
     local -n objectArray=$2
@@ -258,7 +259,6 @@ mergeArrays rawObjectInfoTrimmed flatInfo objectsAndFlatsCombined
 correctedArray=()
 correctObjectsAndFlatsMissing $nightBeginsAndEndsWithObject objectsAndFlatsCombined correctedArray
 
-
 # Recover the flat and object arrays
 flatCorrectedArray=()
 objectCorrectedArray=()
@@ -275,7 +275,10 @@ python3 onOffAcquisitionPlot.py "$rawObjectInfoPythonArgument" "$flatFieldInfoPy
 if ! [ -d $newFlatDir ]; then mkdir $newFlatDir; fi
 counter=$(( runningFlatSize + 2 ))
 lastIndex=$(( ${#flatCorrectedArray[@]} - 2 ))  # because we're stepping in pairs
+
+test=1
 for ((i=0; i<${#flatCorrectedArray[@]}; i+=2)); do
+    # echo $test $counter
     if (( i == 0 || i == lastIndex)); then
         cp $flatsDir/${flatCorrectedArray[i]}  $newFlatDir/${flatCorrectedArray[i]}
     else
@@ -290,4 +293,6 @@ for ((i=0; i<${#flatCorrectedArray[@]}; i+=2)); do
         cp $flatsDir/$currentFileName "$newFlatDir/$newFileName"
         counter=$(( counter + 1 ))
     fi
+    test=$(( test + 1 ))
+
 done
