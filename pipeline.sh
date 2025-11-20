@@ -985,7 +985,7 @@ if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
-  if [ "$telescope" == "TST" ] || [ "$telescope" == "TTT3_ikon" ] || [ "$telescope" == "TTT3_QHY" ]; then
+  if ( [[ "$telescope" == "TST" ]] && [[ "$(echo "$pixelScale < 0.6" | bc -l)" == "1" ]] ) || [ "$telescope" == "TTT3_ikon" ] || [ "$telescope" == "TTT3_QHY" ]; then
     #This 2 telescopes on a monolitic detector come astrometrized, so we skip solve-field
     cp $framesForCommonReductionDir/*.fits $astroimadir/
   else
@@ -1565,6 +1565,7 @@ echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
 # For large images and large number of them, it could be possible than RAM memory is not enough for stacking
 # Because of that, we have the function createBlocks(), to detect the number of blocks needed to divide the frames, and their respective crop sections
 createBlocks $photCorrfullGridDir $coaddSizePx
+
 numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
 
@@ -1585,6 +1586,7 @@ else
       fullGridDone_sec=$fullGridDir_sec/done_crops.txt
       if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
       cropInSections $photCorrfullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
+      
       #Now we build the coadd
       buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
       
@@ -1596,6 +1598,7 @@ else
       rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
       rm -rf $fullGridDir_sec
       mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
+      
     fi
   done < "$BDIR/cropSections.txt"
 
@@ -1815,7 +1818,7 @@ iteration=2
 entiredir_smallGrid=$BDIR/pointings_smallGrid
 num_ccd=1
 export num_ccd
-subtractStars=false
+subtractStars=true
 
 if [[ "$subtractStars" == "true" ]]; then
   echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
@@ -1834,9 +1837,10 @@ if [[ "$subtractStars" == "true" ]]; then
   query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToSearch --column=ra,dec,phot_g_mean_mag"
   if ! [ -f $starsToSubtract ]; then
     astquery $query_param -o$CDIR/starsToSubtract_temp.fits
-    asttable $CDIR/starsToSubtract_temp.fits --range=3,0:6 --sort=3 -o$starsToSubtract
+    asttable $CDIR/starsToSubtract_temp.fits --range=3,0:6.7 --sort=3 -o$starsToSubtract
     rm $CDIR/starsToSubtract_temp.fits
   fi
+  
   starId=0
   while IFS= read -r line; do
     #We skip the lines that contain info about the columns
@@ -2236,7 +2240,10 @@ fi
 minRmsFileName="min_rms_it$iteration.txt"
 python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
 
+#We compute again how many blocks are required
+rm $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
 
+createBlocks $photCorrfullGridDir $coaddSizePx
 numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
 if [ "$numBlocks" -eq 1 ]; then
