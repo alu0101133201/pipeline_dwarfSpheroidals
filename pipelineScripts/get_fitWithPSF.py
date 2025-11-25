@@ -41,7 +41,7 @@ pixScale=float(sys.argv[8])
 starSatThresh=float(sys.argv[9])
 calFactor=float(sys.argv[10])
 
-def get_profileRange(star_file,star_mag,psf_file,pixScale):
+def get_profileRange(star_file,star_mag,psf_file,pixScale,starSatTh,calFactor):
     with fits.open(star_file) as hdul:
         I_star=hdul[1].data['SIGCLIP_MEAN']
         R_star=hdul[1].data['RADIUS']
