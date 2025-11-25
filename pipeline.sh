@@ -1818,9 +1818,9 @@ iteration=2
 entiredir_smallGrid=$BDIR/pointings_smallGrid
 num_ccd=1
 export num_ccd
-subtractStars=true
 
-if [[ "$subtractStars" == "true" ]]; then
+
+if [[ "$subtractStarsFromRaw" == "true" ]]; then
   echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
   ###We will make the following:
   ##  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
@@ -1840,6 +1840,11 @@ if [[ "$subtractStars" == "true" ]]; then
     asttable $CDIR/starsToSubtract_temp.fits --range=3,0:6.7 --sort=3 -o$starsToSubtract
     rm $CDIR/starsToSubtract_temp.fits
   fi
+  ###User may give a Saturation threshold for the stars in the config file. If not, we set it manually as the saturation theshold
+  if [ -z "$starSatThreshold" ]; then
+    starSatThreshod=$saturationThreshold
+  fi 
+  calFactor=$(getCommonCalibrationFactor 1)
   
   starId=0
   while IFS= read -r line; do
@@ -1849,9 +1854,9 @@ if [[ "$subtractStars" == "true" ]]; then
     ((starId++))
     outputDir_small=$BDIR/pointings_smallGrid_sub$starId
   #  #outputDir_full=$BDIR/pointings_fullGrid_sub$starId
-    subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId
+    subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId $starSatThreshold $calFactor
     
-    #if (( $(echo "$starId == 1" | bc -l) )); then exit 0; fi
+    if (( $(echo "$starId == 1" | bc -l) )); then exit 0; fi
     #Sanity check: if something fail we insert an exit
     for file in $outputDir_small/*.fits; do
             nhdu=$( astfits $file --numhdus -q )
@@ -1878,6 +1883,7 @@ if [[ "$subtractStars" == "true" ]]; then
 else
   starsSub_small=$entiredir_smallGrid
 fi
+
 coaddDir=$BDIR/coadds_it1
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
@@ -2192,10 +2198,10 @@ maskName=$BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits
 maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $BDIR/pointings_smallGrid
 
 
-noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
-noiseskydone=$noiseskydir/done.txt
-# Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
-computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true wholeImage -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
+#noiseskydir=$BDIR/noise-sky-after-photometry_it$iteration
+#noiseskydone=$noiseskydir/done.txt
+## Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
+#computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true wholeImage -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt

@@ -13,10 +13,13 @@ numberOfBlocksFile=sys.argv[5]
 #Number of frames to combine
 totalFrames=len(glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
 #Size of the folder in GB
-sizeBytes=sum(os.path.getsize(f) for f in glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
-sizeGB=sizeBytes/(1024.0**3)
+#sizeBytes=sum(os.path.getsize(f) for f in glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
+#sizeGB=sizeBytes/(1024.0**3)
+#
 
 totalNumberOfPixels=coaddSizePx**2
+sizeBytes=4.*totalNumberOfPixels*totalFrames
+sizeGB=sizeBytes/1e9
 #The idea is how much memory is needed to combine all frames at one pixel
 #In other words, with $sizeGB we know how much memory is needed to combine a frame of coaddSizePx x coaddSizePx
 #We want to know the minimum value of N such that we can combine N frames at once with availMemory

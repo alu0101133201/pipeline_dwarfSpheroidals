@@ -38,35 +38,41 @@ back_std=float(sys.argv[5])
 output_folder=sys.argv[6]
 ncpu=int(sys.argv[7])
 pixScale=float(sys.argv[8])
-
-def get_profileRange(star_file,back_mean,back_std):
+starSatTh=float(sys.argv[9])  #In ADU
+calFactor=float(sys.argv[10])  #In e-/ADU
+def get_profileRange(star_file,back_mean,back_std,satThresh,calFactor,pixScale):
     """
-    So, I will do the following: get the range so it is bellow saturation and sufficiently above background
+    The fiting of star will be done between Rmin and Rmax, which will be defined as:
+    Rmin: first radius where Istar is bellow saturation and above background by at least 0.5 mag
+    Rmax: first radius where Istar-background is at most 1 magnitude bellow the background
     """
     
     with fits.open(star_file) as hdul:
         I_star=hdul[1].data['SIGCLIP_MEAN']
         R_star=hdul[1].data['RADIUS']
         std_star=hdul[1].data['SIGCLIP_STD']
+        mag_star=-2.5*np.log10(I_star*calFactor)+22.5+5*np.log10(pixScale)
+        mag_bck=-2.5*np.log10(back_mean*calFactor)+22.5+5*np.log10(pixScale)
         ##First: check where I<6000ADU to avoid saturation and where I>1.5Background
-        indexes=np.where((I_star<4e4)&(~np.isnan(I_star))&(std_star!=0)&(I_star>1.5*back_mean))
+        indexes=np.where((I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.5))
+        indexes_belBck=np.where((~np.isnan(I_star))&(std_star!=0)&(mag_star>mag_bck+1.0))
         if len(indexes[0])==0:
             #If no values are found, probably the first values taken are close to the background, so we
             #make a range less restrictive
-            indexes=np.where((I_star<4e4)&(~np.isnan(I_star))&(std_star!=0)&(I_star>1.005*back_mean))
+            indexes=np.where((I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.2))
             
         if (len(indexes[0])==0):
             #If still no values are found, then we can assume scatter light won't affect the image
             #So, we give Rmin=100 and Rmax=50 in order to return a scale of 0 on the later on sanity check
             Rmin=100
             Rmax=50
-            indexes=[[0]]
+            indexes_ok=[[0]]
         else:
             #We take the first and last value of the indexes
             Rmin=R_star[indexes[0][0]]
-            Rmax=R_star[indexes[0][-1]]
-        
-    return Rmin,Rmax,indexes        
+            Rmax=R_star[indexes_belBck[0][0]] if len(indexes_belBck[0])>0 else R_star[indexes[0][-1]]
+            indexes_ok=indexes[0][(R_star[indexes[0]]>=Rmin)&(R_star[indexes[0]]<=Rmax)]
+    return Rmin,Rmax,indexes_ok       
 
 
 
@@ -151,16 +157,21 @@ first_nonans=I_star[~np.isnan(I_star)][:20]
 if (np.mean(first_nonans)<=1.005*back_mean)and(np.mean(first_nonans)>=0.995*back_mean):
     alfa_fit=0.000
 else:
-    r_min,r_max,indexes=get_profileRange(star_file,back_mean,back_std)
+    r_min,r_max,indexes=get_profileRange(star_file,back_mean,back_std,starSatTh,calFactor,pixScale)
     
     if r_min>=r_max:
         #If for some resaons R_min=R_max (i.e, only one value escape our conditions), we can assume is just an statistics anomally, so we set the scale to 0
         alfa_fit=0.000
     else:
-
-        I_psf_ok=psfTab['MEAN'][indexes[0]]
-        I_star_ok=I_star[indexes[0]]
-        std_star_ok=std_star[indexes[0]]
+        #NOTE: R_psf might star in 0 and R_star in R_psf[1]. We need to check
+        if R_star[0]>psfTab['RADIUS'][0]:
+            #We need to remove the first value of the psf
+            psfTab=psfTab[1:]
+        
+        I_psf_ok=psfTab['MEAN'][indexes]
+        I_star_ok=I_star[indexes]
+        std_star_ok=std_star[indexes]
+        
         lstd_star_ok=std_star_ok/(np.log(10)*I_star_ok)
         back_min,back_max,alfa_min,alfa_max,alfa_mean=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
         initial_guess=[alfa_mean,back_mean]

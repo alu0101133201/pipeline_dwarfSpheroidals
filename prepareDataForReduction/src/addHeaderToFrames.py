@@ -10,7 +10,7 @@ headerDir=sys.argv[2]
 dataHdu=int(sys.argv[3])
 headerHdu=int(sys.argv[4])
 rawDir=sys.argv[5]
-
+rebinFactor=float(sys.argv[6])
 # Here is assumed that the fits files have the exact same name in both folders
 # i.e. the file nnn.fits in the dataDir is called nnn.fits in headerDir 
 
@@ -25,8 +25,17 @@ for dataFile in glob.glob(dataDir + "/*.fits"):
     headerFile = headerDir + "/" + fileName
     try:
         with fits.open(dataFile) as hdulData, fits.open(headerFile) as hdulHeader:
+            #If a WCS matrix is present, and a rebin factor is applied, we change the CD matrix 
+            head=hdulHeader[headerHdu].header
+            if rebinFactor>1:
+                for key in ['CD1_1','CD1_2','CD2_1','CD2_2']:
+                    if key in head:
+                        head[key]*=rebinFactor
+                for key in ['CRPIX1','CRPIX2']:
+                    if key in head:
+                        head[key]/=rebinFactor
             # Create a new Primary HDU with data from the second HDU and header from header file
-            hdu = fits.PrimaryHDU(data=hdulData[dataHdu].data, header=hdulHeader[headerHdu].header)
+            hdu = fits.PrimaryHDU(data=hdulData[dataHdu].data, header=head)
             hdulist = fits.HDUList([hdu])
             hdulist.writeto(dataFile, overwrite=True)
     except FileNotFoundError:

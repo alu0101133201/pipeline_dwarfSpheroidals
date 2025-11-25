@@ -16,6 +16,7 @@ redImages=$3
 destination=$4
 rebinFactor=$5
 filter=$6
+numCpus=$7
 
 echo "Preparing data for the pipeline"
 echo -e "\n\tObject: $objectName"
@@ -40,7 +41,7 @@ fi
 # # If $rebinFactor is greater than 0 that factor is applied
 # # Otherwise the images are left at its original resolution
 if (( $(echo "$rebinFactor > 0" | bc -l) )); then
-    ./src/changePxScale.sh $objectName $rawImages $destination $rebinFactor $filter
+    ./src/changePxScale.sh $objectName $rawImages $destination $rebinFactor $filter $numCpus
 else
     if ! [ -d $destination ]; then mkdir $destination; fi
     for i in $rawImages/*$objectName*$filter/*.fits; do
@@ -56,7 +57,7 @@ if (( $(echo "$rebinFactor > 0" | bc -l) )); then
 else
     dataHdu=0
 fi
-python3 ./src/addHeaderToFrames.py $destination $redImages $dataHdu $headerHdu $rawImages
+python3 ./src/addHeaderToFrames.py $destination $redImages $dataHdu $headerHdu $rawImages $rebinFactor
 
 # Ordering by filter
 ./src/orderFitsByFilters.sh $destination

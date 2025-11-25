@@ -154,6 +154,8 @@ outputConfigurationVariablesInformation() {
         "·Area of the SB limit metric:$areaSBlimit: [arcsec]"
         " "
         "·Produce coadd prephot:$produceCoaddPrephot"
+        " "
+        "·Subtract stars from images:$subtractStarsFromRaw"
     )
 
     echo -e "Summary of the configuration variables provided for the reduction\n"
@@ -261,7 +263,8 @@ checkIfAllVariablesAreSet() {
                 maximumSeeing \
                 fractionExpMap \
                 areaSBlimit \
-                produceCoaddPrephot)
+                produceCoaddPrephot \
+                subtractStarsFromRaw )
 
     echo -e "\n"
     for currentVar in ${variablesToCheck[@]}; do
@@ -3275,7 +3278,9 @@ stackWeightedImages() {
                 astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_wx.fits
                 astarithmetic $(ls -v $wonlydir/*.fits ) $(ls $wonlydir/*.fits | wc -l) sum -g1 --writeall -o$coaddir/"$k"_w.fits
             else
-                astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_wx.fits
+                if ! [ -f "$coaddir/"$k"_wx.fits" ]; then
+                    astarithmetic $(ls -v $wdir/*.fits) $(ls $wdir/*.fits | wc -l) sum -g1  -o $coaddir/"$k"_wx.fits
+                fi #Temporary, will be removed
                 astarithmetic $(ls -v $wonlydir/*.fits ) $(ls $wonlydir/*.fits | wc -l) sum -g1  -o$coaddir/"$k"_w.fits
             fi
             astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
@@ -3739,7 +3744,9 @@ subtractStars(){
     local psfProfile=$4
     local outputDir_small=$5
     local starId=$6
-
+    local starSatThreshold=$7
+    local calFactor=$8
+    
     starRa=$(echo "$starLine" | awk '{print $1}')
     starDec=$(echo "$starLine" | awk '{print $2}')
     starMag=$(echo "$starLine" | awk '{print $3}')
@@ -3779,11 +3786,11 @@ subtractStars(){
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToComputeScale+=("$a")
         done
-        printf "%s\n" "${framesToComputeScale[@]}" | parallel -j "$num_parallel" computeStarScaleForFrame {} $profileFolder $scaleDir $inputFolder_small $psfProfile $starMag 
+        printf "%s\n" "${framesToComputeScale[@]}" | parallel -j "$num_parallel" computeStarScaleForFrame {} $profileFolder $scaleDir $inputFolder_small $psfProfile $starMag $starSatThreshold $calFactor
         
         echo done > $scaleDone
     fi
-    #if [ "$starId" == "2" ]; then exit 0; fi
+    if [ "$starId" == "1" ]; then exit 0; fi
     echo -e "·Subtracting star from frames"
     limMag=32 #bellow surface brightness limit
 
@@ -3863,6 +3870,8 @@ computeStarScaleForFrame() {
     local inputFolder_small=$4 
     local psfProfile=$5
     local starMag=$6
+    local starSatThreshod=$7
+    local calFactor=$8
     scale_text_base=$scaleDir/scale_entirecamera
     profile=$profileFolder/RP_entirecamera_"$a".fits
     scale_text="$scale_text_base"_"$a".txt
@@ -3875,7 +3884,7 @@ computeStarScaleForFrame() {
         sky_mean=$(awk 'NR=='1'{print $2}' $sky_it1)
         sky_std=$(awk 'NR=='1'{print $3}' $sky_it1)
         ##We will range ±500
-        scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale)
+        scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale $starSatThreshod $calFactor)
         echo "$scale" > $scale_text
         
     fi
@@ -4011,11 +4020,11 @@ createBlocks(){
     if [ -f "$BDIR/cropSections.txt" ]; then
         echo -e "crop sections already done"
     else
-        availMemory_gb=$(awk '/MemAvailable/ {printf "%.3f \n", $2/1024/1024 }' /proc/meminfo)
-        safetyMem=25.0 #Gb
+        availMemory_gb=$(awk '/MemAvailable/ {printf "%.3f \n", $2/1024/1024/1.3 }' /proc/meminfo)
+        safetyMem=100.0 #Gb
         availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
         echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
-
+        
         python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
     fi
 }
