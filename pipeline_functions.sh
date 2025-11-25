@@ -154,6 +154,8 @@ outputConfigurationVariablesInformation() {
         "·Area of the SB limit metric:$areaSBlimit: [arcsec]"
         " "
         "·Produce coadd prephot:$produceCoaddPrephot"
+        " "
+        "·Subtract stars from raw frames:$subtractStarsFromRaw"
     )
 
     echo -e "Summary of the configuration variables provided for the reduction\n"
@@ -254,7 +256,8 @@ checkIfAllVariablesAreSet() {
                 maximumSeeing \
                 fractionExpMap\
                 areaSBlimit \
-		produceCoaddPrephot)
+		produceCoaddPrephot \
+        subtractStarsFromRaw)
 
     echo -e "\n"
     for currentVar in ${variablesToCheck[@]}; do
@@ -3927,6 +3930,7 @@ subtractStars(){
     local psfProfile=$4
     local outputDir_small=$5
     local starId=$6
+    local starSatThreshold=$7
     
     starRa=$(echo "$starLine" | awk '{print $1}')
     starDec=$(echo "$starLine" | awk '{print $2}')
@@ -3947,20 +3951,7 @@ subtractStars(){
             circleRad=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile 26.5 $pixelScale) 
             python3 $pythonScriptsPath/check_starLocation.py $image $starLocationFile $num_ccd $starRa $starDec $circleRad 
         done
-        while IFS= read -r line; do
-            #On the config file I'm gonna add some TXT where I will put if an star needs azimuth or not
-            #It is true that is not the best solution, but I don't think we will need it to much
-            
-            imageProf=$(echo "$line" | awk '{print $1}')
-            imageProf=$( basename $imageProf )
-            rp_params="$line --mode=wcs --center=$starRa,$starDec --rmax=1200 --undersample=5 --measure=sigclip-mean,sigclip-std "
-            starAz_file=$CDIR/star"$starId"_az.txt
-            if [ -f $starAz_file ]; then
-                starAz=$(awk 'NR=='1'{print $1}' $starAz_file)
-                rp_params+="--azimuth=$starAz "
-            fi
-            astscript-radial-profile $rp_params --output=$profileFolder/RP_$imageProf
-        done < $starLocationFile
+        cat "$starLocationFile" | parallel -j "$num_cpus" buildProfileForFrame {} "$starRa" "$starDec" "$starId" "$profileFolder" 
         echo done > $profileDone
     fi
 
@@ -3973,25 +3964,11 @@ subtractStars(){
         echo -e "Scale factors already computed for Star {$starId}"
     else
         ###If there is not star, we put the scale in 0
-        scale_text_base=$scaleDir/scale_entirecamera
+         framesToComputeScale=()
         for a in $(seq 1 $totalNumberOfFrames); do
-            profile=$profileFolder/RP_entirecamera_"$a".fits
-            scale_text="$scale_text_base"_"$a".txt
-            if ! [ -f $profile ]; then
-                echo "0.000" > $scale_text
-            else
-                
-                ###First step: measure a rough approach of the background, using CCD2
-                out_sky=$scaleDir/sky_$a.fits
-                astnoisechisel $inputFolder_small/entirecamera_"$a".fits -h2  --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky --numthreads=$num_cpus -o $out_sky
-                out_sky=${out_sky%.fits}_sky.fits
-                sky_mean=$(aststatistics $out_sky -hSKY --sigclip-mean)
-                ##We will range ±500
-                scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $scaleDir $num_cpus $pixelScale)
-                echo "$scale" > $scale_text
-                rm $out_sky
-            fi
+            framesToComputeScale+=("$a")
         done
+        printf "%s\n" "${framesToComputeScale[@]}" | parallel -j "$num_parallel" computeStarScaleForFrame {} $profileFolder $scaleDir $inputFolder_small $psfProfile $starMag $starSatThreshold 
     
         echo done > $scaleDone
     fi
@@ -4060,4 +4037,49 @@ subtractStarFromFrame() {
     fi
 }
 export -f subtractStarFromFrame
+buildProfileForFrame(){
+    local line="$1"
+    local starRa="$2"
+    local starDec="$3"
+    local starId="$4"
+    local profileFolder="$5"
 
+    imageProf=$(echo "$line" | awk '{print $1}')
+    imageProf=$( basename $imageProf )
+    #Careful with hardcoding here: this is optimized for TST
+    rp_params="$line --mode=wcs --center=$starRa,$starDec --rmax=8000 --undersample=5 --measure=sigclip-mean,sigclip-std "
+    starAz_file=$CDIR/star"$starId"_az.txt
+    if [ -f $starAz_file ]; then
+        starAz=$(awk 'NR=='1'{print $1}' $starAz_file)
+        rp_params+="--azimuth=$starAz "
+    fi
+    astscript-radial-profile $rp_params --output=$profileFolder/RP_$imageProf
+
+}
+export -f buildProfileForFrame
+computeStarScaleForFrame() {
+    local a=$1
+    local profileFolder=$2
+    local scaleDir=$3 
+    local inputFolder_small=$4 
+    local psfProfile=$5
+    local starMag=$6
+    local starSatThreshod=$7
+    scale_text_base=$scaleDir/scale_entirecamera
+    profile=$profileFolder/RP_entirecamera_"$a".fits
+    scale_text="$scale_text_base"_"$a".txt
+    if ! [ -f $profile ]; then
+        echo "0.000" > $scale_text
+    else
+        calFactor=$(awk 'NR=='1'{print $1}' $BDIR/commonCalibrationFactor_it1.txt)
+                ###First step: measure a rough approach of the background
+        sky_it1=$BDIR/noise-sky_it1/entirecamera_"$a".txt
+        sky_mean=$(awk 'NR=='1'{print $2}' $sky_it1)
+        sky_std=$(awk 'NR=='1'{print $3}' $sky_it1)
+        ##We will range ±500
+        scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale $starSatThreshod $calFactor)
+        echo "$scale" > $scale_text
+        
+    fi
+}
+export -f computeStarScaleForFrame

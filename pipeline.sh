@@ -1896,7 +1896,7 @@ fi
 
 
 # # Remove intermediate folders to save some space
-find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
+find $BDIR/noise-sky_it1 -type f -name '*.fits' -exec rm {} \;
 find $BDIR/noise-sky-after-photometry_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/noise-sky_forPlaneCoadd_it1 -type f ! -name 'done*' -exec rm {} \;
 
@@ -1952,16 +1952,16 @@ if [ -f $CDIR/mask.fits ]; then
   cp $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
   astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where -q -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits
 fi 
-
+exit 0
 ####### ITERATION 2 ######
 
 iteration=2
 entiredir_smallGrid=$BDIR/pointings_smallGrid
-subtractStars=false
+
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
 
 #######################
-if [[ "$subtractStars" == "true" ]]; then
+if [[ "$subtractStarsFromRaw" == "true" ]]; then
   echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
 
   psfFile=$CDIR/PSF_"$filter".fits
@@ -1985,7 +1985,9 @@ if [[ "$subtractStars" == "true" ]]; then
     asttable $BDIR/starsToSubtract_temp.fits --range=3,0:13.5 --sort=3 -o$starsToSubtract
     rm $BDIR/starsToSubtract_temp.fits
   fi
-#
+  if [ -z "$starSatThreshold" ]; then
+    starSatThreshod=$saturationThreshold
+  fi 
 #
   starId=0
   while IFS= read -r line; do
@@ -1994,7 +1996,7 @@ if [[ "$subtractStars" == "true" ]]; then
 #
     ((starId++))
     outputDir_small=$BDIR/pointings_smallGrid_sub$starId
-    subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId
+    subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId $starSatThreshold
 #  
 #  #if (( $(echo "$starId == 8" | bc -l) )); then exit; fi
     if ! (( $(echo "$starId == 1" | bc -l) )); then

@@ -34,52 +34,50 @@ psf_file=sys.argv[2]
 star_mag=float(sys.argv[3])
 ##Test will be made with 1000 values between min and max
 back_mean=float(sys.argv[4])
-output_folder=sys.argv[5]
-ncpu=int(sys.argv[6])
-pixScale=float(sys.argv[7])
+back_std=float(sys.argv[5])
+output_folder=sys.argv[6]
+ncpu=int(sys.argv[7])
+pixScale=float(sys.argv[8])
+starSatThresh=float(sys.argv[9])
+calFactor=float(sys.argv[10])
 
 def get_profileRange(star_file,star_mag,psf_file,pixScale):
-    """
-    Notes about Rmax: I'm gonna check where the PSF at star_mag reaches 25 mag / arcsec^2
-    If R_max with that is lower than R_min+20 (to have at least 20 points), I will add +0.2 mag/arcsec^2 and re-check
-    Since R min is computed where I_star is not nan, this also avoids a central part not present on the frame
-    I also put a maximum limit of R=1200Pix
-    """
-    psf=fits.open(psf_file)[1].data
-    I_psf=psf['MEAN']
-    A_psf=psf['AREA']
-    R_psf=psf['RADIUS']
-    I_psf_norm=I_psf/np.sum(I_psf*A_psf)
-    mag_psf=-2.5*np.log10(I_psf_norm*10**(-0.4*star_mag))+5*np.log10(pixScale)
     with fits.open(star_file) as hdul:
         I_star=hdul[1].data['SIGCLIP_MEAN']
         R_star=hdul[1].data['RADIUS']
-        ##First: check where I<6000ADU to avoid saturation
-        ind_min=np.where((I_star<1e4)&(~np.isnan(I_star)))
-        R_min=R_star[ind_min[0][0]]
-        mag_lim=25
-        ind_max=np.where(mag_psf>=mag_lim)
-        R_max=R_psf[ind_max[0][0]]
-        while R_max<=R_min+20:
-            #print(f"{R_max}<={R_min}+20")
-            if R_max>=1200:
-                R_max=1200
-                break
-            mag_lim+=0.2
-            ind_max=np.where(mag_psf>=mag_lim)
-            R_max=R_psf[ind_max[0][0]]
-        
-        return(R_min,R_max)
+        std_star=hdul[1].data['SIGCLIP_STD']
+        mag_star=-2.5*np.log10(I_star*calFactor)+22.5+5*np.log10(pixScale)
+        mag_bck=-2.5*np.log10(back_mean*calFactor)+22.5+5*np.log10(pixScale)
+        ##First: check where I<6000ADU to avoid saturation and where I>1.5Background
+        indexes=np.where((I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.5))
+        indexes_belBck=np.where((~np.isnan(I_star))&(std_star!=0)&(mag_star>mag_bck+1.0))
+        if len(indexes[0])==0:
+            #If no values are found, probably the first values taken are close to the background, so we
+            #make a range less restrictive
+            indexes=np.where((I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.2))
+            
+        if (len(indexes[0])==0):
+            #If still no values are found, then we can assume scatter light won't affect the image
+            #So, we give Rmin=100 and Rmax=50 in order to return a scale of 0 on the later on sanity check
+            Rmin=100
+            Rmax=50
+            indexes_ok=[[0]]
+        else:
+            #We take the first and last value of the indexes
+            Rmin=R_star[indexes[0][0]]
+            Rmax=R_star[indexes_belBck[0][0]] if len(indexes_belBck[0])>0 else R_star[indexes[0][-1]]
+            indexes_ok=indexes[0][(R_star[indexes[0]]>=Rmin)&(R_star[indexes[0]]<=Rmax)]
+    return Rmin,Rmax,indexes_ok 
 
-r_min,r_max=get_profileRange(star_file,star_mag,psf_file,pixScale)
+#r_min,r_max=get_profileRange(star_file,star_mag,psf_file,pixScale)
 
 
 
 
 def get_parameterRange(star_file,psf_file,r_min,r_max,back_mean):
     ###BACKGROUND: an uncertainty of 10%
-    back_min=0.9*back_mean
-    back_max=1.1*back_mean
+    back_min=0.99*back_mean
+    back_max=1.01*back_mean
     ####ALFA: first we compute a very rough value
     table_star=fits.open(star_file)[1].data
     table_psf=fits.open(psf_file)[1].data
@@ -97,7 +95,7 @@ def get_parameterRange(star_file,psf_file,r_min,r_max,back_mean):
     
     return(back_min,back_max,alf_min,alf_max,alf_mean)
 
-back_min,back_max,alfa_min,alfa_max,alfa_mean=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
+#back_min,back_max,alfa_min,alfa_max,alfa_mean=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
 
 def chisqi(Istar,stdstar,Ipsf,alfa,back):
     """
@@ -183,16 +181,40 @@ starTab=fits.open(star_file)[1].data
 psfTab=fits.open(psf_file)[1].data
 R_star=starTab['RADIUS']
 I_star=starTab['SIGCLIP_MEAN']
-indexes=np.where((R_star>=r_min)&(R_star<=r_max)&(~np.isnan(I_star)))
-I_psf_ok=psfTab['MEAN'][indexes[0]]
-I_star_ok=I_star[indexes[0]]
-std_star_ok=starTab['SIGCLIP_STD'][indexes[0]]
+std_star=starTab['SIGCLIP_STD']
+###Sanity check: for stars where the first nonan values are compatible with pure background, we will directly return a 0 value for the scale
+first_nonans=I_star[~np.isnan(I_star)][:20]
 
-initial_guess=[alfa_mean,back_mean]
-bounds=([alfa_min,back_min],[alfa_max,back_max])
-
-popt,pcov=curve_fit(linear_model,I_psf_ok,I_star_ok,p0=initial_guess,bounds=bounds,sigma=std_star_ok,absolute_sigma=True)
-alfa_fit,back_fit=popt
-perr=np.sqrt(np.diag(pcov))
+if (np.mean(first_nonans)<=1.005*back_mean)and(np.mean(first_nonans)>=0.995*back_mean):
+    alfa_fit=0.000
+else:
+    r_min,r_max,indexes=get_profileRange(star_file,back_mean,back_std,starSatTh,calFactor,pixScale)
+    
+    if r_min>=r_max:
+        #If for some resaons R_min=R_max (i.e, only one value escape our conditions), we can assume is just an statistics anomally, so we set the scale to 0
+        alfa_fit=0.000
+    else:
+        #NOTE: R_psf might star in 0 and R_star in R_psf[1]. We need to check
+        if R_star[0]>psfTab['RADIUS'][0]:
+            #We need to remove the first value of the psf
+            psfTab=psfTab[1:]
+        
+        I_psf_ok=psfTab['MEAN'][indexes]
+        I_star_ok=I_star[indexes]
+        std_star_ok=std_star[indexes]
+        
+        lstd_star_ok=std_star_ok/(np.log(10)*I_star_ok)
+        back_min,back_max,alfa_min,alfa_max,alfa_mean=get_parameterRange(star_file,psf_file,r_min,r_max,back_mean)
+        initial_guess=[alfa_mean,back_mean]
+        bounds=([alfa_min,back_min],[alfa_max,back_max])
+        #Last sanity check: if background is dominant, the scale will be an strange value, probably negative. 
+        # To avoid that, we will again give a scale of 0 when this happens
+        if (alfa_mean<0) or (alfa_min>alfa_max):
+            alfa_fit=0.000
+        else:
+        
+            popt,pcov=curve_fit(linear_model,I_psf_ok,np.log10(I_star_ok),p0=initial_guess,bounds=bounds,sigma=lstd_star_ok,absolute_sigma=True)
+            alfa_fit,back_fit=popt
+            perr=np.sqrt(np.diag(pcov))
 
 print(alfa_fit)
