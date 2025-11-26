@@ -188,7 +188,7 @@ first_nonans=I_star[~np.isnan(I_star)][:20]
 if (np.mean(first_nonans)<=1.005*back_mean)and(np.mean(first_nonans)>=0.995*back_mean):
     alfa_fit=0.000
 else:
-    r_min,r_max,indexes=get_profileRange(star_file,back_mean,back_std,starSatTh,calFactor,pixScale)
+    r_min,r_max,indexes=get_profileRange(star_file,back_mean,back_std,starSatThresh,calFactor,pixScale)
     
     if r_min>=r_max:
         #If for some resaons R_min=R_max (i.e, only one value escape our conditions), we can assume is just an statistics anomally, so we set the scale to 0

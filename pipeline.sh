@@ -993,23 +993,6 @@ echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NO
 # That corrections are perform night by night (because it's necessary for perform that corretions)
 # Now, all the frames are "equal" so we do no distinction between nights.
 # All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
-echo -e "${GREEN} --- Correct difference in gain --- ${NOCOLOUR} \n"
-gaincordir=$BDIR/gain-corrected
-gaincordone=$gaincordir/done.txt
-ringDir=$BDIR/ring
-if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
-if [ -f $gaincordone ]; then
-  echo -e "\nMulti-layer windows already gain corrected"
-else
-  frameNames=()
-  for a in $framesForCommonReductionDir/*.fits; do
-    frameNames+=("$(basename $a)")
-  done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $framesForCommonReductionDir $ringDir $gaincordir $blockScale "'$noisechisel_param'"
-  echo done > $gaincordone
-fi
-echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
-
 writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
 echo -e "·Downloading Gaia Catalogue"
 
@@ -1094,12 +1077,12 @@ if [ -f $astroimadone ]; then
 else
   #LBT frames are already astrometrized, so we will take advantage of that info
   if [ "$telescope" == "LBT" ] || [ "$telescope" == "OSIRIS" ]; then
-    cp $gaincordir/*.fits $astroimadir/
+    cp $framesForCommonReductionDir/*.fits $astroimadir/
   else
     frameNames=()
     for a in $(seq 1 $totalNumberOfFrames); do
         base=$a.fits
-        i=$gaincordir/$base
+        i=$framesForCommonReductionDir/$base
         frameNames+=("$i")
     done
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir_layer $sexcfg $sizeOfOurFieldDegrees 
@@ -1952,7 +1935,6 @@ if [ -f $CDIR/mask.fits ]; then
   cp $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits
   astarithmetic $BDIR/coadds/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where -q -o $BDIR/coadds/"$objectName"_coadd_"$filter"_mask.fits
 fi 
-exit 0
 ####### ITERATION 2 ######
 
 iteration=2
@@ -1962,6 +1944,23 @@ entiredir_smallGrid=$BDIR/pointings_smallGrid
 
 #######################
 if [[ "$subtractStarsFromRaw" == "true" ]]; then
+  echo -e "${GREEN} --- Correct difference in gain --- ${NOCOLOUR} \n"
+  ###If we subtract stars, we need all the layers to be at the same level. We're gonna use the different common calibration factors to level-up the layers
+  gaincordir=$BDIR/gain-corrected
+  gaincordone=$gaincordir/done.txt
+  cfactorfile=$BDIR/commonCalibrationFactor_it1.txt
+  ccd_ref=1 #Hardcoded, might change
+  if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
+  if [ -f $gaincordone ]; then
+   echo -e "\nMulti-layer windows already gain corrected"
+  else
+   frameNames=()
+   for a in $entiredir_smallGrid/*.fits; do
+    frameNames+=("$(basename $a)")
+   done
+   printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $entiredir_smallGrid $cfactorfile $gaincordir $ccd_ref
+   echo done > $gaincordone
+  fi
   echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
 
   psfFile=$CDIR/PSF_"$filter".fits
@@ -1975,7 +1974,7 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
 ##  # Finally, we will subtract from all the frames where the star is, and continue to the next one
 ##  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
 ##
-  input_subStar_small=$entiredir_smallGrid
+  input_subStar_small=$gaincordir
 ##input_subStar_full=$normalised_fullGrid
   starsToSubtract=$BDIR/starsToSubtract.txt
   radiusToSearch=$(awk -v r="$sizeOfOurFieldDegrees" 'BEGIN { printf "%.6f", r/2 }')

@@ -1607,34 +1607,24 @@ export -f addTwoFiltersAndDivideByTwo
 gainCorrection() {
     local base=$1
     local inputDir=$2
-    local ringDir=$3
+    local cfactorFile=$3
     local outDir=$4
-    local blockScale=$5
-    local noisechisel_param=$6
+    local ccd_ref=$5
     image=$inputDir/$base
     output=$outDir/$base
     astfits $image --copy=0 --primaryimghdu -o$output
-    ringFile=$ringDir/ring.fits
-    noiseOut=$outDir/noise_$base
-    maskOut=$outDir/mask_$base
-    gainOut=$outDir/gain_$base
-    runNoiseChiselOnFrame $base $inputDir $outDir $blockScale $noisechisel_param
-    mv $outDir/$base $noiseOut
+    alfa_ref=$(awk 'NR=='$ccd_ref'{print $1}' $cfactorFile)
     for h in $(seq 1 $num_ccd); do
-        astarithmetic $image -h$h $noiseOut -h$h 0 ne nan where -q -o$outDir/temp_$base
-        astarithmetic $outDir/temp_$base -h1 $ringFile -h$h 0 eq nan where -q -o$maskOut
-        gain_h=$(aststatistics $maskOut --sigclip-median -q)
-        if [ $h -eq 1 ]; then
-            gain_ref=$gain_h
+	alfa_h=$(awk 'NR=='$ccd_ref'{print $h}' $cfactorFile)
+	if [ "$h" == "$ccd_ref" ]; then
             astfits $image --copy=$h -o $output
         else
-            astarithmetic $image -h$h $gain_ref x $gain_h / -o$gainOut
+	    gainOut=$outDir/temp_$base
+            astarithmetic $image -h$h $alfa_ref x $alfa_h / -o$gainOut
             astfits $gainOut --copy=1 -o$output
             rm $gainOut
         fi
-        rm $outDir/temp_$base $maskOut
     done
-    rm $noiseOut
 
 }
 export -f gainCorrection
