@@ -1619,7 +1619,7 @@ gainCorrection() {
     sky_ref=$(awk 'NR=='$ccd_ref'{print $2}' $skyFile)
     sky_ref_corrected=$(awk -v a="$sky_ref" -v b="$alfa_ref" 'BEGIN{printf "%.8e\n", a*b}')
     for h in $(seq 1 $num_ccd); do
-	    alfa_h=$(awk 'NR=='$ccd_ref'{print $h}' $cfactorFile)
+	    alfa_h=$(awk 'NR=='$h'{print $1}' $cfactorFile)
         sky_h=$(awk 'NR=='$h'{print $2}' $skyFile)
         sky_h_corrected=$(awk -v a="$sky_h" -v b="$alfa_h" 'BEGIN{printf "%.8e\n", a*b}')
 	    if [ "$h" == "$ccd_ref" ]; then

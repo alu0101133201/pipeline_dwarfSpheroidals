@@ -22,46 +22,14 @@ import time
 from astropy.time import Time
 import random
 
-def setMatplotlibConf():
-    rc_fonts = {
-        "font.family": "serif",
-        "font.size": 14,
-        "font.weight" : "medium",
-        # "text.usetex": True,  # laggs a little when generatin plots in my fedora36
-        "xtick.direction": "in",
-        "ytick.direction": "in",
-        "xtick.major.size": 8.0,
-        "xtick.major.width": 2.8,
-        "xtick.minor.size": 4.0,
-        "xtick.minor.width": 2.5,
-        "ytick.major.size": 8.0,
-        "ytick.major.width": 1.8,
-        "ytick.minor.size": 4.0,
-        "ytick.minor.width": 1.8,
-        "legend.handlelength": 3.0,
-        "axes.linewidth" : 3.5,
-        "xtick.major.pad" : 6,
-        "ytick.major.pad" : 6,
-        "legend.fancybox" : True,
-        "mathtext.fontset" : "dejavuserif"
-    }
-    mpl.rcParams.update(rc_fonts)
-    return(rc_fonts)
-
-
-def configureAxis(ax, xlabel, ylabel, logScale=True):
-    ax.xaxis.set_minor_locator(MultipleLocator(1000000))
-    ax.yaxis.set_minor_locator(MultipleLocator(1000000))
-    ax.yaxis.set_ticks_position('both')
-    ax.xaxis.set_ticks_position('both')
-    ax.tick_params(axis='x', which='major', labelsize=25, pad=17)
-    ax.tick_params(axis='y', which='major', labelsize=25, pad=17)
-    ax.set_xlabel(xlabel, fontsize=30, labelpad=8)
-    ax.set_ylabel(ylabel, fontsize=30, labelpad=10)
-    if(logScale): ax.set_yscale('log')
-
-
-
+HDU_TO_FIND_AIRMASS = 0
+folderWithSkyEstimations = sys.argv[1]
+commonCalibrationFactorFile = sys.argv[2]
+outputFile = sys.argv[3]
+ccd_ref=int(sys.argv[4])
+num_ccd=int(sys.argv[5])
+airMassKeyWord = sys.argv[6]
+folderWithFramesWithAirmasses = sys.argv[7]
 def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord,h):
     backgroundValue = -1
 
@@ -131,6 +99,7 @@ def filesMatch(file1, file2):
     if (calibrationNumber == backgroundNumber):
         return(True)
     return(False)
+
 def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFactors):
     calibratedValues = []
     
@@ -153,62 +122,8 @@ def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFacto
             calibratedValues=np.append(calibratedValues, [np.nan] * num_ccd)
                 
     return(np.array(calibratedValues))
-def countsToSurfaceBrightnessUnits(values, arcsecPerPx):
-    magnitudes = -2.5 * np.log10(values) + 22.5 + 5*np.log10(arcsecPerPx)
-    return(magnitudes)
 
-def saveScatterPlot(data, title, outputFile):
-    time = []
-    
-    for i in normalisedBackgroundValues:
-        
-        if (not pd.isna(i[0])):
-            match=re.search(r"_(\d+).",i[0])
-            frame = match.group(1)
-            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
-            date=obtainKeyWordFromFits(file,dateKey)
-            if dateKey.startswith("DATE"):
-                date_ok=datetime.fromisoformat(date)
-            elif dateKey.startswith("MJD"):
-                date_ok=Time(date,format='mjd').to_datetime() 
-            
-            time.append(date_ok)
-            
-        else:
-            
-            time.append(np.nan)
-    time = np.array(time)
-    
-    markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'h', 'H', 'X', 'd']
-    fig , ax = plt.subplots(1,1,figsize=(10,10))
-    configureAxis(ax,'UTC','',logScale=False)
-    fig.suptitle(title, fontsize=22)
-    pattern=r"(\d+).fits"
-    for h in range(1, num_ccd + 1):
-        timeMask = ~pd.isna(time) & ~pd.isna(data[:,h-1])
-        marker=random.choice(markers)
-        ax.scatter(time[timeMask], data[:,h-1][timeMask], label=f'CCD {h}', marker=marker,s=50, alpha=0.7)
-    ax.legend(loc="best", fontsize=20)
-    for label in ax.get_xticklabels():
-        label.set_rotation(45)
-        label.set_horizontalalignment('right')
-    ax.set_ylabel(r'Back. [mag arcsec$^{-2}$]',fontsize=30)
-    plt.tight_layout()
-    plt.savefig(outputFile)
-    return()
 
-HDU_TO_FIND_AIRMASS = 0
-
-folderWithSkyEstimations = sys.argv[1]
-destinationFolder = sys.argv[2]
-commonCalibrationFactorFile = sys.argv[3]
-arcsecPerPx = float(sys.argv[4])
-dateKey = sys.argv[5]
-airMassKeyWord = sys.argv[6]
-folderWithFramesWithAirmasses = sys.argv[7]
-num_ccd = int(sys.argv[8])
-
-setMatplotlibConf()
 pattern = os.path.join(folderWithFramesWithAirmasses, "*.fits")
 totalNumberOfFrames = len(glob.glob(pattern))
 
@@ -232,8 +147,6 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
         originalBackground, normalisedBackground = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord,h)
         normalisedBackgroundValues[number-1,h] = normalisedBackground
         originalBackgroundValues[number-1,h] = originalBackground
-   
- # 2.- Retrieve the calibration factors
 commonCalibrationFactorValue=np.array([np.nan] * num_ccd, dtype=float)
 with open(commonCalibrationFactorFile) as f:
    fileContent=f.read().split()
@@ -244,7 +157,15 @@ arrayWithCommonFactor = [[x[0], [cfac for cfac in commonCalibrationFactorValue]]
 valuesCalibratedOriginal = applyCalibrationFactorsToBackgroundValues(originalBackgroundValues, arrayWithCommonFactor)
 valuesCalibratedNormalised = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, arrayWithCommonFactor)
 
-magnitudesPerArcSecSqOriginal = countsToSurfaceBrightnessUnits(valuesCalibratedOriginal, arcsecPerPx)
-magnitudesPerArcSecSqNormalised = countsToSurfaceBrightnessUnits(valuesCalibratedNormalised, arcsecPerPx)
+ratios=np.zeros((totalNumberOfFrames,num_ccd), dtype=float)
+for h in range(num_ccd):
+    if h == (ccd_ref -1):
+        ratios[:,h] = 1.0
+    else:
+        ratios[:,h]= valuesCalibratedNormalised[:,ccd_ref-1] / valuesCalibratedNormalised[:,h]
 
-saveScatterPlot(magnitudesPerArcSecSqNormalised,"Evolution of Normalised Background magnitude per ccd",destinationFolder+"/backgroundCCDcomparison.png")
+# Now we save the mean results
+collapsed = np.mean(ratios, axis=0)
+
+# Save to TXT
+np.savetxt(outputFile, collapsed, fmt="%.12f")
