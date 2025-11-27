@@ -1944,23 +1944,7 @@ entiredir_smallGrid=$BDIR/pointings_smallGrid
 
 #######################
 if [[ "$subtractStarsFromRaw" == "true" ]]; then
-  echo -e "${GREEN} --- Correct difference in gain --- ${NOCOLOUR} \n"
-  ###If we subtract stars, we need all the layers to be at the same level. We're gonna use the different common calibration factors to level-up the layers
-  gaincordir=$BDIR/gain-corrected
-  gaincordone=$gaincordir/done.txt
-  cfactorfile=$BDIR/commonCalibrationFactor_it1.txt
-  ccd_ref=1 #Hardcoded, might change
-  if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
-  if [ -f $gaincordone ]; then
-   echo -e "\nMulti-layer windows already gain corrected"
-  else
-   frameNames=()
-   for a in $entiredir_smallGrid/*.fits; do
-    frameNames+=("$(basename $a)")
-   done
-   printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $entiredir_smallGrid $cfactorfile $gaincordir $ccd_ref
-   echo done > $gaincordone
-  fi
+  
   echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
 
   psfFile=$CDIR/PSF_"$filter".fits
@@ -2218,6 +2202,64 @@ alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
 
+backgroundCCDsDone=$diagnosis_and_badFilesDir/done_backgroundCCDs.txt
+if [ -f $backgroundCCDsDone ]; then
+  echo -e "\nPlot of background per CCD already done"
+else
+  python3 $pythonScriptsPath/diagnosis_backgroundBrightnessPerCCD.py $noiseskydir $diagnosis_and_badFilesDir $BDIR/commonCalibrationFactor_it$iteration.txt $pixelScale $dateHeaderKey $airMassKeyWord $framesForCommonReductionDir $num_ccd
+  
+  echo "done" > $backgroundCCDsDone
+fi 
+
+echo -e "${GREEN} --- Correct difference in gain --- ${NOCOLOUR} \n"
+  #Now that we have photometrically corrected the images, we apply a refining of the photometry based on the relative difference 
+  # between background in nano-maggies: we expect that, after photometric correction, background should be approximately the same in between detectors
+  # We use the sky measured before photometric correction, and the common calibration factor, to compute the gain correction
+gaincordir=$BDIR/gain-corrected
+gaincordone=$gaincordir/done.txt
+cfactorfile=$BDIR/commonCalibrationFactor_it$iteration.txt
+ccd_ref=1 #Hardcoded, might change. Based on $diagnosis_and_badFilesDir/backgroundCCDcomparison.png
+if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
+if [ -f $gaincordone ]; then
+  echo -e "\nMulti-layer windows already gain corrected"
+else
+  frameNames=()
+  for a in $entiredir_smallGrid/*.fits; do
+    frameNames+=("$(basename $a)")
+  done
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $entiredir_smallGrid $noiseskydir $cfactorfile $gaincordir $ccd_ref
+  echo done > $gaincordone
+fi
+smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_gain
+maskedPointingsDone=$smallPointings_maskedDir/done_.txt
+
+
+maskPointings $gaincordir $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+
+
+noiseskydir=$BDIR/noise-sky_gain
+noiseskydone=$noiseskydir/done_"$filter".txt
+
+
+
+##subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
+##subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
+
+
+# compute sky with frames masked with global mask
+imagesAreMasked=true
+sky_estimation_method=wholeImage #If we trust the mask, we can use the full image
+computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES $blockScale "'$noisechisel_param'" "'$maskParams'"
+
+backgroundCCDsDone=$diagnosis_and_badFilesDir/done_backgroundCCDs_gaintest.txt
+if [ -f $backgroundCCDsDone ]; then
+  echo -e "\nPlot of background per CCD already done"
+else
+  python3 $pythonScriptsPath/diagnosis_backgroundBrightnessPerCCD.py $noiseskydir $diagnosis_and_badFilesDir $BDIR/commonCalibrationFactor_it$iteration.txt $pixelScale $dateHeaderKey $airMassKeyWord $framesForCommonReductionDir $num_ccd
+  
+  echo "done" > $backgroundCCDsDone
+fi 
+exit 0
 #applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles_it$iteration
 #if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
