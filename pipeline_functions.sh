@@ -1607,26 +1607,20 @@ export -f addTwoFiltersAndDivideByTwo
 gainCorrection() {
     local base=$1
     local inputDir=$2
-    local noiseskydir=$3
-    local cfactorFile=$4
-    local outDir=$5
-    local ccd_ref=$6
+    local gainCorrFile=$3
+    local outDir=$4
+    local ccd_ref=$5
     image=$inputDir/$base
-    skyFile=$noiseskydir/${base%.fits}.txt
     output=$outDir/$base
     astfits $image --copy=0 --primaryimghdu -o$output
-    alfa_ref=$(awk 'NR=='$ccd_ref'{print $1}' $cfactorFile)
-    sky_ref=$(awk 'NR=='$ccd_ref'{print $2}' $skyFile)
-    sky_ref_corrected=$(awk -v a="$sky_ref" -v b="$alfa_ref" 'BEGIN{printf "%.8e\n", a*b}')
     for h in $(seq 1 $num_ccd); do
-	    alfa_h=$(awk 'NR=='$h'{print $1}' $cfactorFile)
-        sky_h=$(awk 'NR=='$h'{print $2}' $skyFile)
-        sky_h_corrected=$(awk -v a="$sky_h" -v b="$alfa_h" 'BEGIN{printf "%.8e\n", a*b}')
+        gainCor=$(awk 'NR=='$h'{print $1}' $gainCorrFile)
+
 	    if [ "$h" == "$ccd_ref" ]; then
             astfits $image --copy=$h -o $output
         else
 	        gainOut=$outDir/temp_$base
-            astarithmetic $image -h$h $sky_ref_corrected x $sky_h_corrected / -o$gainOut
+            astarithmetic $image -h$h $gainCor x float32 -o$gainOut
             astfits $gainOut --copy=1 -o$output
             rm $gainOut
         fi

@@ -2215,10 +2215,15 @@ echo -e "${GREEN} --- Correct difference in gain --- ${NOCOLOUR} \n"
   #Now that we have photometrically corrected the images, we apply a refining of the photometry based on the relative difference 
   # between background in nano-maggies: we expect that, after photometric correction, background should be approximately the same in between detectors
   # We use the sky measured before photometric correction, and the common calibration factor, to compute the gain correction
+gainCorrectionFile=$BDIR/gainCorrectionParameters_it$iteration.txt
+ccd_ref=1 #Hardcoded, might change. Based on $diagnosis_and_badFilesDir/backgroundCCDcomparison.png
+cfactorfile=$BDIR/commonCalibrationFactor_it$iteration.txt
+python3 $pythonScriptsPath/get_meanRatioSkies.py $noiseskydir $cfactorfile $gainCorrectionFile $ccd_ref $num_ccd $airMassKeyWord $framesForCommonReductionDir $pixelScale
+
 gaincordir=$BDIR/gain-corrected
 gaincordone=$gaincordir/done.txt
-cfactorfile=$BDIR/commonCalibrationFactor_it$iteration.txt
-ccd_ref=1 #Hardcoded, might change. Based on $diagnosis_and_badFilesDir/backgroundCCDcomparison.png
+
+
 if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
 if [ -f $gaincordone ]; then
   echo -e "\nMulti-layer windows already gain corrected"
@@ -2227,39 +2232,39 @@ else
   for a in $entiredir_smallGrid/*.fits; do
     frameNames+=("$(basename $a)")
   done
-  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $entiredir_smallGrid $noiseskydir $cfactorfile $gaincordir $ccd_ref
+  printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $photCorrSmallGridDir $gainCorrectionFile $gaincordir $ccd_ref
   echo done > $gaincordone
 fi
-smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_gain
-maskedPointingsDone=$smallPointings_maskedDir/done_.txt
-
-
-maskPointings $gaincordir $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
-
-
-noiseskydir=$BDIR/noise-sky_gain
-noiseskydone=$noiseskydir/done_"$filter".txt
-
-
-
-##subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
-##subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
-
-
-# compute sky with frames masked with global mask
-imagesAreMasked=true
-sky_estimation_method=wholeImage #If we trust the mask, we can use the full image
-computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES $blockScale "'$noisechisel_param'" "'$maskParams'"
-
-backgroundCCDsDone=$diagnosis_and_badFilesDir/done_backgroundCCDs_gaintest.txt
-if [ -f $backgroundCCDsDone ]; then
-  echo -e "\nPlot of background per CCD already done"
-else
-  python3 $pythonScriptsPath/diagnosis_backgroundBrightnessPerCCD.py $noiseskydir $diagnosis_and_badFilesDir $BDIR/commonCalibrationFactor_it$iteration.txt $pixelScale $dateHeaderKey $airMassKeyWord $framesForCommonReductionDir $num_ccd
-  
-  echo "done" > $backgroundCCDsDone
-fi 
-exit 0
+#smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_gain
+#maskedPointingsDone=$smallPointings_maskedDir/done_.txt
+#
+#
+#maskPointings $gaincordir $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+#
+#
+#noiseskydir=$BDIR/noise-sky_gain
+#noiseskydone=$noiseskydir/done_"$filter".txt
+#
+#
+#
+###subskyFullGrid_dir=$BDIR/sub-sky-fullGrid_it$iteration
+###subskyFullGrid_done=$subskyFullGrid_dir/done_"$filter".txt
+#
+#
+## compute sky with frames masked with global mask
+#imagesAreMasked=true
+#sky_estimation_method=wholeImage #If we trust the mask, we can use the full image
+#computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES $blockScale "'$noisechisel_param'" "'$maskParams'"
+#
+#backgroundCCDsDone=$diagnosis_and_badFilesDir/done_backgroundCCDs_gaintest.txt
+#if [ -f $backgroundCCDsDone ]; then
+#  echo -e "\nPlot of background per CCD already done"
+#else
+#  python3 $pythonScriptsPath/diagnosis_backgroundBrightnessPerCCD.py $noiseskydir $diagnosis_and_badFilesDir $BDIR/commonCalibrationFactor_it$iteration.txt $pixelScale $dateHeaderKey $airMassKeyWord $framesForCommonReductionDir $num_ccd
+#  
+#  echo "done" > $backgroundCCDsDone
+#fi 
+#exit 0
 #applyCalibrationFactors $subskyFullGrid_dir $alphatruedir $photCorrFullGridDir
 #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles_it$iteration
 #if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
@@ -2281,7 +2286,7 @@ exit 0
 
 smallPointings_photCorr_maskedDir=$BDIR/photCorrSmallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_photCorr_maskedDir/done_.txt
-maskPointings $photCorrSmallGridDir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+maskPointings $gaincordir $smallPointings_photCorr_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
 #Now we dont need the it1 ones
 find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -2295,7 +2300,7 @@ computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true wh
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrFullGridDone=$photCorrFullGridDir/done.txt
 if ! [ -f $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
-smallGridtoFullGrid $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
+smallGridtoFullGrid $gaincordir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
 
 echo -e "\n·Removing bad frames"
 
@@ -2315,7 +2320,7 @@ clippingdir=$BDIR/clipping-outliers_it$iteration
 clippingdone=$clippingdir/done_"$k".txt
 sigmaForStdSigclip=3
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
-
+exit 0
 mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
 #moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
 if ! [ -d $mowdir ]; then mkdir $mowdir; fi

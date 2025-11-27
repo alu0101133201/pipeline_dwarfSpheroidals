@@ -2,25 +2,20 @@ import os
 import re
 import sys
 import glob
-import math
+
 import fnmatch
-import astropy
+
 
 import numpy as np
-import matplotlib as mpl
-import pandas as pd
-import matplotlib.pyplot as plt
 
-from matplotlib.ticker import MultipleLocator
+import pandas as pd
+
 from astropy.visualization import astropy_mpl_style
 
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
 
-from datetime import datetime
-import time
-from astropy.time import Time
-import random
+
 
 HDU_TO_FIND_AIRMASS = 0
 folderWithSkyEstimations = sys.argv[1]
@@ -30,6 +25,7 @@ ccd_ref=int(sys.argv[4])
 num_ccd=int(sys.argv[5])
 airMassKeyWord = sys.argv[6]
 folderWithFramesWithAirmasses = sys.argv[7]
+arcsecPerPx = float(sys.argv[8])
 def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord,h):
     backgroundValue = -1
 
@@ -122,7 +118,9 @@ def applyCalibrationFactorsToBackgroundValues(backgroundValues, calibrationFacto
             calibratedValues=np.append(calibratedValues, [np.nan] * num_ccd)
                 
     return(np.array(calibratedValues))
-
+def countsToSurfaceBrightnessUnits(values, arcsecPerPx):
+    magnitudes = -2.5 * np.log10(values) + 22.5 + 5*np.log10(arcsecPerPx)
+    return(magnitudes)
 
 pattern = os.path.join(folderWithFramesWithAirmasses, "*.fits")
 totalNumberOfFrames = len(glob.glob(pattern))
@@ -157,15 +155,15 @@ arrayWithCommonFactor = [[x[0], [cfac for cfac in commonCalibrationFactorValue]]
 valuesCalibratedOriginal = applyCalibrationFactorsToBackgroundValues(originalBackgroundValues, arrayWithCommonFactor)
 valuesCalibratedNormalised = applyCalibrationFactorsToBackgroundValues(normalisedBackgroundValues, arrayWithCommonFactor)
 
-ratios=np.zeros((totalNumberOfFrames,num_ccd), dtype=float)
+magnitudesPerArcSecSqNormalised = countsToSurfaceBrightnessUnits(valuesCalibratedNormalised, arcsecPerPx)
+diffs=np.zeros((totalNumberOfFrames,num_ccd), dtype=float)
+
 for h in range(num_ccd):
-    if h == (ccd_ref -1):
-        ratios[:,h] = 1.0
-    else:
-        ratios[:,h]= valuesCalibratedNormalised[:,ccd_ref-1] / valuesCalibratedNormalised[:,h]
+    diffs[:,h]= magnitudesPerArcSecSqNormalised[:,ccd_ref-1] - magnitudesPerArcSecSqNormalised[:,h]
 
 # Now we save the mean results
-collapsed = np.mean(ratios, axis=0)
+collapsed = np.mean(diffs, axis=0)
+parameter=10**(-0.4*collapsed)
 
 # Save to TXT
-np.savetxt(outputFile, collapsed, fmt="%.12f")
+np.savetxt(outputFile, parameter, fmt="%.12f")
