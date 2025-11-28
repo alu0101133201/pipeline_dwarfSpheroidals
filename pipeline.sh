@@ -2320,7 +2320,7 @@ clippingdir=$BDIR/clipping-outliers_it$iteration
 clippingdone=$clippingdir/done_"$k".txt
 sigmaForStdSigclip=3
 buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
-exit 0
+
 mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
 #moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
 if ! [ -d $mowdir ]; then mkdir $mowdir; fi
