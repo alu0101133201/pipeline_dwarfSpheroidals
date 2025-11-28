@@ -1,3 +1,12 @@
+"""
+This python script is for analysing the different calibrated background between CCDs on a multi-detector array.
+The script will:
+- Plot the background evolution in magnitudes per arsec^2 for each CCD
+- Given a refference CCD, will compute the ratio to multiply each other CCD to mathc the refference sky
+- Save this ratio
+- Plot the background evolution after applying this ratio
+
+"""
 import os
 import re
 import sys
@@ -157,7 +166,7 @@ def countsToSurfaceBrightnessUnits(values, arcsecPerPx):
     magnitudes = -2.5 * np.log10(values) + 22.5 + 5*np.log10(arcsecPerPx)
     return(magnitudes)
 
-def saveScatterPlot(data, title, outputFile):
+def saveScatterPlot(data,parameter,ccd_ref, title, outputFile):
     time = []
     
     for i in normalisedBackgroundValues:
@@ -180,19 +189,27 @@ def saveScatterPlot(data, title, outputFile):
     time = np.array(time)
     
     markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'h', 'H', 'X', 'd']
-    fig , ax = plt.subplots(1,1,figsize=(10,10))
-    configureAxis(ax,'UTC','',logScale=False)
+    fig , ax = plt.subplots(2,1,figsize=(20,10))
+    configureAxis(ax[0],'','',logScale=False)
+    configureAxis(ax[1],'UTC','',logScale=False)
     fig.suptitle(title, fontsize=22)
     pattern=r"(\d+).fits"
     for h in range(1, num_ccd + 1):
         timeMask = ~pd.isna(time) & ~pd.isna(data[:,h-1])
         marker=random.choice(markers)
-        ax.scatter(time[timeMask], data[:,h-1][timeMask], label=f'CCD {h}', marker=marker,s=50, alpha=0.7)
-    ax.legend(loc="best", fontsize=20)
-    for label in ax.get_xticklabels():
+        ax[0].scatter(time[timeMask], data[:,h-1][timeMask], marker=marker,s=50, alpha=0.7)
+        label_legend = f"CCD {h} (ref.)" if h == ccd_ref else f"CCD {h}"
+        ax[1].scatter(time[timeMask], data[:,h-1][timeMask]-2.5*np.log10(parameter[h-1]),label=label_legend, marker=marker,s=50, alpha=0.7)
+    ax[1].legend(loc="best", fontsize=20)
+    for label in ax[0].get_xticklabels():
         label.set_rotation(45)
         label.set_horizontalalignment('right')
-    ax.set_ylabel(r'Back. [mag arcsec$^{-2}$]',fontsize=30)
+    for label in ax[1].get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
+    ax[0].set_title('Before gain correction', fontsize=20)
+    ax[1].set_title('After gain correction', fontsize=20)
+    fig.supylabel(r'Back. [mag arcsec$^{-2}$]',fontsize=30)
     plt.tight_layout()
     plt.savefig(outputFile)
     return()
@@ -207,7 +224,8 @@ dateKey = sys.argv[5]
 airMassKeyWord = sys.argv[6]
 folderWithFramesWithAirmasses = sys.argv[7]
 num_ccd = int(sys.argv[8])
-
+ccd_ref=int(sys.argv[9])  
+outputRatioFile=sys.argv[10]
 setMatplotlibConf()
 pattern = os.path.join(folderWithFramesWithAirmasses, "*.fits")
 totalNumberOfFrames = len(glob.glob(pattern))
@@ -247,4 +265,13 @@ valuesCalibratedNormalised = applyCalibrationFactorsToBackgroundValues(normalise
 magnitudesPerArcSecSqOriginal = countsToSurfaceBrightnessUnits(valuesCalibratedOriginal, arcsecPerPx)
 magnitudesPerArcSecSqNormalised = countsToSurfaceBrightnessUnits(valuesCalibratedNormalised, arcsecPerPx)
 
-saveScatterPlot(magnitudesPerArcSecSqNormalised,"Evolution of Normalised Background magnitude per ccd",destinationFolder+"/backgroundCCDcomparison.png")
+diffs=np.zeros((totalNumberOfFrames,num_ccd), dtype=float)
+
+for h in range(num_ccd):
+    diffs[:,h]= magnitudesPerArcSecSqNormalised[:,ccd_ref-1] - magnitudesPerArcSecSqNormalised[:,h]
+
+# Now we save the mean results
+collapsed = np.mean(diffs, axis=0)
+parameter=10**(-0.4*collapsed)
+np.savetxt(outputRatioFile, parameter, fmt="%.12f")
+saveScatterPlot(magnitudesPerArcSecSqNormalised,parameter,ccd_ref,"Evolution of Normalised Background magnitude per ccd",destinationFolder+"/backgroundCCDcomparison.png")

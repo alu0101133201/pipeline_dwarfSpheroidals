@@ -2201,24 +2201,23 @@ fi
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
-
+echo -e "${GREEN} --- Correct difference in gain --- ${NOCOLOUR} \n"
+gainCorrectionFile=$BDIR/gainCorrectionParameters_it$iteration.txt
+ccd_ref=1 #Hardcoded, might change. Based on $diagnosis_and_badFilesDir/backgroundCCDcomparison.png
+cfactorfile=$BDIR/commonCalibrationFactor_it$iteration.txt
 backgroundCCDsDone=$diagnosis_and_badFilesDir/done_backgroundCCDs.txt
 if [ -f $backgroundCCDsDone ]; then
   echo -e "\nPlot of background per CCD already done"
 else
-  python3 $pythonScriptsPath/diagnosis_backgroundBrightnessPerCCD.py $noiseskydir $diagnosis_and_badFilesDir $BDIR/commonCalibrationFactor_it$iteration.txt $pixelScale $dateHeaderKey $airMassKeyWord $framesForCommonReductionDir $num_ccd
+  python3 $pythonScriptsPath/diagnosis_backgroundBrightnessPerCCD.py $noiseskydir $diagnosis_and_badFilesDir $cfactorfile $pixelScale $dateHeaderKey $airMassKeyWord $framesForCommonReductionDir $num_ccd $ccd_ref $gainCorrectionFile
   
   echo "done" > $backgroundCCDsDone
 fi 
 
-echo -e "${GREEN} --- Correct difference in gain --- ${NOCOLOUR} \n"
+
   #Now that we have photometrically corrected the images, we apply a refining of the photometry based on the relative difference 
   # between background in nano-maggies: we expect that, after photometric correction, background should be approximately the same in between detectors
   # We use the sky measured before photometric correction, and the common calibration factor, to compute the gain correction
-gainCorrectionFile=$BDIR/gainCorrectionParameters_it$iteration.txt
-ccd_ref=1 #Hardcoded, might change. Based on $diagnosis_and_badFilesDir/backgroundCCDcomparison.png
-cfactorfile=$BDIR/commonCalibrationFactor_it$iteration.txt
-python3 $pythonScriptsPath/get_meanRatioSkies.py $noiseskydir $cfactorfile $gainCorrectionFile $ccd_ref $num_ccd $airMassKeyWord $framesForCommonReductionDir $pixelScale
 
 gaincordir=$BDIR/gain-corrected
 gaincordone=$gaincordir/done.txt
