@@ -3921,7 +3921,8 @@ subtractStars(){
     local outputDir_small=$5
     local starId=$6
     local starSatThreshold=$7
-    
+    local cFactorFile=$8
+    local gainCorrectionFile=$9
     starRa=$(echo "$starLine" | awk '{print $1}')
     starDec=$(echo "$starLine" | awk '{print $2}')
     starMag=$(echo "$starLine" | awk '{print $3}')
@@ -3958,8 +3959,7 @@ subtractStars(){
         for a in $(seq 1 $totalNumberOfFrames); do
             framesToComputeScale+=("$a")
         done
-        printf "%s\n" "${framesToComputeScale[@]}" | parallel -j "$num_parallel" computeStarScaleForFrame {} $profileFolder $scaleDir $inputFolder_small $psfProfile $starMag $starSatThreshold 
-    
+        printf "%s\n" "${framesToComputeScale[@]}" | parallel -j "$num_parallel" computeStarScaleForFrame {} $profileFolder $scaleDir $inputFolder_small $psfProfile $starMag $starSatThreshold $cFactorFile $gainCorrectionFile 
         echo done > $scaleDone
     fi
 
@@ -4055,19 +4055,24 @@ computeStarScaleForFrame() {
     local psfProfile=$5
     local starMag=$6
     local starSatThreshod=$7
+    local cFactorFile=$8
+    local gainCorrectionFile=$9
+    slocfile=$profileFolder/starlocation.txt
     scale_text_base=$scaleDir/scale_entirecamera
     profile=$profileFolder/RP_entirecamera_"$a".fits
     scale_text="$scale_text_base"_"$a".txt
     if ! [ -f $profile ]; then
         echo "0.000" > $scale_text
     else
-        calFactor=$(awk 'NR=='1'{print $1}' $BDIR/commonCalibrationFactor_it1.txt)
+        hdu=$(grep "entirecamera_${a}.fits" $slocfile | awk -F'-h' '{print $2}')
+        calFactor=$(awk 'NR=='$hdu'{print $1}' $BDIR/commonCalibrationFactor_it2.txt)
                 ###First step: measure a rough approach of the background
+        gainFactor=$(awk 'NR=='$hdu'{print $1}' $gainCorrectionFile)
         sky_it1=$BDIR/noise-sky_it1/entirecamera_"$a".txt
-        sky_mean=$(awk 'NR=='1'{print $2}' $sky_it1)
-        sky_std=$(awk 'NR=='1'{print $3}' $sky_it1)
+        sky_mean=$(awk 'NR=='$hdu'{print $2}' $sky_it1)
+        sky_std=$(awk 'NR=='$hdu'{print $3}' $sky_it1)
         ##We will range ±500
-        scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale $starSatThreshod $calFactor)
+        scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale $starSatThreshod $calFactor $gainFactor)
         echo "$scale" > $scale_text
         
     fi

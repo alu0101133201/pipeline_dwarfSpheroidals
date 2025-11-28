@@ -1943,63 +1943,7 @@ entiredir_smallGrid=$BDIR/pointings_smallGrid
 # We mask the pointings in order to measure (before photometric calibration) the sky accurately
 
 #######################
-if [[ "$subtractStarsFromRaw" == "true" ]]; then
-  
-  echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
 
-  psfFile=$CDIR/PSF_"$filter".fits
-  psfRadFile=$CDIR/RP_PSF_"$filter".fits
-####So far I will do in this way, I will for sure change it
-###Catalog will be: RA DEC MAG
-###We will make the following:
-##  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
-##  # If AZ exist in the catalog we will measure the profile in azimuth
-##  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
-##  # Finally, we will subtract from all the frames where the star is, and continue to the next one
-##  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
-##
-  input_subStar_small=$gaincordir
-##input_subStar_full=$normalised_fullGrid
-  starsToSubtract=$BDIR/starsToSubtract.txt
-  radiusToSearch=$(awk -v r="$sizeOfOurFieldDegrees" 'BEGIN { printf "%.6f", r/2 }')
-  query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToSearch --column=ra,dec,phot_g_mean_mag"
-  if ! [ -f $starsToSubtract ]; then
-    astquery $query_param -o$BDIR/starsToSubtract_temp.fits
-    asttable $BDIR/starsToSubtract_temp.fits --range=3,0:13.5 --sort=3 -o$starsToSubtract
-    rm $BDIR/starsToSubtract_temp.fits
-  fi
-  if [ -z "$starSatThreshold" ]; then
-    starSatThreshod=$saturationThreshold
-  fi 
-#
-  starId=0
-  while IFS= read -r line; do
-    #We skip the lines that contain info about the columns
-    [[ $line =~ ^#.*$ ]] && continue
-#
-    ((starId++))
-    outputDir_small=$BDIR/pointings_smallGrid_sub$starId
-    subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId $starSatThreshold
-#  
-#  #if (( $(echo "$starId == 8" | bc -l) )); then exit; fi
-    if ! (( $(echo "$starId == 1" | bc -l) )); then
-	    rm $input_subStar_small/*.fits
-    fi
-    #Sanity check: if something failed, we stop the process
-    for file in $outputDir_small/*.fits; do
-      nhdu=$( astfits $file --numhdus -q )
-      if [ $nhdu -lt $((num_ccd+1)) ]; then
-        echo "Some frames have failed in the subtraction of star $starId"
-        exit 23
-      fi
-    done
-    input_subStar_small=$outputDir_small
-
-  done < $starsToSubtract
-  starsSub_small=$outputDir_small
-else
-  starsSub_small=$entiredir_smallGrid
-fi
 #
 #
 ########################
@@ -2010,7 +1954,7 @@ smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 
 
-maskPointings $starsSub_small $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+maskPointings $entiredir_smallGrid $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
 
 noiseskydir=$BDIR/noise-sky_it$iteration
@@ -2411,7 +2355,7 @@ computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposu
 
 
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
-exposuremapName=$coaddDir/exposureMap.fits
+
 if [ -f  $sblimitFile ]; then
     echo -e "\n\tSurface brightness limit for coadd already measured\n"
 else
@@ -2476,8 +2420,274 @@ else
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
+if [[ "$subtractStarsFromRaw" == "true" ]]; then
+  ##First we remove these files not needed as in it1
+  # # Remove intermediate folders to save some space
+  find $BDIR/noise-sky_it2 -type f -name '*.fits' -exec rm {} \;
+  find $BDIR/noise-sky-after-photometry_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/noise-sky_forPlaneCoadd_it2 -type f ! -name 'done*' -exec rm {} \;
+
+  #find $BDIR/sub-sky-fullGrid_it1 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/sub-sky-smallGrid_it2 -type f ! -name 'done*' -exec rm {} \;
+  #find $BDIR/photCorrFullGrid-dir_it1 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/photCorrSmallGrid-dir_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/photCorrFullGrid-dir-no-outliers_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/gain-corrected -type -f ! -name 'done*' -exec rm {} \;
+  find $BDIR/my-catalog-halfmaxradius_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/match-decals-myData_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/ourData-catalogs-apertures_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/framesWithCoaddSubtracted_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/pointings_smallGrid_masked_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/photCorrSmallGrid_masked_it2 -type f ! -name 'done*' -exec rm {} \;
+  #find $BDIR/weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
+  #find $BDIR/weight-dir-no-outliers_plane_it1 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/weight-dir_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/weight-dir_plane_it2 -type f ! -name 'done*' -exec rm {} \;
+
+  #find $BDIR/only-weight-dir-no-outliers -type f ! -name 'done*' -exec rm {} \;
+  #find $BDIR/only-weight-dir-no-outliers_plane_it1 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/only-w-dir_it2 -type f ! -name 'done*' -exec rm {} \;
+  find $BDIR/only-w-dir_plane_it2 -type f ! -name 'done*' -exec rm {} \;
+  if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+    find $BDIR/weight-dir_prephot_it2 -type f ! -name 'done*' -exec rm {} \;
+    find $BDIR/only-w-dir_prephot_it2 -type f ! -name 'done*' -exec rm {} \;
+    find $BDIR/noise-sky_prephot_it2 -type f ! -name 'done*' -exec rm {} \;
+  fi
+  cp $BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask_copy.fits
+
+# Then we apply the user-defined masks
+  valueToPut=1
+  read -r -a maskArray <<< "$maskParams"
+  for ((i=0; i<${#maskArray[@]}; i+=5)); do
+  	ra="${maskArray[i]}"
+  	dec="${maskArray[i+1]}"
+  	r="${maskArray[i+2]}"
+  	axisRatio="${maskArray[i+3]}"
+  	pa="${maskArray[i+4]}"
+
+  	
+  	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra $dec $r $axisRatio $pa
+  done
+
+#If a mask already exists on the configuration file, we combine both masks
+  if [ -f $CDIR/mask.fits ]; then
+    cp $BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask_copy.fits
+    astarithmetic $BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where -q -o $BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask.fits
+  fi 
+  ####STAR SUBTRACTION####
+  iteration=2
+  # We will now work in photometrized and gain corrected frames
+
+  alphatruedir=$BDIR/alpha-stars-true_it$iteration
+  photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_withSky
+  applyCalibrationFactors $entiredir_smallGrid $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
+  gainCorrectionFile=$BDIR/gainCorrectionParameters_it$iteration.txt
+  ccd_ref=1
+  gaincordir=$BDIR/gain-corrected_withSky
+  gaincordone=$gaincordir/done.txt
 
 
+  if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
+  if [ -f $gaincordone ]; then
+    echo -e "\nMulti-layer windows already gain corrected"
+  else
+    frameNames=()
+    for a in $entiredir_smallGrid/*.fits; do
+      frameNames+=("$(basename $a)")
+    done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" gainCorrection {} $photCorrSmallGridDir $gainCorrectionFile $gaincordir $ccd_ref
+    echo done > $gaincordone
+  fi
+  echo -e "\n\t${GREEN} --- Subtract stars from frames --- ${NOCOLOUR} \n"
+
+  psfFile=$CDIR/PSF_"$filter".fits
+  psfRadFile=$CDIR/RP_PSF_"$filter".fits
+####So far I will do in this way, I will for sure change it
+###Catalog will be: RA DEC MAG
+###We will make the following:
+##  # Check where the star falls in a circle centered on RA, DEC and radius=RAFEC
+##  # If AZ exist in the catalog we will measure the profile in azimuth
+##  # This CCD will be used to compute scale factor between Rmin and Rmax, tunning the range with MAG
+##  # Finally, we will subtract from all the frames where the star is, and continue to the next one
+##  # For background range, we will measure a first background in the CCD, to select a range ±500ADU
+##
+  input_subStar_small=$gaincordir
+##input_subStar_full=$normalised_fullGrid
+  starsToSubtract=$BDIR/starsToSubtract.txt
+  radiusToSearch=$(awk -v r="$sizeOfOurFieldDegrees" 'BEGIN { printf "%.6f", r/2 }')
+  query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToSearch --column=ra,dec,phot_g_mean_mag"
+  if ! [ -f $starsToSubtract ]; then
+    astquery $query_param -o$BDIR/starsToSubtract_temp.fits
+    asttable $BDIR/starsToSubtract_temp.fits --range=3,0:13.5 --sort=3 -o$starsToSubtract
+    rm $BDIR/starsToSubtract_temp.fits
+  fi
+  if [ -z "$starSatThreshold" ]; then
+    starSatThreshod=$saturationThreshold
+  fi 
+#
+  starId=0
+  while IFS= read -r line; do
+    #We skip the lines that contain info about the columns
+    [[ $line =~ ^#.*$ ]] && continue
+#
+    ((starId++))
+    outputDir_small=$BDIR/pointings_smallGrid_sub$starId
+    subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId $starSatThreshold
+#  
+#  #if (( $(echo "$starId == 8" | bc -l) )); then exit; fi
+    if ! (( $(echo "$starId == 1" | bc -l) )); then
+	    rm $input_subStar_small/*.fits
+    fi
+    #Sanity check: if something failed, we stop the process
+    for file in $outputDir_small/*.fits; do
+      nhdu=$( astfits $file --numhdus -q )
+      if [ $nhdu -lt $((num_ccd+1)) ]; then
+        echo "Some frames have failed in the subtraction of star $starId"
+        exit 23
+      fi
+    done
+    input_subStar_small=$outputDir_small
+
+  done < $starsToSubtract
+  starsSub_small=$outputDir_small
+
+  iteration=3
+  smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
+  maskedPointingsDone=$smallPointings_maskedDir/done_.txt
+  maskName=$BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask.fits
+
+  maskPointings $starsSub_small $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
+
+
+  noiseskydir=$BDIR/noise-sky_it$iteration
+  noiseskydone=$noiseskydir/done_"$filter".txt
+
+  subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
+  subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
+
+  imagesAreMasked=true
+  sky_estimation_method=wholeImage #If we trust the mask, we can use the full image
+  computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES $blockScale "'$noisechisel_param'" "'$maskParams'"
+  subtractSky $starsSub_small $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+  photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+  photCorrFullGridDone=$photCorrFullGridDir/done.txt
+  if ! [ -f $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
+  smallGridtoFullGrid $subskySmallGrid_dir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
+
+  echo -e "\n·Removing bad frames"
+
+  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+  rejectedFramesDir=$BDIR/rejectedFrames_it"$iteration"
+  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+  echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+  prefixOfFilesToRemove='entirecamera_'
+  rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+  removeBadFramesFromReduction $photCorrFullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+  removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+
+  minRmsFileName="min_rms_it$iteration.txt"
+  python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $noiseskydir $DIR $iteration $minRmsFileName
+
+  clippingdir=$BDIR/clipping-outliers_it$iteration
+  clippingdone=$clippingdir/done.txt
+  sigmaForStdSigclip=3
+  buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
+
+  mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
+  #moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
+  if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+  #if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
+  mowdone=$mowdir/done.txt
+  removeOutliersFromWeightedFrames $mowdone $mowdir $clippingdir $photCorrFullGridDir
+
+
+  wdir=$BDIR/weight-dir_it$iteration
+  wdone=$wdir/done_"$k".txt
+  if ! [ -d $wdir ]; then mkdir $wdir; fi
+  wonlydir=$BDIR/only-w-dir_it$iteration
+  wonlydone=$wonlydir/done_"$k"_ccd"$h".txt
+  if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+
+  # We provide the fullGrid because we are going to combine then now
+  computeWeights $wdir $wdone $wonlydir $wonlydone $mowdir $noiseskydir $iteration $minRmsFileName
+
+
+
+  echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+  echo -e "\nBuilding coadd"
+  coaddDir=$BDIR/coadds_it$iteration 
+  coaddDone=$coaddDir/done.txt
+  coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
+  buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+
+  exposuremapDir=$coaddDir/"$objectName"_exposureMap
+  exposuremapdone=$coaddDir/done_exposureMap_eff.txt
+  exposureMapName=$coaddDir/"$objectName"_expMap_eff_"$filter"_it"$iteration".fits
+  computeExposureMap $mowdir $exposuremapDir $exposuremapdone $exposureMapName
+
+  exposuremapdone=$coaddDir/done_exposureMap.txt
+  exposureMapName=$coaddDir/"$objectName"_expMap_"$filter"_it"$iteration".fits
+  computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
+  #We will use the mask of it2
+  maskName=$BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask.fits
+  sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
+
+  if [ -f  $sblimitFile ]; then
+      echo -e "\n\tSurface brightness limit for coadd already measured\n"
+  else
+      surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposureMapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+  fi
+
+  echo -e "\nAdding keywords to the coadd"
+  keyWords=("FRAMES_COMBINED" \
+            "NUMBER_OF_DIFFERENT_NIGHTS" \
+            "INITIAL_DATE_OBS"
+            "MEAN_DATE_OBS"
+            "FINAL_DATE_OBS"
+            "FILTER" \
+            "SATURATION_THRESHOLD" \
+            "CALIBRATION_BRIGHTLIMIT" \
+            "CALIBRATION_FAINTLIMIT" \
+            "RUNNING_FLAT" \
+            "WINDOW_SIZE" \
+            "STD_FOR_BAD_FRAMES" \
+            "SURFACE_BRIGHTNESS_LIMIT")
+  numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
+  values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+  comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+  astfits $coaddName --write=/,"Pipeline information"
+  addkeywords $coaddName keyWords values comments
+  framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+  framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
+  if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
+
+  if [ -f $framesWithCoaddSubtractedDone ]; then
+      echo -e "\nFrames with coadd subtracted already generated\n"
+  else
+    sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
+    coadd_av=$coaddDir/"$objectName"_coadd_it"$iteration"_average.fits
+    names_coadd=""
+    coadd_count=0
+    for file in $(ls -v $photCorrFullGridDir/*.fits); do
+      for h in $(seq 1 $num_ccd); do
+        names_coadd+="$file -h$h "
+        ((coadd_count++))
+      done
+    done
+    #astarithmetic $names_coadd $coadd_count mean -o$coadd_av
+    subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
+    names_sub=""
+    file_count=0
+    for file in $(ls -v $framesWithCoaddSubtractedDir/*.fits); do
+      for h in $(seq 1 $num_ccd); do
+        names_sub+="$file -h$h "
+        ((file_count++))
+      done
+    done
+    astarithmetic $names_sub $file_count sum  -o$sumMosaicAfterCoaddSubtraction
+    echo done > $framesWithCoaddSubtractedDone 
+  fi
+fi
 endTime=$(date +%D%T)
 echo "Pipeline ended at : ${endTime}"
 exit 0

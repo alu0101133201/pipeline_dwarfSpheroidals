@@ -40,17 +40,18 @@ ncpu=int(sys.argv[7])
 pixScale=float(sys.argv[8])
 starSatThresh=float(sys.argv[9])
 calFactor=float(sys.argv[10])
-
-def get_profileRange(star_file,star_mag,psf_file,pixScale,satThresh,calFactor):
+gainFactor=float(sys.argv[11])
+def get_profileRange(star_file,star_mag,psf_file,pixScale,calFactor,satThresh,gainFactor):
     with fits.open(star_file) as hdul:
         I_star=hdul[1].data['SIGCLIP_MEAN']
         R_star=hdul[1].data['RADIUS']
         std_star=hdul[1].data['SIGCLIP_STD']
-        mag_star=-2.5*np.log10(I_star*calFactor)+22.5+5*np.log10(pixScale)
-        mag_bck=-2.5*np.log10(back_mean*calFactor)+22.5+5*np.log10(pixScale)
+        mag_star=-2.5*np.log10(I_star)+22.5+5*np.log10(pixScale)
+        mag_bck=-2.5*np.log10(back_mean*calFactor*gainFactor)+22.5+5*np.log10(pixScale)
         ##First: check where I<6000ADU to avoid saturation and where I>1.5Background
-        indexes=np.where((I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.5))
-        indexes_belBck=np.where((~np.isnan(I_star))&(std_star!=0)&(mag_star>mag_bck+1.0))
+        satThresh_nanomag=10**(-0.4*(satThresh-22.5-5*np.log10(pixScale)))
+        indexes=np.where((I_star<satThresh_nanomag)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.5))
+        indexes_belBck=np.where((~np.isnan(I_star))&(std_star!=0)&(mag_star>mag_bck))
         if len(indexes[0])==0:
             #If no values are found, probably the first values taken are close to the background, so we
             #make a range less restrictive
@@ -188,7 +189,7 @@ first_nonans=I_star[~np.isnan(I_star)][:20]
 if (np.mean(first_nonans)<=1.005*back_mean)and(np.mean(first_nonans)>=0.995*back_mean):
     alfa_fit=0.000
 else:
-    r_min,r_max,indexes=get_profileRange(star_file,back_mean,back_std,starSatThresh,calFactor,pixScale)
+    r_min,r_max,indexes=get_profileRange(star_file,star_mag,psf_file,pixScale,calFactor,starSatThresh,gainFactor)
     
     if r_min>=r_max:
         #If for some resaons R_min=R_max (i.e, only one value escape our conditions), we can assume is just an statistics anomally, so we set the scale to 0
