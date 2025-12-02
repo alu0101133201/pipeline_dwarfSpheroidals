@@ -213,6 +213,25 @@ def saveScatterPlot(data,parameter,ccd_ref, title, outputFile):
     plt.tight_layout()
     plt.savefig(outputFile)
     return()
+def saveHistogramRMS(data,parameter,ccd_ref, title, outputFile):
+    rms_preGain=[]
+    rms_postGain=[]
+    for i in range(np.shape(data)[0]):
+        row=data[i,:]
+        row_postGain=[row[h-1]-2.5*np.log10(parameter[h-1]) for h in range(1, num_ccd + 1)]
+        rms_preGain.append(np.nanstd(row))
+        rms_postGain.append(np.nanstd(row_postGain))
+    fig , ax = plt.subplots(1,2,figsize=(20,10))
+    configureAxis(ax[0],'RMS [mag arcsec$^{-2}$]','',logScale=False)
+    configureAxis(ax[1],'RMS [mag arcsec$^{-2}$]','',logScale=False)
+    fig.suptitle(title, fontsize=22)
+    ax[0].hist(rms_preGain, bins='fd', color='blue', alpha=0.7,density=True,edgecolor='k',lw=1)
+    ax[1].hist(rms_postGain, bins='fd', color='green', alpha=0.7,density=True,edgecolor='k',lw=1)
+    ax[0].set_title('Before gain correction', fontsize=20)
+    ax[1].set_title('After gain correction', fontsize=20)
+    plt.tight_layout()
+    plt.savefig(outputFile)
+    return()
 
 HDU_TO_FIND_AIRMASS = 0
 
@@ -275,3 +294,4 @@ collapsed = np.mean(diffs, axis=0)
 parameter=10**(-0.4*collapsed)
 np.savetxt(outputRatioFile, parameter, fmt="%.12f")
 saveScatterPlot(magnitudesPerArcSecSqNormalised,parameter,ccd_ref,"Evolution of Normalised Background magnitude per ccd",destinationFolder+"/backgroundCCDcomparison.png")
+saveHistogramRMS(magnitudesPerArcSecSqNormalised,parameter,ccd_ref,"RMS of Normalised Background magnitude between ccds",destinationFolder+"/histogramRMSBackgrounds.png")
