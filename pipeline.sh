@@ -268,6 +268,7 @@ oneNightPreProcessing() {
       echo done > $renamedone
   fi
 
+  
   # -------------------------------------------------------
   # Number of exposures of the current night
   n_exp=$(ls -v $currentINDIR/*.fits | wc -l)
@@ -367,6 +368,7 @@ oneNightPreProcessing() {
     echo done > $mbiascorrdone
   fi
   
+
   echo -e "${ORANGE} ------ FLATS ------ ${NOCOLOUR}\n"
   echo -e "${GREEN} --- Flat iteration 1 --- ${NOCOLOUR}"
 
@@ -673,8 +675,6 @@ oneNightPreProcessing() {
     echo done > $noiseit3WholeNightdone 
   fi
 
-
- 
   # Mask the images (running flat)
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
@@ -700,7 +700,8 @@ oneNightPreProcessing() {
     echo done > $maskedit3WholeNightdone
   fi
 
-  
+
+ 
   # Normalising masked images (running flat)
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     normit3dir=$BDIR/norm-it3-Running-images_n$currentNight
@@ -761,6 +762,7 @@ oneNightPreProcessing() {
     echo "done" >> $flatit3WholeNightdone
   fi
 
+  
 
 
   # Correct the running flats using the whole night flat
@@ -779,7 +781,7 @@ oneNightPreProcessing() {
       echo done > $flatit3done
     fi
   fi
-  
+
   # Dividing the science image by the it3 flat
   # If running flat selected, we use it to produce the final flatted images
   # If not selcted, we applyt the whole night flat
@@ -796,7 +798,6 @@ oneNightPreProcessing() {
       wholeNightFlatToUse=$flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits
       divideImagesByWholeNightFlat $mbiascorrdir $flatit3imadir $wholeNightFlatToUse $flatit3imadone
   fi
-
 
   
   ########## Masking the vignetting zones ##########
@@ -878,6 +879,7 @@ printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPre
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
+
 
 # Up to this point the frame of every night has been corrected of bias-dark and flat.
 # That corrections are perform night by night (because it's necessary for perform that corretions)
@@ -1266,6 +1268,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
 fi
 
 
+
 #### PHOTOMETRIC CALIBRATION  ####
 echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
 writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
@@ -1534,6 +1537,7 @@ if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
 smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra $dec
 
 
+
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 rejectedFramesDir=$BDIR/rejectedFrames
@@ -1559,6 +1563,7 @@ removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badF
 h=0
 minRmsFileName=min_rms_it1.txt
 python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
+
 
 echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
 # For large images and large number of them, it could be possible than RAM memory is not enough for stacking

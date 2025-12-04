@@ -16,6 +16,7 @@ totalFrames=len(glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
 sizeBytes=sum(os.path.getsize(f) for f in glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
 sizeGB=sizeBytes/(1024.0**3)
 
+
 totalNumberOfPixels=coaddSizePx**2
 #The idea is how much memory is needed to combine all frames at one pixel
 #In other words, with $sizeGB we know how much memory is needed to combine a frame of coaddSizePx x coaddSizePx

@@ -4017,10 +4017,11 @@ createBlocks(){
         echo -e "crop sections already done"
     else
         availMemory_gb=$(awk '/MemAvailable/ {printf "%.3f \n", $2/1024/1024 }' /proc/meminfo)
-        safetyMem=25.0 #Gb
+        safetyMem=10.0 #Gb
         availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
         echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
 
+        echo python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
         python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
     fi
 }

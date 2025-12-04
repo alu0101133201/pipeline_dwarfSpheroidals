@@ -192,50 +192,6 @@ divideFlatAndObjects() {
 }
 export -f divideFlatAndObjects 
 
-
-matchObjectsToFlats() {
-    local -n inputObjects=$1
-    local -n inputFlats=$2
-    local -n outObjects=$3
-    local -n outFlats=$4
-
-    outObjects=()
-    outFlats=()
-
-    local numObj=${#inputObjects[@]}
-    local numFlat=${#inputFlats[@]}
-    local j=0
-
-    for ((i=0; i<numObj; i+=2)); do
-        local objFile="${inputObjects[i]}"
-        local objTime="${inputObjects[i+1]}"
-
-        while (( j+2 < numFlat )); do
-            local flatTimeCurrent="${inputFlats[j+1]}"
-            local flatTimeNext="${inputFlats[j+3]}"
-
-            local diffCurrent=$(( objTime - flatTimeCurrent ))
-            (( diffCurrent < 0 )) && diffCurrent=$(( -diffCurrent ))
-
-            local diffNext=$(( objTime - flatTimeNext ))
-            (( diffNext < 0 )) && diffNext=$(( -diffNext ))
-
-            if (( diffNext < diffCurrent )); then
-                (( j+=2 ))
-            else
-                break
-            fi
-        done
-
-        local flatFile="${inputFlats[j]}"
-        local flatTime="${inputFlats[j+1]}"
-
-        outObjects+=( "$objFile" "$objTime" )
-        outFlats+=( "$flatFile" "$flatTime" )
-    done
-}
-
-
 # source /opt/SIE/local/glob/.bashrc_SIE
 # source /scratch1/sguerra/venv/bin/activate
 # module load gnuastro/0.22
@@ -286,10 +242,27 @@ if [[ ! "${objectsAndFlatRawsCombined[0]}" == *Flat* && ! "${objectsAndFlatRawsC
 fi
 ##
 
-# 2.- Match each object frame with the closest flat
-objectCorrectedArray=()
+# 2.- In order to solve mapping problems (if these exists), we need to work with the flats and the object frames
+# For working properly we remove the initial and last N frames, because these will always have the left and right flat
+runningFlatSize=$( getRunningFlatSizeUsed flatInfo )
+total_len=${#rawObjectInfo[@]}
+start=$(( 2 * runningFlatSize )) # 2 * because is an array of pairs
+end=$(( total_len - 4 * runningFlatSize ))
+rawObjectInfoTrimmed=("${rawObjectInfo[@]:start:end}")
+
+# Now we combine the flats and the object frames in a single data structure to later apply the operations
+objectsAndFlatsCombined=()
+mergeArrays rawObjectInfoTrimmed flatInfo objectsAndFlatsCombined
+
+
+#  Correct flats/objects missing 
+correctedArray=()
+correctObjectsAndFlatsMissing $nightBeginsAndEndsWithObject objectsAndFlatsCombined correctedArray
+
+# Recover the flat and object arrays
 flatCorrectedArray=()
-matchObjectsToFlats rawObjectInfo flatInfo objectCorrectedArray flatCorrectedArray
+objectCorrectedArray=()
+divideFlatAndObjects flatCorrectedArray objectCorrectedArray
 
 
 # Corrected plot
@@ -301,35 +274,26 @@ python3 onOffAcquisitionPlot.py "$rawObjectInfoPythonArgument" "$flatFieldInfoPy
 
 # Copy the flats in the format that will be correct for hardcoding in he pipeline
 if ! [ -d $newFlatDir ]; then mkdir $newFlatDir; fi
-
-counter=2
+counter=$(( runningFlatSize + 2 ))
 lastIndex=$(( ${#flatCorrectedArray[@]} - 2 ))  # because we're stepping in pairs
 
 test=1
 for ((i=0; i<${#flatCorrectedArray[@]}; i+=2)); do
-    currentFileName=${flatCorrectedArray[i]}
-
-    if (( i == 0 )); then
-        # First flat → left
-        newFileName=$(echo "$currentFileName" | sed -E "s/(.*)\.fits$/\1.fits/")
-    elif (( i == lastIndex )); then
-        # Last flat → right
-        newFileName=$(echo "$currentFileName" | sed -E "s/(.*)\.fits$/\1.fits/")
+    # echo $test $counter
+    if (( i == 0 || i == lastIndex)); then
+        cp $flatsDir/${flatCorrectedArray[i]}  $newFlatDir/${flatCorrectedArray[i]}
     else
-        # Middle flats → sequential numbers
+        currentFileName=${flatCorrectedArray[i]}
         newFileName=$(echo "$currentFileName" | sed -E "s/_f[0-9]+/_f$counter/")
 
-        # If pattern does not match, fallback to replacing 'left' or 'right' in the name
+        # Case when we have the "right" flat repeated (because we had to add it at the end) and the previous pattern does not match
         if [[ "$newFileName" == "$currentFileName" ]]; then
-            newFileName=$(echo "$currentFileName" | sed -E "s/(n[0-9]+_)left|right/\1f$counter/")
+            newFileName=$(echo "$currentFileName" | sed -E "s/(n[0-9]+_)right/\1f$counter/")
         fi
 
-        ((counter++))
+        cp $flatsDir/$currentFileName "$newFlatDir/$newFileName"
+        counter=$(( counter + 1 ))
     fi
-
-    echo "$newFileName"
-    cp "$flatsDir/$currentFileName" "$newFlatDir/$newFileName"
     test=$(( test + 1 ))
+
 done
-
-
