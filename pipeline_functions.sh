@@ -3169,6 +3169,46 @@ buildUpperAndLowerLimitsForOutliers() {
     fi
 }
 export -f buildUpperAndLowerLimitsForOutliers
+buildUpperAndLowerLimitsForOutliersNew() {
+    #This function is different from the previous one in the sense that it is used for frames when they've been stamped into 
+    # the same grid with the function smallGridtoFullGridAndWeight. We use the non-weighted frames, i.e., -h1
+    local clippingdir=$1
+    local clippingdone=$2
+    local wdir=$3
+    local sigmaForStdSigclip=$4
+
+    if ! [ -d $clippingdir ]; then mkdir $clippingdir; fi
+    if [ -f $clippingdone ]; then
+            echo -e "\n\tUpper and lower limits for building the masked of the weighted images already computed\n"
+    else
+            # Compute clipped median and std
+            med_im=$clippingdir/median_image.fits
+            std_im=$clippingdir/std_image.fits
+            gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            file_count=$(ls -v $wdir/*.fits | wc -l)
+
+            if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+                
+                astarithmetic $(ls -v $wdir/*.fits) -g1 $file_count $sigmaForStdSigclip 0.2 sigclip-median  --writeall -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) -g1 $file_count $sigmaForStdSigclip 0.2 sigclip-std  --writeall -o$std_im
+            else
+                astarithmetic $(ls -v $wdir/*.fits) -g1 $file_count $sigmaForStdSigclip 0.2 sigclip-median   -o$med_im
+                astarithmetic $(ls -v $wdir/*.fits) -g1 $file_count $sigmaForStdSigclip 0.2 sigclip-std   -o$std_im
+            fi
+            
+            # Compute "borders" images
+            up_lim=$clippingdir/upperlim.fits
+            lo_lim=$clippingdir/lowerlim.fits
+            astarithmetic 4. $std_im x -o thresh.fits
+            astarithmetic $med_im thresh.fits + -g1 float32 -o $up_lim
+            astarithmetic $med_im thresh.fits - -g1 float32 -o $lo_lim
+
+            #rm -f $med_im $std_im
+            rm thresh.fits
+            echo done > $clippingdone
+    fi
+}
+export -f buildUpperAndLowerLimitsForOutliersNew
 
 removeOutliersFromFrame(){
     local a=$1
@@ -3202,6 +3242,31 @@ removeOutliersFromFrame(){
 }
 export -f removeOutliersFromFrame
 
+removeOutliersFromFrameNew(){
+    #This function is different from the previous one in the sense that it is used for frames when they've been stamped into 
+    # the same grid with the function smallGridtoFullGridAndWeight. We mask the non weighted frames and apply this mask on the weighted ones
+    local a=$1
+    local mowdir=$2
+    local clippingdir=$3
+    local wdir=$4
+
+    base=$( basename $a )
+    tmp_ab=$mowdir/${base%.fits}_maskabove.fits
+    wom=$mowdir/$base
+    
+    
+    nonw_tmp=$mowdir/${base%.fits}_noweighted.fits
+    wom_tmp=$mowdir/${base%.fits}_weighted.fits
+    astarithmetic $wdir/$base -h1 set-i i i $clippingdir/upperlim.fits -h1 gt nan where float32 -q -o $tmp_ab
+    astarithmetic $tmp_ab -h1 set-i i i $clippingdir/lowerlim.fits -h1 lt nan where float32 -q -o$nonw_tmp
+    astarithmetic $wdir/$base -h2 $nonw_tmp -h1 isblank nan where float32 -q -o$wom_tmp
+    astfits $wdir/$base --copy=0 --primaryimghdu -o$wom
+    astfits $nonw_tmp --copy=1 -o$wom
+    astfits $wom_tmp --copy=1 -o$wom
+    rm -f $tmp_ab $nonw_tmp $wom_tmp
+    
+}
+export -f removeOutliersFromFrameNew
 removeOutliersFromWeightedFrames () {
   local mowdone=$1
   local mowdir=$2
@@ -3472,7 +3537,31 @@ subtractCoaddToSingleFrame(){
     done
 }
 export -f subtractCoaddToSingleFrame
+subtractCoaddToFramesNew() {
+    local dirWithFrames=$1
+    local coadd=$2
+    local destinationDir=$3
+    imagesToSubtract=()
+    for i in $dirWithFrames/*.fits; do
+        name=$( basename $i )
+        imagesToSubtract+=("$name")
+    done
+    printf "%s\n" "${imagesToSubtract[@]}" | parallel -j "$num_cpus" subtractCoaddToSingleFrameNew {} $dirWithFrames $coadd $destinationDir
+}
+export -f subtractCoaddToFramesNew
 
+subtractCoaddToSingleFrameNew(){
+    local base=$1
+    local dirWithFrames=$2
+    local coadd=$3
+    local destinationDir=$4
+
+    i=$dirWithFrames/$base
+    
+    astarithmetic $i -h1 $coadd -h1 - -o$destinationDir/$base
+        
+}
+export -f subtractCoaddToSingleFrameNew
 changeNonNansOfFrameToOnes() {
   local a=$1
   local framesDir=$2
@@ -3487,6 +3576,18 @@ changeNonNansOfFrameToOnes() {
   done
 }
 export -f changeNonNansOfFrameToOnes
+changeNonNansOfFrameToOnesNew() {
+  local a=$1
+  local framesDir=$2
+  local outputDir=$3
+
+  frame=$framesDir/entirecamera_$a.fits
+  output=$outputDir/exposure_tmp_$a.fits
+  
+  astarithmetic $frame $frame -g1 isblank not 1 where --output=$output
+
+}
+export -f changeNonNansOfFrameToOnesNew
 
 computeExposureMap() {
     local framesDir=$1
@@ -3524,7 +3625,35 @@ computeExposureMap() {
     fi
 }
 export -f computeExposureMap
+computeExposureMapNew() {
+    local framesDir=$1
+    local exposureMapDir=$2
+    local exposureMapDone=$3
+    local exposureMapName=$4
 
+    if ! [ -d $exposureMapDir ]; then mkdir $exposureMapDir; fi
+    if [ -f $exposureMapDone ]; then
+        echo -e "\n\tThe exposure map is already done\n"
+    else
+      
+      framesToProcess=()
+      for a in $(seq 1 $totalNumberOfFrames); do
+        framesToProcess+=("$a")
+      done
+      
+      printf "%s\n" "${framesToProcess[@]}" | parallel -j "$num_cpus" changeNonNansOfFrameToOnesNew {} $framesDir $exposureMapDir
+      gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+      
+      if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+        astarithmetic $(ls $exposureMapDir/*.fits ) $(ls $exposureMapDir/*.fits | wc -l) sum --writeall -o$exposureMapName
+      else
+        astarithmetic $(ls $exposureMapDir/*.fits ) $(ls $exposureMapDir/*.fits | wc -l) sum   --writeall -o$exposureMapName
+      fi
+      rm -rf $exposureMapDir
+      echo done > $exposureMapDone
+    fi
+}
+export -f computeExposureMapNew
 
 
 
@@ -3788,6 +3917,108 @@ smallGridtoFullGrid(){
     fi
 }
 export -f smallGridtoFullGrid
+
+smallGridToFullGridAndWeightSingleFrame(){
+    local smallFrame=$1
+    local fullDir=$2
+    local fullSize=$3
+    local fullRA=$4
+    local fullDEC=$5
+    local skydir=$6
+    local minRmsFileName=$7
+    local iteration=$8
+    local identifiedBadDetectors=$9
+    local sumWeightsFileName=${10}
+
+    base=$( basename $smallFrame )
+    out=$fullDir/$base
+    astfits $smallFrame --copy=0 --primaryimghdu -o $out
+    tmpNormal=$fullDir/tmp_normal_$base
+    tmpWeight=$fullDir/tmp_weight_$base
+    rms_min=$(awk 'NR=='1' {print $1}' $minRmsFileName)
+    weight_sum=$(awk 'NR=='1' {print $1}' $sumWeightsFileName)
+    for h in $(seq 1 $num_ccd); do
+        ## Detect if frame is bad
+        string="$base -h$h"
+        detectorIsBad "$string" $identifiedBadDetectors
+        isBad=$?
+        ##Crop
+        if [ $h -eq 1 ]; then
+            astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $tmpNormal
+            if [ $isBad -eq 0 ]; then
+                mv $tmpNormal $fullDir/ccd1_$base
+                astarithmetic $fullDir/ccd1_$base nan x -o $tmpNormal
+                rm $fullDir/ccd1_$base
+            fi
+        else
+            if [ $isBad -ne 0 ]; then
+                astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
+                mv $tmpNormal $fullDir/prev_normal_$base
+                astarithmetic $fullDir/prev_normal_$base $fullDir/ccd_$base -g1 2 sigclip-mean -o $tmpNormal
+                rm $fullDir/prev_normal_$base $fullDir/ccd_$base
+            fi
+        fi
+        #Weight
+        rms_f=$(awk 'NR=='$h' {print $1}' $skydir/${base%.fits}.txt)
+        weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / -q)
+        if [ $isBad -eq 0 ]; then
+            weight=nan
+        fi
+        if [ $h -eq 1 ]; then
+            astarithmetic $smallFrame -h$h $weight x $weight_sum / -o $tmpWeight
+        else
+            astarithmetic $smallFrame -h$h $weight x $weight_sum / -o $fullDir/ccd_$base
+            mv $tmpWeight $fullDir/prev_weight_$base
+            astarithmetic $fullDir/prev_weight_$base $fullDir/ccd_$base -g1 2 sigclip-mean -o $tmpWeight
+            rm $fullDir/prev_weight_$base $fullDir/ccd_$base
+        fi
+    done
+    astfits $tmpNormal --copy=1 -o $out
+    astfits $tmpWeight --copy=1 -o $out
+    #Final result is stored in 2 layers: one normal image and one weighted image
+    rm $tmpNormal $tmpWeight
+}
+export -f smallGridToFullGridAndWeightSingleFrame
+
+smallGridtoFullGridAndWeight(){
+    local smallGridDir=$1
+    local fullGridDir=$2
+    local fullGridDone=$3
+    local fullGridSize=$4
+    local fullGridRA=$5
+    local fullGridDEC=$6
+    local skydir=$7
+    local minRmsFileName=$8
+    local iteration=$9
+    local identifiedBadDetectors=${10}
+    local sumWeightsFileName=${11}
+
+    if [ -f $fullGridDone ]; then
+        echo -e "\n\tFrames from {$smallGridDir} have been already pased into the full grid\n"
+    else
+        framesToGrid=()
+        for frame in $smallGridDir/*.fits; do
+            framesToGrid+=("$frame")
+        done
+        printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_cpus" smallGridToFullGridAndWeightSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC $skydir $minRmsFileName $iteration $identifiedBadDetectors $sumWeightsFileName
+        echo done > $fullGridDone
+        
+    fi
+}
+export -f smallGridtoFullGridAndWeight
+
+detectorIsBad(){
+    #This funciton will recieve the list of bad frames and the string entirecamera_X.fits -h$N
+    local frameName=$1
+    local badDetectorsList=$2
+    while IFS= read -r file_name; do
+        if [ "$frameName" == "$fileName" ]; then
+            return 0
+        fi
+    done < "$badDetectorsList"
+    return 1    
+}
+export -f detectorIsBad
 
 computeFWHMSingleFrame(){
     local a=$1

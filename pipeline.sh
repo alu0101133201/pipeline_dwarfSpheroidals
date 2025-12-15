@@ -1656,13 +1656,31 @@ noiseskydone=$noiseskydir/done.txt
 # Since here we compute the sky for obtaining the rms, we model it as a cte (true) and the polynomial degree is irrelevant (-1)
 computeSky $photCorrSmallGridDir $noiseskydir $noiseskydone true $sky_estimation_method -1 false $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES $blockScale "'$noisechisel_param'" "'$maskParams'"  
 
-##We first recover the fullGrid
+##STACKING: In a common pipeline, the process will be the following:
+# 1) Put each small grid into the mosaic grid. This includes each CCD as well
+# 2) Remove bad frames
+# 3) Compute and mask the outliers usign the sigma-clipped median of the frames
+# 4) Compute the weights of the MASKED frames
+# 5) Build the coadd
+#This process in the multi detector pipeline was done layer by layer, meaning that each stacking process
+# was done with (N CCDs x M frames) images of size (coaddSizePx x coaddSizePx). This, of course, is not optimal
+# when having a huge number of CCDs. The process is changed now to do the following:
+# 1) In the process of building the fullGrid frames, we construct 2 layers per frame:
+#    - The photometrized fullGrid frame were all the CCDs are placed in the common grid 
+#    - Same, but the CCDs are placed multiplied by their weights (1/rms^2)
+# 2) The clipping process is applied in the first layer, and the outliers are removed in the second layer
+# 3) The second layer is the used to build the coadd directly
+#In addition, instead of creating a weight frame to sum it, we will compute the sum of weights
+minRmsFileName=min_rms_it1.txt
+python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noiseskydir $DIR $iteration min_rms_it1.txt
+sumWeightsFileName=sum_weights_it1.txt
+python3 $pythonScriptsPath/get_sumOfWeights.py $noiseskydir $sumWeightsFileName $minRmsFileName 
 
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrFullGridDone=$photCorrFullGridDir/done.txt
-
+identifiedBadDetectors=$CDIR/identifiedBadDetectors.txt #We can now provide a list of bad detectors to blank them
 if ! [ -d $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
-smallGridtoFullGrid $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
+smallGridtoFullGridAndWeight $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec $noiseskydir $minRmsFileName $iteration $identifiedBadDetectors $sumWeightsFileName
 
 
 echo -e "\n·Removing bad frames"
@@ -1679,8 +1697,6 @@ removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badF
 
 # Store the minimum standard deviation of the frames in order to compute the weights
 
-minRmsFileName=min_rms_it1.txt
-python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noiseskydir $DIR $iteration min_rms_it1.txt
 
 
 echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
@@ -1691,26 +1707,26 @@ writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
 sigmaForStdSigclip=3
 clippingdir=$BDIR/clipping-outliers
 clippingdone=$clippingdir/done.txt
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
+buildUpperAndLowerLimitsForOutliersNew $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
 
 mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
 mowdone=$mowdir/done.txt
 if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-removeOutliersFromWeightedFrames $mowdone $mowdir $clippingdir $photCorrFullGridDir
+removeOutliersFromWeightedFramesNew $mowdone $mowdir $clippingdir $photCorrFullGridDir
 
-### Calculate the weights for the images based on the minimum rms ###
-echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
-
-wdir=$BDIR/weight-dir
-wdone=$wdir/done.txt
-if ! [ -d $wdir ]; then mkdir $wdir; fi
-
-wonlydir=$BDIR/only-w-dir
-wonlydone=$wonlydir/done.txt
-if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-# We provide the fullGrid because we are going to combine then now
-computeWeights $wdir $wdone $wonlydir $wonlydone $mowdir $noiseskydir $iteration $minRmsFileName
+#### Calculate the weights for the images based on the minimum rms ###
+#echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
+#writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+#
+#wdir=$BDIR/weight-dir
+#wdone=$wdir/done.txt
+#if ! [ -d $wdir ]; then mkdir $wdir; fi
+#
+#wonlydir=$BDIR/only-w-dir
+#wonlydone=$wonlydir/done.txt
+#if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+## We provide the fullGrid because we are going to combine then now
+#computeWeights $wdir $wdone $wonlydir $wonlydone $mowdir $noiseskydir $iteration $minRmsFileName
 
 
 
@@ -1724,8 +1740,13 @@ echo -e "\n·Building coadd"
 coaddDir=$BDIR/coadds
 coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
-buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
+#buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+  astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $moswdir/*.fits | wc -l ) sum --writeall -o$coaddName
+else
+  astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $moswdir/*.fits | wc -l ) sum -o$coaddName
+fi
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
   echo -e "\tThe mask of the weighted coadd is already done"
@@ -1791,12 +1812,11 @@ fi
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap_eff.txt
 exposureMapName=$coaddDir/"$objectName"_expMap_eff_"$filter"_it"$iteration".fits
-computeExposureMap $mowdir $exposuremapDir $exposuremapdone $exposureMapName
-
+computeExposureMapNew $mowdir $exposuremapDir $exposuremapdone $exposureMapName
+#
 exposuremapdone=$coaddDir/done_exposureMap.txt
 exposureMapName=$coaddDir/"$objectName"_expMap_"$filter"_it"$iteration".fits
-computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
-
+computeExposureMapNew $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
 
 #Compute surface brightness limit
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
@@ -1854,25 +1874,19 @@ if [ -f $framesWithCoaddSubtractedDone ]; then
 else
   sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
   coadd_av=$coaddDir/"$objectName"_coadd_it"$iteration"_average.fits
-  names_coadd=""
-  coadd_count=0
-  for file in $(ls -v $photCorrFullGridDir/*.fits); do
-    for h in $(seq 1 $num_ccd); do
-      names_coadd+="$file -h$h "
-      ((coadd_count++))
-    done
-  done
-  astarithmetic $names_coadd $coadd_count mean -o$coadd_av
-  subtractCoaddToFrames $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
-  names_sub=""
-  file_count=0
-  for file in $(ls -v $framesWithCoaddSubtractedDir/*.fits); do
-    for h in $(seq 1 $num_ccd); do
-      names_sub+="$file -h$h "
-      ((file_count++))
-    done
-  done
-  astarithmetic $names_sub $file_count sum  -o$sumMosaicAfterCoaddSubtraction
+  gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+  if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean --writeall -o$coadd_av
+  else
+    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean -o$coadd_av
+  fi    
+  
+  subtractCoaddToFramesNew $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
+  if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+    astarithmetic $framesWithCoaddSubtractedDir/*.fits -g1 $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l ) sum --writeall -o$sumMosaicAfterCoaddSubtraction
+  else
+    astarithmetic $framesWithCoaddSubtractedDir/*.fits -g1 $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l ) sum -o$sumMosaicAfterCoaddSubtraction
+  fi
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
@@ -2240,52 +2254,17 @@ noiseskydone=$noiseskydir/done.txt
 computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true wholeImage -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES $blockScale "'$noisechisel_param'" "'$maskParams'"
 
 
+minRmsFileName=min_rms_it$iteration.txt
+python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noiseskydir $DIR $iteration min_rms_it$iteration.txt
+sumWeightsFileName=sum_weights_it$iteration.txt
+python3 $pythonScriptsPath/get_sumOfWeights.py $noiseskydir $sumWeightsFileName $minRmsFileName 
+
 photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrFullGridDone=$photCorrFullGridDir/done.txt
-if ! [ -f $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
-smallGridtoFullGrid $gaincordir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
+identifiedBadDetectors=$CDIR/identifiedBadDetectors.txt #We can now provide a list of bad detectors to blank them
+if ! [ -d $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
+smallGridtoFullGridAndWeight $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec $noiseskydir $minRmsFileName $iteration $identifiedBadDetectors $sumWeightsFileName
 
-echo -e "\n·Removing bad frames"
-
-diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-rejectedFramesDir=$BDIR/rejectedFrames_it"$iteration"
-if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-prefixOfFilesToRemove='entirecamera_'
-rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-removeBadFramesFromReduction $photCorrFullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-
-minRmsFileName="min_rms_it$iteration.txt"
-python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $noiseskydir $DIR $iteration $minRmsFileName
-
-clippingdir=$BDIR/clipping-outliers_it$iteration
-clippingdone=$clippingdir/done_"$k".txt
-sigmaForStdSigclip=3
-buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
-
-mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
-#moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
-if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-#if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
-mowdone=$mowdir/done.txt
-removeOutliersFromWeightedFrames $mowdone $mowdir $clippingdir $photCorrFullGridDir
-
-
-wdir=$BDIR/weight-dir_it$iteration
-wdone=$wdir/done_"$k".txt
-if ! [ -d $wdir ]; then mkdir $wdir; fi
-wonlydir=$BDIR/only-w-dir_it$iteration
-wonlydone=$wonlydir/done_"$k"_ccd"$h".txt
-if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-
-# We provide the fullGrid because we are going to combine then now
-computeWeights $wdir $wdone $wonlydir $wonlydone $mowdir $noiseskydir $iteration $minRmsFileName
-
-
-
-echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-echo -e "\nBuilding coadd"
 
 echo -e "\n·Removing bad frames"
 
@@ -2295,35 +2274,56 @@ if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
 echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
 
 rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
-
-rejectedByBackgroundStd=identifiedBadFrames_backgroundStd.txt
-#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
-#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundStd
-
-rejectedByBackgroundValue=identifiedBadFrames_backgroundValue.txt
-#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue
-
-rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-#removeBadFramesFromReduction $mowdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
-#removeBadFramesFromReduction $moonwdir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM
+removeBadFramesFromReduction $photCorrFullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
+removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
 
 
-coaddDir=$BDIR/coadds_it$iteration 
+# Store the minimum standard deviation of the frames in order to compute the weights
+
+
+
+echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+# Remove outliers before the final coadd by using sigclip-median and sigclip-std
+# This is particularly important to remove cosmic rays
+
+sigmaForStdSigclip=3
+clippingdir=$BDIR/clipping-outliers
+clippingdone=$clippingdir/done.txt
+buildUpperAndLowerLimitsForOutliersNew $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
+
+mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
+mowdone=$mowdir/done.txt
+if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+removeOutliersFromWeightedFramesNew $mowdone $mowdir $clippingdir $photCorrFullGridDir
+
+
+
+
+
+echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
+writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
+
+
+echo -e "\n·Building coadd"
+coaddDir=$BDIR/coadds_it"$iteration"
 coaddDone=$coaddDir/done.txt
 coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
-buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
+#buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+  astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $moswdir/*.fits | wc -l ) sum --writeall -o$coaddName
+else
+  astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $moswdir/*.fits | wc -l ) sum -o$coaddName
+fi
 maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
 if [ -f $maskName ]; then
-  echo "The mask of the weighted coadd is already done"
+  echo -e "\tThe mask of the weighted coadd is already done"
 else
   #If block scale is greater than 1, we apply the block
   if [ "$blockScale" -gt 1 ]; then
-    astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coaddBlocked.fits
-    imToMask=$coaddDir/coaddBlocked.fits
+    astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+    imToMask=$coaddDir/coadd_blocked.fits
   else
     imToMask=$coaddName
   fi
@@ -2337,23 +2337,57 @@ else
   if [ "$blockScale" -gt 1 ]; then 
     astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
     astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
-    rm $coaddDir/mask_unwarped.fits  $coaddDir/mask_warped.fits $coaddDir/coaddBlocked.fits
+    rm $coaddDir/mask_unwarped.fits  $coaddDir/mask_warped.fits $coaddDir/coadd_blocked.fits
   else
     mv $coaddDir/mask_warped.fits $maskName
   fi
   rm $coaddDir/coadd_convolved.fits 2>/dev/null
 fi
 
+#astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
+if [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd is already done"
+else
+  #We assume that if this works for this iteration, then the next one will need at least same parameters
+  tileSize=20
+  noisechisel_param="--tilesize=$tileSize,$tileSize \
+                    --minskyfrac=0.9 \
+                     --meanmedqdiff=0.01 \
+                     --snthresh=5.2 \
+                     --detgrowquant=0.7 \
+                     --detgrowmaxholesize=1000 \
+                     --rawoutput"
+  astnoisechisel $coaddName $noisechisel_param  -o $maskName
+fi
+if [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd is already done"
+else
+  #We assume that if this works for this iteration, then the next one will need at least same parameters
+  tileSize=$((tileSize - 5))
+  noisechisel_param="--tilesize=$tileSize,$tileSize \
+                    --minskyfrac=0.9 \
+                     --meanmedqdiff=0.01 \
+                     --snthresh=5.2 \
+                     --detgrowquant=0.7 \
+                     --detgrowmaxholesize=1000 \
+                     --rawoutput"
+  astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus  -o $maskName
+fi
+
+if ! [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd could not be generated. Please, check manually."
+  exit 47
+fi
 exposuremapDir=$coaddDir/"$objectName"_exposureMap
 exposuremapdone=$coaddDir/done_exposureMap_eff.txt
 exposureMapName=$coaddDir/"$objectName"_expMap_eff_"$filter"_it"$iteration".fits
-computeExposureMap $mowdir $exposuremapDir $exposuremapdone $exposureMapName
-
+computeExposureMapNew $mowdir $exposuremapDir $exposuremapdone $exposureMapName
+#
 exposuremapdone=$coaddDir/done_exposureMap.txt
 exposureMapName=$coaddDir/"$objectName"_expMap_"$filter"_it"$iteration".fits
-computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
+computeExposureMapNew $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
 
-
+#Compute surface brightness limit
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 
 if [ -f  $sblimitFile ]; then
@@ -2362,7 +2396,12 @@ else
     surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposureMapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
 fi
 
-echo -e "\nAdding keywords to the coadd"
+
+times=($(getInitialMidAndFinalFrameTimes $INDIR $dateHeaderKey))
+initialTime=$( date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+meanTime=$( date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+
 keyWords=("FRAMES_COMBINED" \
           "NUMBER_OF_DIFFERENT_NIGHTS" \
           "INITIAL_DATE_OBS"
@@ -2376,47 +2415,47 @@ keyWords=("FRAMES_COMBINED" \
           "WINDOW_SIZE" \
           "STD_FOR_BAD_FRAMES" \
           "SURFACE_BRIGHTNESS_LIMIT")
+
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
 comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
-halfMaxRadForCoaddName=$halfMaxRadiusVsMagnitudeOurDataDir/coadd_it2.png
+halfMaxRadForCoaddName=$diagnosis_and_badFilesDir/coadd_it1.png
 if [ -f $halfMaxRadForCoaddName ]; then
   echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
 else
-  produceHalfMaxRadVsMagForSingleImage $coaddName $halfMaxRadiusVsMagnitudeOurDataDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it2" 100
+  produceHalfMaxRadVsMagForSingleImage $coaddName $diagnosis_and_badFilesDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1" 100 NO
 fi
+##To avoid problems, we re-name the pythonScriptsPath and toleranceForMatching because it is creating problems
+#pythonScriptsPath=$pipelinePath/pipelineScripts
+#toleranceForMatching=2 
+#export pythonScriptsPath
+#export toleranceForMatching
 
-framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
+framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
 framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
 if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
-
 if [ -f $framesWithCoaddSubtractedDone ]; then
-    echo -e "\nFrames with coadd subtracted already generated\n"
+    echo -e "\n\tFrames with coadd subtracted already generated\n"
 else
   sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
   coadd_av=$coaddDir/"$objectName"_coadd_it"$iteration"_average.fits
-  names_coadd=""
-  coadd_count=0
-  for file in $(ls -v $photCorrFullGridDir/*.fits); do
-    for h in $(seq 1 $num_ccd); do
-      names_coadd+="$file -h$h "
-      ((coadd_count++))
-    done
-  done
-  #astarithmetic $names_coadd $coadd_count mean -o$coadd_av
-  subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
-  names_sub=""
-  file_count=0
-  for file in $(ls -v $framesWithCoaddSubtractedDir/*.fits); do
-    for h in $(seq 1 $num_ccd); do
-      names_sub+="$file -h$h "
-      ((file_count++))
-    done
-  done
-  astarithmetic $names_sub $file_count sum  -o$sumMosaicAfterCoaddSubtraction
+  gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+  if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean --writeall -o$coadd_av
+  else
+    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean -o$coadd_av
+  fi    
+  
+  subtractCoaddToFramesNew $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
+  if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+    astarithmetic $framesWithCoaddSubtractedDir/*.fits -g1 $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l ) sum --writeall -o$sumMosaicAfterCoaddSubtraction
+  else
+    astarithmetic $framesWithCoaddSubtractedDir/*.fits -g1 $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l ) sum -o$sumMosaicAfterCoaddSubtraction
+  fi
   echo done > $framesWithCoaddSubtractedDone 
 fi
 
@@ -2569,67 +2608,140 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
   sky_estimation_method=wholeImage #If we trust the mask, we can use the full image
   computeSky $smallPointings_maskedDir $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth YES $blockScale "'$noisechisel_param'" "'$maskParams'"
   subtractSky $starsSub_small $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+  minRmsFileName=min_rms_it$iteration.txt
+  python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $noiseskydir $DIR $iteration min_rms_it$iteration.txt
+  sumWeightsFileName=sum_weights_it$iteration.txt
+  python3 $pythonScriptsPath/get_sumOfWeights.py $noiseskydir $sumWeightsFileName $minRmsFileName 
+
   photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
   photCorrFullGridDone=$photCorrFullGridDir/done.txt
-  if ! [ -f $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
-  smallGridtoFullGrid $subskySmallGrid_dir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec
+  identifiedBadDetectors=$CDIR/identifiedBadDetectors.txt #We can now provide a list of bad detectors to blank them
+  if ! [ -d $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
+  smallGridtoFullGridAndWeight $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec $noiseskydir $minRmsFileName $iteration $identifiedBadDetectors $sumWeightsFileName
+
 
   echo -e "\n·Removing bad frames"
 
   diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  rejectedFramesDir=$BDIR/rejectedFrames_it"$iteration"
+  rejectedFramesDir=$BDIR/rejectedFrames
   if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
   echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-  prefixOfFilesToRemove='entirecamera_'
+
   rejectedByAstrometry=identifiedBadFrames_astrometry.txt
   removeBadFramesFromReduction $photCorrFullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
   removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry
 
-  minRmsFileName="min_rms_it$iteration.txt"
-  python3 $pythonScriptsPath/find_rms_min.py "$filter" 1 $totalNumberOfFrames $noiseskydir $DIR $iteration $minRmsFileName
 
-  clippingdir=$BDIR/clipping-outliers_it$iteration
-  clippingdone=$clippingdir/done.txt
+  # Store the minimum standard deviation of the frames in order to compute the weights
+
+
+
+  echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+  writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+  # Remove outliers before the final coadd by using sigclip-median and sigclip-std
+  # This is particularly important to remove cosmic rays
+
   sigmaForStdSigclip=3
-  buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
+  clippingdir=$BDIR/clipping-outliers
+  clippingdone=$clippingdir/done.txt
+  buildUpperAndLowerLimitsForOutliersNew $clippingdir $clippingdone $photCorrFullGridDir $sigmaForStdSigclip
 
   mowdir=$BDIR/photCorrFullGrid-dir-no-outliers_it$iteration
-  #moonwdir=$BDIR/only-weight-dir-no-outliers_it$iteration
-  if ! [ -d $mowdir ]; then mkdir $mowdir; fi
-  #if ! [ -d $moonwdir ]; then mkdir $moonwdir; fi
   mowdone=$mowdir/done.txt
-  removeOutliersFromWeightedFrames $mowdone $mowdir $clippingdir $photCorrFullGridDir
+  if ! [ -d $mowdir ]; then mkdir $mowdir; fi
+  removeOutliersFromWeightedFramesNew $mowdone $mowdir $clippingdir $photCorrFullGridDir
 
 
-  wdir=$BDIR/weight-dir_it$iteration
-  wdone=$wdir/done_"$k".txt
-  if ! [ -d $wdir ]; then mkdir $wdir; fi
-  wonlydir=$BDIR/only-w-dir_it$iteration
-  wonlydone=$wonlydir/done_"$k"_ccd"$h".txt
-  if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-
-  # We provide the fullGrid because we are going to combine then now
-  computeWeights $wdir $wdone $wonlydir $wonlydone $mowdir $noiseskydir $iteration $minRmsFileName
 
 
 
   echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
-  echo -e "\nBuilding coadd"
-  coaddDir=$BDIR/coadds_it$iteration 
+  writeTimeOfStepToFile "Building coadd" $fileForTimeStamps
+
+
+  echo -e "\n·Building coadd"
+  coaddDir=$BDIR/coadds_it"$iteration"
   coaddDone=$coaddDir/done.txt
   coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
-  buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+  #buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
+  gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+  if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+    astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $moswdir/*.fits | wc -l ) sum --writeall -o$coaddName
+  else
+    astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $moswdir/*.fits | wc -l ) sum -o$coaddName
+  fi
+  maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+  if [ -f $maskName ]; then
+    echo -e "\tThe mask of the weighted coadd is already done"
+  else
+    #If block scale is greater than 1, we apply the block
+    if [ "$blockScale" -gt 1 ]; then
+      astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+      imToMask=$coaddDir/coadd_blocked.fits
+    else
+      imToMask=$coaddName
+    fi
+    #If a kernel exists in the configuration file, we apply it
+    kernelFile=$CDIR/kernel.fits
+    if [ -f $kernelFile ]; then
+      astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
+      imToMask=$coaddDir/coadd_convolved.fits
+    fi
+    astnoisechisel $imToMask $noisechisel_param --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+    if [ "$blockScale" -gt 1 ]; then 
+      astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
+      astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+      rm $coaddDir/mask_unwarped.fits  $coaddDir/mask_warped.fits $coaddDir/coadd_blocked.fits
+    else
+      mv $coaddDir/mask_warped.fits $maskName
+    fi
+    rm $coaddDir/coadd_convolved.fits 2>/dev/null
+  fi
 
+  #astnoisechisel with the current parameters might fail due to long tilesize. I'm gonna make 2 checks to see if it fails, decreasing in steps of 5 in tilesize
+  if [ -f $maskName ]; then
+    echo -e "\tThe mask of the weighted coadd is already done"
+  else
+    #We assume that if this works for this iteration, then the next one will need at least same parameters
+    tileSize=20
+    noisechisel_param="--tilesize=$tileSize,$tileSize \
+                      --minskyfrac=0.9 \
+                       --meanmedqdiff=0.01 \
+                       --snthresh=5.2 \
+                       --detgrowquant=0.7 \
+                       --detgrowmaxholesize=1000 \
+                       --rawoutput"
+    astnoisechisel $coaddName $noisechisel_param  -o $maskName
+  fi
+  if [ -f $maskName ]; then
+    echo -e "\tThe mask of the weighted coadd is already done"
+  else
+    #We assume that if this works for this iteration, then the next one will need at least same parameters
+    tileSize=$((tileSize - 5))
+    noisechisel_param="--tilesize=$tileSize,$tileSize \
+                      --minskyfrac=0.9 \
+                       --meanmedqdiff=0.01 \
+                       --snthresh=5.2 \
+                       --detgrowquant=0.7 \
+                       --detgrowmaxholesize=1000 \
+                       --rawoutput"
+    astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus  -o $maskName
+  fi
+
+  if ! [ -f $maskName ]; then
+    echo -e "\tThe mask of the weighted coadd could not be generated. Please, check manually."
+    exit 47
+  fi
   exposuremapDir=$coaddDir/"$objectName"_exposureMap
   exposuremapdone=$coaddDir/done_exposureMap_eff.txt
   exposureMapName=$coaddDir/"$objectName"_expMap_eff_"$filter"_it"$iteration".fits
-  computeExposureMap $mowdir $exposuremapDir $exposuremapdone $exposureMapName
-
+  computeExposureMapNew $mowdir $exposuremapDir $exposuremapdone $exposureMapName
+  #
   exposuremapdone=$coaddDir/done_exposureMap.txt
   exposureMapName=$coaddDir/"$objectName"_expMap_"$filter"_it"$iteration".fits
-  computeExposureMap $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
-  #We will use the mask of it2
-  maskName=$BDIR/coadds_it2/"$objectName"_coadd_"$filter"_mask.fits
+  computeExposureMapNew $photCorrFullGridDir $exposuremapDir $exposuremapdone $exposureMapName
+
+  #Compute surface brightness limit
   sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 
   if [ -f  $sblimitFile ]; then
@@ -2638,7 +2750,12 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
       surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposureMapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
   fi
 
-  echo -e "\nAdding keywords to the coadd"
+
+  times=($(getInitialMidAndFinalFrameTimes $INDIR $dateHeaderKey))
+  initialTime=$( date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+  meanTime=$( date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+  finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+
   keyWords=("FRAMES_COMBINED" \
             "NUMBER_OF_DIFFERENT_NIGHTS" \
             "INITIAL_DATE_OBS"
@@ -2652,39 +2769,47 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
             "WINDOW_SIZE" \
             "STD_FOR_BAD_FRAMES" \
             "SURFACE_BRIGHTNESS_LIMIT")
+
   numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
   values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
   comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
   astfits $coaddName --write=/,"Pipeline information"
   addkeywords $coaddName keyWords values comments
-  framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+
+  halfMaxRadForCoaddName=$diagnosis_and_badFilesDir/coadd_it1.png
+  if [ -f $halfMaxRadForCoaddName ]; then
+    echo -e "\tThe Half-Max-Rad vs Magnitude has been already generate for the coadd"
+  else
+    produceHalfMaxRadVsMagForSingleImage $coaddName $diagnosis_and_badFilesDir $catdir/"$objectName"_Gaia_eDR3.fits $toleranceForMatching $pythonScriptsPath "coadd_it1" 100 NO
+  fi
+  ##To avoid problems, we re-name the pythonScriptsPath and toleranceForMatching because it is creating problems
+  #pythonScriptsPath=$pipelinePath/pipelineScripts
+  #toleranceForMatching=2 
+  #export pythonScriptsPath
+  #export toleranceForMatching
+
+  writeTimeOfStepToFile "Producing frames with coadd subtracted" $fileForTimeStamps
+  framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted
   framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.txt
   if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
-
   if [ -f $framesWithCoaddSubtractedDone ]; then
-      echo -e "\nFrames with coadd subtracted already generated\n"
+      echo -e "\n\tFrames with coadd subtracted already generated\n"
   else
     sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
     coadd_av=$coaddDir/"$objectName"_coadd_it"$iteration"_average.fits
-    names_coadd=""
-    coadd_count=0
-    for file in $(ls -v $photCorrFullGridDir/*.fits); do
-      for h in $(seq 1 $num_ccd); do
-        names_coadd+="$file -h$h "
-        ((coadd_count++))
-      done
-    done
-    #astarithmetic $names_coadd $coadd_count mean -o$coadd_av
-    subtractCoaddToFrames $photCorrFullGridDir $coaddName $framesWithCoaddSubtractedDir
-    names_sub=""
-    file_count=0
-    for file in $(ls -v $framesWithCoaddSubtractedDir/*.fits); do
-      for h in $(seq 1 $num_ccd); do
-        names_sub+="$file -h$h "
-        ((file_count++))
-      done
-    done
-    astarithmetic $names_sub $file_count sum  -o$sumMosaicAfterCoaddSubtraction
+    gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+    if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+      astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean --writeall -o$coadd_av
+    else
+      astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean -o$coadd_av
+    fi    
+
+    subtractCoaddToFramesNew $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
+    if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+      astarithmetic $framesWithCoaddSubtractedDir/*.fits -g1 $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l ) sum --writeall -o$sumMosaicAfterCoaddSubtraction
+    else
+      astarithmetic $framesWithCoaddSubtractedDir/*.fits -g1 $(ls $framesWithCoaddSubtractedDir/*.fits | wc -l ) sum -o$sumMosaicAfterCoaddSubtraction
+    fi
     echo done > $framesWithCoaddSubtractedDone 
   fi
 fi
