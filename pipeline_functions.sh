@@ -1576,6 +1576,9 @@ downloadSpectra() {
         echo -e "\nSpectra already downloaded\n"
     else
         python3 $pythonScriptsPath/downloadSpectraForField.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+        if [[ "$surveyForSpectra" == "GAIA" ]] && [ -z "$(ls -A $spectraDir/*.fits 2>/dev/null)" ]; then
+            python3 $pythonScriptsPath/getSpectraFromBulk.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+        fi
         echo "done" > $spectraDone
     fi
 }
@@ -3257,13 +3260,16 @@ removeOutliersFromFrameNew(){
     
     nonw_tmp=$mowdir/${base%.fits}_noweighted.fits
     wom_tmp=$mowdir/${base%.fits}_weighted.fits
+    onlywom_tmp=$mowdir/${base%.fits}_onlyweighted.fits
     astarithmetic $wdir/$base -h1 set-i i i $clippingdir/upperlim.fits -h1 gt nan where float32 -q -o $tmp_ab
     astarithmetic $tmp_ab -h1 set-i i i $clippingdir/lowerlim.fits -h1 lt nan where float32 -q -o$nonw_tmp
     astarithmetic $wdir/$base -h2 $nonw_tmp -h1 isblank nan where float32 -q -o$wom_tmp
+    astarithmetic $wdir/$base -h3 $nonw_tmp -h1 isblank nan where float32 -q -o$onlywom_tmp
     astfits $wdir/$base --copy=0 --primaryimghdu -o$wom
     astfits $nonw_tmp --copy=1 -o$wom
     astfits $wom_tmp --copy=1 -o$wom
-    rm -f $tmp_ab $nonw_tmp $wom_tmp
+    astfits $onlywom_tmp --copy=1 -o$wom
+    rm -f $tmp_ab $nonw_tmp $wom_tmp $onlywom_tmp
     
 }
 export -f removeOutliersFromFrameNew
@@ -3285,6 +3291,24 @@ removeOutliersFromWeightedFrames () {
   fi
 }
 export -f removeOutliersFromWeightedFrames
+removeOutliersFromWeightedFramesNew () {
+  local mowdone=$1
+  local mowdir=$2
+  local clippingdir=$3
+  local wdir=$4
+
+  if [ -f $mowdone ]; then
+      echo -e "\n\tOutliers of the weighted images already masked\n"
+  else
+      framesToRemoveOutliers=()
+      for a in $wdir/*.fits; do
+          framesToRemoveOutliers+=("$a")
+      done
+      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrameNew {} $mowdir $clippingdir $wdir
+      echo done > $mowdone 
+  fi
+}
+export -f removeOutliersFromWeightedFramesNew
 
 # Functions for applying the mask of the coadd for a second iteration
 cropAndApplyMaskPerFrame() {
@@ -3508,6 +3532,30 @@ buildCoadd() {
     fi
 }
 export -f buildCoadd
+buildCoaddNew() {
+    local coaddir=$1
+    local coaddName=$2
+    local mowdir=$3
+    local coaddone=$4
+
+    if ! [ -d $coaddir ]; then mkdir $coaddir; fi
+    if [ -f $coaddone ]; then
+            echo -e "\n\tThe first weighted (based upon std) mean of the images already done\n"
+    else
+            gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+            
+            if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+                astarithmetic $(ls $mowdir/*.fits) -g2 $(ls $mowdir/*.fits | wc -l ) sum  --writeall -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls $mowdir/*.fits) -g3 $(ls $mowdir/*.fits | wc -l ) sum  --writeall -o$coaddir/"$k"_w.fits
+            else
+                astarithmetic $(ls $mowdir/*.fits) -g2 $(ls $mowdir/*.fits | wc -l ) sum  -o$coaddir/"$k"_wx.fits
+                astarithmetic $(ls $mowdir/*.fits) -g3 $(ls $mowdir/*.fits | wc -l ) sum   -o$coaddir/"$k"_w.fits
+            fi
+            astarithmetic $coaddir/"$k"_wx.fits -h1 $coaddir/"$k"_w.fits -h1 / -o$coaddName
+            echo done > $coaddone
+    fi
+}
+export -f buildCoaddNew
 
 subtractCoaddToFrames() {
     local dirWithFrames=$1
@@ -3645,9 +3693,9 @@ computeExposureMapNew() {
       gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
       
       if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-        astarithmetic $(ls $exposureMapDir/*.fits ) $(ls $exposureMapDir/*.fits | wc -l) sum --writeall -o$exposureMapName
+        astarithmetic $(ls $exposureMapDir/*.fits ) $(ls $exposureMapDir/*.fits | wc -l) -g1 sum --writeall -o$exposureMapName
       else
-        astarithmetic $(ls $exposureMapDir/*.fits ) $(ls $exposureMapDir/*.fits | wc -l) sum   --writeall -o$exposureMapName
+        astarithmetic $(ls $exposureMapDir/*.fits ) $(ls $exposureMapDir/*.fits | wc -l) -g1 sum   --writeall -o$exposureMapName
       fi
       rm -rf $exposureMapDir
       echo done > $exposureMapDone
@@ -3928,15 +3976,14 @@ smallGridToFullGridAndWeightSingleFrame(){
     local minRmsFileName=$7
     local iteration=$8
     local identifiedBadDetectors=$9
-    local sumWeightsFileName=${10}
 
     base=$( basename $smallFrame )
     out=$fullDir/$base
     astfits $smallFrame --copy=0 --primaryimghdu -o $out
     tmpNormal=$fullDir/tmp_normal_$base
     tmpWeight=$fullDir/tmp_weight_$base
-    rms_min=$(awk 'NR=='1' {print $1}' $minRmsFileName)
-    weight_sum=$(awk 'NR=='1' {print $1}' $sumWeightsFileName)
+    tmpOnlyWeight=$fullDir/tmp_onlyweight_$base
+    rms_min=$(awk 'NR=='1' {print $1}' $BDIR/$minRmsFileName)
     for h in $(seq 1 $num_ccd); do
         ## Detect if frame is bad
         string="$base -h$h"
@@ -3954,29 +4001,35 @@ smallGridToFullGridAndWeightSingleFrame(){
             if [ $isBad -ne 0 ]; then
                 astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
                 mv $tmpNormal $fullDir/prev_normal_$base
-                astarithmetic $fullDir/prev_normal_$base $fullDir/ccd_$base -g1 2 sigclip-mean -o $tmpNormal
-                rm $fullDir/prev_normal_$base $fullDir/ccd_$base
+                astarithmetic $fullDir/prev_normal_$base $fullDir/ccd_$base -g1 2 3 0.2 sigclip-mean  -o $tmpNormal
+                rm $fullDir/prev_normal_$base 
             fi
         fi
         #Weight
-        rms_f=$(awk 'NR=='$h' {print $1}' $skydir/${base%.fits}.txt)
+        rms_f=$(awk 'NR=='$h' {print $3}' $skydir/${base%.fits}.txt)
         weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / -q)
+        
         if [ $isBad -eq 0 ]; then
             weight=nan
         fi
         if [ $h -eq 1 ]; then
-            astarithmetic $smallFrame -h$h $weight x $weight_sum / -o $tmpWeight
+            astarithmetic $tmpNormal -h1 $weight x float32 -o $tmpWeight
+            astarithmetic $tmpWeight $tmpNormal -g1 / float32 -o $tmpOnlyWeight
         else
-            astarithmetic $smallFrame -h$h $weight x $weight_sum / -o $fullDir/ccd_$base
+            astarithmetic $fullDir/ccd_$base -h1 $weight x float32 -o $fullDir/ccd_weighted_$base
+            astarithmetic $fullDir/ccd_weighted_$base $fullDir/ccd_$base -g1 / float32 -o $fullDir/ccd_onlyweighted_$base
             mv $tmpWeight $fullDir/prev_weight_$base
-            astarithmetic $fullDir/prev_weight_$base $fullDir/ccd_$base -g1 2 sigclip-mean -o $tmpWeight
-            rm $fullDir/prev_weight_$base $fullDir/ccd_$base
+            mv $tmpOnlyWeight $fullDir/prev_onlyweight_$base
+            astarithmetic $fullDir/prev_weight_$base $fullDir/ccd_weighted_$base -g1 2 sum -o $tmpWeight
+            astarithmetic $fullDir/prev_onlyweight_$base $fullDir/ccd_onlyweighted_$base -g1 2 sum -o $tmpOnlyWeight
+            rm $fullDir/prev_weight_$base $fullDir/ccd_weighted_$base $fullDir/ccd_$base $fullDir/prev_onlyweight_$base $fullDir/ccd_onlyweighted_$base
         fi
     done
     astfits $tmpNormal --copy=1 -o $out
     astfits $tmpWeight --copy=1 -o $out
-    #Final result is stored in 2 layers: one normal image and one weighted image
-    rm $tmpNormal $tmpWeight
+    astfits $tmpOnlyWeight --copy=1 -o $out
+    #Final result is stored in 3 layers: one normal image, one weighted image, and one only with the weights
+    rm $tmpNormal $tmpWeight $tmpOnlyWeight
 }
 export -f smallGridToFullGridAndWeightSingleFrame
 
@@ -3991,7 +4044,6 @@ smallGridtoFullGridAndWeight(){
     local minRmsFileName=$8
     local iteration=$9
     local identifiedBadDetectors=${10}
-    local sumWeightsFileName=${11}
 
     if [ -f $fullGridDone ]; then
         echo -e "\n\tFrames from {$smallGridDir} have been already pased into the full grid\n"
@@ -4166,13 +4218,15 @@ subtractStars(){
     if [ -f $profileDone ]; then
         echo -e "Profiles of star {$starId} already computed"
     else
-        for a in $(seq 1 $totalNumberOfFrames); do
-            image=$inputFolder_small/entirecamera_"$a".fits
-            #We are gonna do the following: we generate circles where PSF reaches 26.5 mag arcsec^-2, ie, ~50 times lower than typical
-            # sky background (THis is literally by eye)
-            circleRad=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile 26.5 $pixelScale) 
-            python3 $pythonScriptsPath/check_starLocation.py $image $starLocationFile $num_ccd $starRa $starDec $circleRad 
-        done
+        if ! [ -f $starLocationFile ]; then 
+            for a in $(seq 1 $totalNumberOfFrames); do
+                image=$inputFolder_small/entirecamera_"$a".fits
+                #We are gonna do the following: we generate circles where PSF reaches 26.5 mag arcsec^-2, ie, ~50 times lower than typical
+                # sky background (THis is literally by eye)
+                circleRad=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile 26.5 $pixelScale)
+                python3 $pythonScriptsPath/check_starLocation.py $image $starLocationFile $num_ccd $starRa $starDec $circleRad 
+            done
+        fi
         cat "$starLocationFile" | parallel -j "$num_cpus" buildProfileForFrame {} "$starRa" "$starDec" "$starId" "$profileFolder" 
         echo done > $profileDone
     fi
@@ -4206,6 +4260,8 @@ subtractStars(){
         ##First step: create the PSFfile
         psfCrop=$outputDir_small/PSF.fits
         rCrop=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile $limMag $pixelScale )
+	    echo "Radius to crop PSF: {$rCrop}"
+	
         if (( $(echo "$rCrop == 0" | bc -l) )); then
             cp $psfFile $psfCrop
         else
@@ -4249,7 +4305,7 @@ subtractStarFromFrame() {
         
 
             output_temp=$output_folder/"$base"_temp.fits
-            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp --numthreads=$num_cpus
+            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp 
             astfits $output_temp --copy=1 -o$output
             gain=$(astfits $image -h$h --keyvalue=GAIN -q)
             astfits $output -h$h --write=GAIN,$gain
@@ -4295,17 +4351,27 @@ computeStarScaleForFrame() {
     if ! [ -f $profile ]; then
         echo "0.000" > $scale_text
     else
-        hdu=$(grep "entirecamera_${a}.fits" $slocfile | awk -F'-h' '{print $2}')
+        # `starlocation.txt` lines look like: /path/entirecamera_123.fits -h4
+        # Extract the HDU number (1-based) robustly.
+        hdu=$(awk -v a="$a" '$0 ~ ("entirecamera_" a "\\.fits") {print $2; exit}' "$slocfile")
+        hdu=${hdu#-h}
+        if ! [[ "$hdu" =~ ^[0-9]+$ ]]; then
+            echo "Error: Could not parse HDU for entirecamera_${a}.fits from $slocfile (got '$hdu')" >&2
+            echo "0.000" > "$scale_text"
+            return 0
+        fi
         calFactor=$(awk 'NR=='$hdu'{print $1}' $BDIR/commonCalibrationFactor_it2.txt)
                 ###First step: measure a rough approach of the background
         gainFactor=$(awk 'NR=='$hdu'{print $1}' $gainCorrectionFile)
-        sky_it1=$BDIR/noise-sky_it1/entirecamera_"$a".txt
-        sky_mean=$(awk 'NR=='$hdu'{print $2}' $sky_it1)
-        sky_std=$(awk 'NR=='$hdu'{print $3}' $sky_it1)
+        sky_it2=$BDIR/noise-sky_it2/entirecamera_"$a".txt
+        sky_mean=$(awk 'NR=='$hdu'{print $2}' $sky_it2)
+        sky_std=$(awk 'NR=='$hdu'{print $3}' $sky_it2)
         ##We will range ±500
+        echo "python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale $starSatThreshod $calFactor $gainFactor" >> $BDIR/fitCall.txt
         scale=$(python3 $pythonScriptsPath/get_fitWithPSF.py $profile $psfProfile $starMag $sky_mean $sky_std $scaleDir $num_cpus $pixelScale $starSatThreshod $calFactor $gainFactor)
         echo "$scale" > $scale_text
         
     fi
 }
 export -f computeStarScaleForFrame
+

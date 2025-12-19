@@ -71,7 +71,7 @@ def downloadAllGaiaSpectra(mosaicDir, raMin, raMax, decMin, decMax):
 
     createRegionFileFromTable(mosaicDir + "/spectraInField.reg", results)
 
-    chunk_size   = 500
+    chunk_size   = 10
     ids          = results['source_id']
     ids_chunks   = list(chunks(ids, chunk_size))
     retrieval_type = 'XP_SAMPLED'

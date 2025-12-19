@@ -50,13 +50,15 @@ def get_profileRange(star_file,star_mag,psf_file,pixScale,calFactor,satThresh,ga
         mag_bck=-2.5*np.log10(back_mean*calFactor*gainFactor)+22.5+5*np.log10(pixScale)
         ##First: check where I<6000ADU to avoid saturation and where I>1.5Background
         satThresh_nanomag=10**(-0.4*(satThresh-22.5-5*np.log10(pixScale)))
+        I_masked=I_star[(I_star<satThresh_nanomag)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.5)]
         indexes=np.where((I_star<satThresh_nanomag)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.5))
         indexes_belBck=np.where((~np.isnan(I_star))&(std_star!=0)&(mag_star>mag_bck-0.2))
         if len(indexes[0])==0:
             #If no values are found, probably the first values taken are close to the background, so we
             #make a range less restrictive
-            indexes=np.where((I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck))
-            
+            indexes=np.where((I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.005))
+            I_masked=I_star[(I_star<satThresh)&(~np.isnan(I_star))&(std_star!=0)&(mag_star<mag_bck-0.005)]
+            indexes_belBck=np.where((~np.isnan(I_star))&(std_star!=0)&(mag_star>mag_bck-0.005))
         if (len(indexes[0])==0):
             #If still no values are found, then we can assume scatter light won't affect the image
             #So, we give Rmin=100 and Rmax=50 in order to return a scale of 0 on the later on sanity check
@@ -65,7 +67,8 @@ def get_profileRange(star_file,star_mag,psf_file,pixScale,calFactor,satThresh,ga
             indexes_ok=[[0]]
         else:
             #We take the first and last value of the indexes
-            Rmin=R_star[indexes[0][0]]
+            max_idx = indexes[0][np.argmax(I_masked)]
+            Rmin=R_star[max_idx]
             Rmax=R_star[indexes_belBck[0][0]] if len(indexes_belBck[0])>0 else R_star[indexes[0][-1]]
             indexes_ok=indexes[0][(R_star[indexes[0]]>=Rmin)&(R_star[indexes[0]]<=Rmax)]
     return Rmin,Rmax,indexes_ok 
