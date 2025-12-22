@@ -2253,7 +2253,7 @@ photCorrFullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrFullGridDone=$photCorrFullGridDir/done.txt
 identifiedBadDetectors=$CDIR/identifiedBadDetectors.txt #We can now provide a list of bad detectors to blank them
 if ! [ -d $photCorrFullGridDir ]; then mkdir $photCorrFullGridDir; fi
-smallGridtoFullGridAndWeight $photCorrSmallGridDir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec $noiseskydir $minRmsFileName $iteration $identifiedBadDetectors 
+smallGridtoFullGridAndWeight $gaincordir $photCorrFullGridDir $photCorrFullGridDone $coaddSizePx $ra $dec $noiseskydir $minRmsFileName $iteration $identifiedBadDetectors 
 
 
 echo -e "\n·Removing bad frames"
