@@ -3976,7 +3976,13 @@ smallGridToFullGridAndWeightSingleFrame(){
     local minRmsFileName=$7
     local iteration=$8
     local identifiedBadDetectors=$9
-
+    #Be careful with gnuastro version: if it is greater equal 0.23, we need to add --writeall to some astarithmetics
+    gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
+    if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
+        gnu_vers="--writeall"
+    else
+        gnu_vers="" 
+    fi
     base=$( basename $smallFrame )
     out=$fullDir/$base
     astfits $smallFrame --copy=0 --primaryimghdu -o $out
@@ -3998,10 +4004,11 @@ smallGridToFullGridAndWeightSingleFrame(){
                 rm $fullDir/ccd1_$base
             fi
         else
+            astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
             if [ $isBad -ne 0 ]; then
-                astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
+                
                 mv $tmpNormal $fullDir/prev_normal_$base
-                astarithmetic $fullDir/prev_normal_$base $fullDir/ccd_$base -g1 2 3 0.2 sigclip-mean  -o $tmpNormal
+                astarithmetic $fullDir/prev_normal_$base $fullDir/ccd_$base -g1 2 3 0.2 sigclip-mean $gnu_vers -o $tmpNormal
                 rm $fullDir/prev_normal_$base 
             fi
         fi
@@ -4020,8 +4027,8 @@ smallGridToFullGridAndWeightSingleFrame(){
             astarithmetic $fullDir/ccd_weighted_$base $fullDir/ccd_$base -g1 / float32 -o $fullDir/ccd_onlyweighted_$base
             mv $tmpWeight $fullDir/prev_weight_$base
             mv $tmpOnlyWeight $fullDir/prev_onlyweight_$base
-            astarithmetic $fullDir/prev_weight_$base $fullDir/ccd_weighted_$base -g1 2 sum -o $tmpWeight
-            astarithmetic $fullDir/prev_onlyweight_$base $fullDir/ccd_onlyweighted_$base -g1 2 sum -o $tmpOnlyWeight
+            astarithmetic $fullDir/prev_weight_$base $fullDir/ccd_weighted_$base -g1 2 sum $gnu_vers -o $tmpWeight
+            astarithmetic $fullDir/prev_onlyweight_$base $fullDir/ccd_onlyweighted_$base -g1 2 sum $gnu_vers -o $tmpOnlyWeight
             rm $fullDir/prev_weight_$base $fullDir/ccd_weighted_$base $fullDir/ccd_$base $fullDir/prev_onlyweight_$base $fullDir/ccd_onlyweighted_$base
         fi
     done
