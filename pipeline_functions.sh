@@ -1949,6 +1949,12 @@ selectStarsAndSelectionRangeSurvey() {
                 currentName=$( basename $i )
                 brickList+=("$currentName")
             done
+        elif [ "$survey" = "SDSS" ]; then
+            for i in $( ls $dirWithBricks/sdss_*.fits); do
+                currentName=$( basename $i )
+                brickList+=("$currentName")
+            done
+        
         fi
 
         headerWithData=0 # After decompressing the data ends up in the hdu 0
@@ -2030,6 +2036,8 @@ performAperturePhotometryToSingleBrick() {
         brickName=decompressed_decal_image_"$brick"_"$filter".fits
     elif [[ "$survey" = "PANSTARRS" ]]; then
         brickName=cal_"$brick".fits
+    elif [[ "$survey" = "SDSS" ]]; then
+        brickName=$brick.fits
     fi
     brickImage=$brickDir/$brickName
     fileWithAperture=$automaticallySelectedDir/range_$brickName.txt
@@ -2083,6 +2091,11 @@ performAperturePhotometryToBricks() {
         elif [[ "$survey" = "PANSTARRS" ]]; then
             for a in $( ls $brickDir/cal_*.fits); do
                 brickName=$(echo "$a" | awk -F'cal_' '{print $2}' | awk -F'.fits' '{print $1}')
+                brickList+=("$brickName")
+            done
+        elif [[ "$survey" = "SDSS" ]]; then
+            for a in $( ls $brickDir/sdss_*.fits); do
+                brickName="sdss"$(echo "$a" | awk -F'/sdss' '{print $2}' | awk -F'.fits' '{print $1}')
                 brickList+=("$brickName")
             done
         else
@@ -4070,7 +4083,7 @@ detectorIsBad(){
     #This funciton will recieve the list of bad frames and the string entirecamera_X.fits -h$N
     local frameName=$1
     local badDetectorsList=$2
-    while IFS= read -r file_name; do
+    while IFS= read -r fileName; do
         if [ "$frameName" == "$fileName" ]; then
             return 0
         fi

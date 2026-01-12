@@ -1868,9 +1868,9 @@ else
   coadd_av=$coaddDir/"$objectName"_coadd_it"$iteration"_average.fits
   gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
   if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean --writeall -o$coadd_av
+    astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $mowdir/*.fits | wc -l ) mean --writeall -o$coadd_av
   else
-    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean -o$coadd_av
+    astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $mowdir/*.fits | wc -l ) mean -o$coadd_av
   fi    
   
   subtractCoaddToFramesNew $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
@@ -2430,9 +2430,9 @@ else
   coadd_av=$coaddDir/"$objectName"_coadd_it"$iteration"_average.fits
   gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
   if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean --writeall -o$coadd_av
+    astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $mowdir/*.fits | wc -l ) mean --writeall -o$coadd_av
   else
-    astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean -o$coadd_av
+    astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $mowdir/*.fits | wc -l ) mean -o$coadd_av
   fi    
   
   subtractCoaddToFramesNew $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir
@@ -2770,9 +2770,9 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
     coadd_av=$coaddDir/"$objectName"_coadd_it"$iteration"_average.fits
     gnuastro_version=$(astarithmetic --version | head -n1 | awk '{print $NF}')
     if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
-      astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean --writeall -o$coadd_av
+      astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $mowdir/*.fits | wc -l ) mean --writeall -o$coadd_av
     else
-      astarithmetic $(ls $photCorrFullGridDir/*.fits) -g1 $(ls $photCorrFullGridDir/*.fits | wc -l ) mean -o$coadd_av
+      astarithmetic $(ls $mowdir/*.fits) -g1 $(ls $mowdir/*.fits | wc -l ) mean -o$coadd_av
     fi    
 
     subtractCoaddToFramesNew $photCorrFullGridDir $coadd_av $framesWithCoaddSubtractedDir

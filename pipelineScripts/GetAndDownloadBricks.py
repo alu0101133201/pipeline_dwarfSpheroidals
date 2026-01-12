@@ -331,7 +331,7 @@ def querySDSSbricks(center_ra,center_dec,radius_deg):
     result = SDSS.query_sql(sql)
     return result
 
-def download_field_image(field_id,ra,dec,downladDestination,band='r',data_release='DR17'):
+def download_field_image(field_id,ra,dec,downloadDestination,band='r',data_release='DR17'):
     position = coords.SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
     SDSS.SDSS_MIRROR = f"http://skyserver.sdss.org/{data_release.lower()}"
 
@@ -356,7 +356,7 @@ def download_fields_mosaic(center_ra,center_dec,radius_deg,downloadDestination,b
         ra=row['ra']
         dec=row['dec']
         download_field_image(field_id,ra,dec,downloadDestination,band=band,data_release=f"DR{data_release}")
-        return f"sdss_field{field_id}_dr{dataa_release}.{band}", ra, dec
+        return f"sdss_field{field_id}_dr{data_release}.{band}", ra, dec
     
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(download_task,row,band) for band in bands for row in bricks]
