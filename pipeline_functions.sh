@@ -277,7 +277,7 @@ checkIfStringVariablesHaveValidValues() {
         exit $errorCode
     fi
 
-    if [[ ("$surveyForPhotometry" != "PANSTARRS") && ("$surveyForPhotometry" != "DECaLS") && ("$surveyForPhotometry" != "SPECTRA")]]; then
+    if [[ ("$surveyForPhotometry" != "PANSTARRS") && ("$surveyForPhotometry" != "DECaLS") && ("$surveyForPhotometry" != "SPECTRA") && ("$surveyForPhotometry" != "SDSS") ]]; then
         echo "Error. The variable surveyForPhotometry has a value ($surveyForPhotometry) which is not accepted"
         exit $errorCode
     fi
