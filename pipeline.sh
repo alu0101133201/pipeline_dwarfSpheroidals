@@ -1840,8 +1840,8 @@ keyWords=("FRAMES_COMBINED" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+comments=("" "" "" "" "" "" "" "" "" "" "±N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
@@ -2402,8 +2402,8 @@ keyWords=("FRAMES_COMBINED" \
           "SURFACE_BRIGHTNESS_LIMIT")
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+comments=("" "" "" "" "" "" "" "" "" "" "±N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
@@ -2733,22 +2733,22 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
   finalTime=$( date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
 
   keyWords=("FRAMES_COMBINED" \
-            "NUMBER_OF_DIFFERENT_NIGHTS" \
-            "INITIAL_DATE_OBS"
-            "MEAN_DATE_OBS"
-            "FINAL_DATE_OBS"
-            "FILTER" \
-            "SATURATION_THRESHOLD" \
-            "CALIBRATION_BRIGHTLIMIT" \
-            "CALIBRATION_FAINTLIMIT" \
-            "RUNNING_FLAT" \
-            "WINDOW_SIZE" \
-            "STD_FOR_BAD_FRAMES" \
-            "SURFACE_BRIGHTNESS_LIMIT")
+          "NUMBER_OF_DIFFERENT_NIGHTS" \
+          "INITIAL_DATE_OBS"
+          "MEAN_DATE_OBS"
+          "FINAL_DATE_OBS"
+          "FILTER" \
+          "SATURATION_THRESHOLD" \
+          "CALIBRATION_BRIGHTLIMIT" \
+          "CALIBRATION_FAINTLIMIT" \
+          "RUNNING_FLAT" \
+          "WINDOW_SIZE" \
+          "STD_FOR_BAD_FRAMES" \
+          "SURFACE_BRIGHTNESS_LIMIT")
 
   numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
-  values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimit" "$calibrationFaintLimit" "$RUNNING_FLAT" "$windowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-  comments=("" "" "" "" "" "" "" "" "" "" "" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+  values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
+  comments=("" "" "" "" "" "" "" "" "" "" "±N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
   astfits $coaddName --write=/,"Pipeline information"
   addkeywords $coaddName keyWords values comments
 
