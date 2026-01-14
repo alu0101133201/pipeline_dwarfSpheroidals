@@ -1841,7 +1841,7 @@ keyWords=("FRAMES_COMBINED" \
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "±N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+comments=("" "" "" "" "" "" "" "" "" "" "+-N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
@@ -2403,7 +2403,7 @@ keyWords=("FRAMES_COMBINED" \
 
 numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
 values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "±N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+comments=("" "" "" "" "" "" "" "" "" "" "+-N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
 astfits $coaddName --write=/,"Pipeline information"
 addkeywords $coaddName keyWords values comments
 
@@ -2748,7 +2748,7 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
 
   numberOfFramesCombined=$(ls $mowdir/*.fits | wc -l)
   values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$saturationThreshold" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$numberOfStdForBadFrames" "$surfaceBrightnessLimit")
-  comments=("" "" "" "" "" "" "" "" "" "" "±N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+  comments=("" "" "" "" "" "" "" "" "" "" "+-N frames" "Num. of tandard deviations used for rejection" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
   astfits $coaddName --write=/,"Pipeline information"
   addkeywords $coaddName keyWords values comments
 
