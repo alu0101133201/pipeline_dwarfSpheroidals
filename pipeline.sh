@@ -2322,6 +2322,15 @@ else
   fi  
   rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
 fi
+
+
+
+
+# We use the mask from it1, which has the (possible) user-defined mask and the one from the coadd it     1
+if [ -f $CDIR/mask.fits ]; then
+  maskName=$BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits
+fi
+
 sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
 exposuremapName=$coaddDir/exposureMap.fits
 if [ -f  $sblimitFile ]; then
