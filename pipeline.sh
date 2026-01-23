@@ -376,10 +376,21 @@ oneNightPreProcessing() {
   # We always need the common ring  definition always stored for photometric calibration (selection of decals bricks to download)
   ringdir=$BDIR/ring
   if ! [ -d $ringdir ]; then mkdir $ringdir; fi
+
+  lockfile="$ringdir/lockfile"
+  exec 201>$lockfile
+  flock -x 201
+
   # We create the .fits ring image based on how the normalisation is going to be done
   if [[ "$USE_COMMON_RING" = true && ! -f "$ringdir/ring.fits"  ]]; then
     cp $commonRingDefinitionFile $ringdir/ring.txt 
     astmkprof --background=$mbiascorrdir/"$objectName"-Decals-"$filter"_n"$currentNight"_f1_ccd"$h".fits -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas -o $ringdir/ring.fits $commonRingDefinitionFile
+
+        # We remove the defects of the borders from the normalisation ring if needed
+    if [ "$telescope" == "OSIRIS+" ]; then
+	    python3 $pythonScriptsPath/cutRing.py -1 300 -1 -1
+    fi
+
   else
     if [[ "$USE_COMMON_RING" = false ]]; then
       if [[ ! -f "$ringdir/ring_2.fits" || ! -f "$ringdir/ring_1.fits" ]]; then
@@ -388,6 +399,8 @@ oneNightPreProcessing() {
       fi
     fi
   fi
+  flock -u 201
+  exec 201>&-
 
   ########## Creating the it1 master flat image ##########
 
