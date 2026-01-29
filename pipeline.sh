@@ -485,7 +485,16 @@ oneNightPreProcessing() {
   # For the running flat being effective we need a great dithering pattern. The data right now has a not appropriate dithering for the running flat
   # So the whole night flat approach will be used. But In order to generalise the pipeline the option of using the running flat or not is
   # configure by the parameter "RUNNING_FLAT"
-
+  ##MASK BAD DETECTORS WHEN CREATING FLATS
+  maskedit1dir=$BDIR/masked-images-it1_n$currentNight
+  maskedit1done=$maskedit1dir/done_"$filter".txt
+  if ! [ -d $maskedit1dir ]; then mkdir $maskedit1dir; fi
+  if [ -f $maskedit1done ]; then
+    echo -e "\nBad detectors are masked, night $currentNight\n"
+  else
+    maskBadDetectors $mbiascorrdir $maskedit1dir $CDIR/identifiedBadDetectors_flat.txt
+    echo done > $maskedit1done
+  fi
 
   # Creating iteration 1 flat_it1. First we need to normalise the science images.
   normit1dir=$BDIR/norm-it1-images_n$currentNight
@@ -494,7 +503,7 @@ oneNightPreProcessing() {
   if [ -f $normit1done ]; then
     echo -e "\nScience images are already normalized for night $currentNight\n"
   else
-    normaliseImagesWithRing $mbiascorrdir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
+    normaliseImagesWithRing $maskedit1dir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit1done
   fi
 
@@ -592,7 +601,7 @@ oneNightPreProcessing() {
     if [ -f $maskedit2done ]; then
       echo -e "\nScience images are masked for running flat, night $currentNight\n"
     else
-      maskImages $mbiascorrdir $noiseit2dir $maskedit2dir $USE_COMMON_RING $keyWordToDecideRing
+      maskImages $mbiascorrdir $noiseit2dir $maskedit2dir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
       echo done > $maskedit2done
     fi
   fi
@@ -604,7 +613,7 @@ oneNightPreProcessing() {
   if [ -f $maskedit2WholeNightdone ]; then
     echo -e "\nScience images are masked for whole night flat, night $currentNight \n"
   else
-    maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir $USE_COMMON_RING $keyWordToDecideRing
+    maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
     echo done > $maskedit2WholeNightdone
   fi
 
@@ -776,7 +785,7 @@ oneNightPreProcessing() {
     if [ -f $maskedit3done ]; then
       echo -e "\nScience images are masked for running flat, night $currentNight\n"
     else
-      maskImages $mbiascorrdir $noiseit3dir $maskedit3dir $USE_COMMON_RING $keyWordToDecideRing
+      maskImages $mbiascorrdir $noiseit3dir $maskedit3dir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
       echo done > $maskedit3done
     fi
   fi
@@ -789,7 +798,7 @@ oneNightPreProcessing() {
   if [ -f $maskedit3WholeNightdone ]; then
     echo -e "\nScience images are masked for whole night flat, night $currentNight\n"
   else
-    maskImages $mbiascorrdir $noiseit3WholeNightDir $maskedit3WholeNightdir $USE_COMMON_RING $keyWordToDecideRing
+    maskImages $mbiascorrdir $noiseit3WholeNightDir $maskedit3WholeNightdir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
     echo done > $maskedit3WholeNightdone
   fi
 
