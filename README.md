@@ -25,6 +25,7 @@ This repository contains the source code of a pipeline implemented for reducing 
 * Configuration file for the specific reduction to perform (.conf file, template give)
 * "filters" directory containing the transmittances of the filters needed for reduction
 * Files specifing the rings to perform the normalisation (also used in data calibration - template given)
+* Faith and patience
 
 ##### How the pipeline expects the data
 

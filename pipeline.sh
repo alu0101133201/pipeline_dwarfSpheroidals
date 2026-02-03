@@ -288,6 +288,9 @@ oneNightPreProcessing() {
   echo -e "Number of exposures ${ORANGE} ${n_exp} ${NOCOLOUR}"
   
   currentDARKDIR=$DARKDIR/night$currentNight
+  if ! [ -d $currentDARKDIR ]; then
+    currentDARKDIR=$DARKDIR
+  fi
   mdadir=$BDIR/masterdark_n$currentNight
   
   for h in $(seq 1 $num_ccd); do
@@ -1014,38 +1017,51 @@ echo -e "·Downloading Gaia Catalogue"
 ######NOTE: For Hipercam GAIA is not enough. Instead, we will use Panstarrs catalog, which is usable for solve-field
 
 if (( sizeOfOurFieldDegrees > 1 )); then
-  radiusToDownloadCatalogue_gaia=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
+  radiusToDownloadCatalogue=$( echo "$sizeOfOurFieldDegrees + 0.5" | bc | awk '{printf "%.1f", $0}' ) #The awk part is to avoiod problems when R<1
 else
-  radiusToDownloadCatalogue_gaia=1.4 #Forced #The awk part is to avoiod problems when R<1
+  radiusToDownloadCatalogue=1.4 #Forced #The awk part is to avoiod problems when R<1
 fi
-
-#This is just for Hipercam
-radiusToDownloadCatalogue_ps=0.6 #This can change, but is a good option for hipercam
-
-query_param_ps="vizier --dataset=panstarrs1 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue_ps --column=RAJ2000,DEJ2000,gmag"
-query_param_gaia="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToDownloadCatalogue_gaia --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
-
 catdir=$BDIR/catalogs
-catName_gaia=$catdir/"$objectName"_Gaia_DR3.fits
-catName_ps=$catdir/"$objectName"_Panstarrs_S1.fits
-catRegionName=$catdir/"$objectName"_Gaia_DR3_regions.reg
 catdone=$catdir/done.txt
+##GAIA catalogue is always needed
+if [ "$surveyToUseInSolveField" = "panstarrs" ]; then
+  surveys_to_download=("panstarrs" "gaia")
+else
+  surveys_to_download=("gaia") #If it is a user defined catalogue, we still need gaia
+fi
 if ! [ -d $catdir ]; then mkdir $catdir; fi
 if [ -f $catdone ]; then
-  echo -e "\n\tCatalogue is already downloaded\n"
+  echo -e "\n\tCatalogues already downloaded\n"
 else
-  downloadGaiaCatalogue "$query_param_gaia" $catdir $catName_gaia
-  downloadPanstarrsCatalogue "$query_param_ps" $catdir $catName_ps
-  python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py $catName $catRegionName "fits"
-  echo "done" > $catdone
+  for survey in "${surveys_to_download[@]}"; do
+    catName=$catdir/"$objectName"_"$survey".fits
+    downloadCatalogue $survey $ra_gal $dec_gal $radiusToDownloadCatalogue $catdir $catName
+  done
+  echo done > $catdone
 fi
-
-
+case $surveyToUseInSolveField in
+  "gaia")
+    catName=$catdir/"$objectName"_gaia.fits
+    ;;
+  "panstarrs")
+    catName=$catdir/"$objectName"_panstarrs.fits
+    ;;
+  "des1")
+    catName=$catdir/"$objectName"_des1.fits
+    ;;
+  "userdefined")
+    catName=$CDIR/$userDefinedCatalogueForSolveField
+    ;;
+  *)
+    echo -e "${RED} Error: Survey to use in solve-field not recognized. Exiting ${NOCOLOUR}"
+    exit 1
+    ;;
+esac
+catName_gaia=$catdir/"$objectName"_gaia.fits #This is always needed
 # # Making the indexes
 # writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
 # echo -e "·Downloading Indices for astrometrisation"
-catName_dec=$CDIR/"$objectName"_Decals_dr10.fits
-cp $DIR/"$objectName"_Decals_dr10.fits $catName_dec
+
 indexdir=$BDIR/indexes
 indexdone=$indexdir/done_"$filter".txt
 if ! [ -d $indexdir ]; then mkdir $indexdir; fi
@@ -1059,7 +1075,7 @@ else
   for re in $(seq $lowestScaleForIndex $highestScaleForIndex); do
       indexes+=("$re")
   done
-  printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catName_ps $indexdir
+  printf "%s\n" "${indexes[@]}" | parallel -j "$num_cpus" downloadIndex {} $catName $indexdir $surveyToUseInSolveField
   echo done > $indexdone
 fi
 
@@ -1170,7 +1186,7 @@ else
   fi
   echo done > $astroimadone
 fi
-#exit 0
+
 totalNumberOfFrames=$( ls $astroimadir/*.fits | wc -l)
 export totalNumberOfFrames
 # ########## Distorsion correction ##########
@@ -1226,10 +1242,21 @@ else
   done
 
   printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_cpus" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $stitchdir
-  rm -rf $entiredir_fullGrid
+  
   echo done > $entiredone
 fi
 
+#If a file has failed, we avoid using the head and we re-do the warping
+for a in $(seq 1 $totalNumberOfFrames); do
+  base="$a".fits
+  if ! [ -f $entiredir_smallGrid/entirecamera_$base ]; then
+    echo -e "\n\t Re-warping image $base because it was not correctly processed\n"
+    rm $astroimadir/"$a".head
+    rm $entiredir_smallGrid/entirecamera_$a*
+    warpImage $astroimadir/$base $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $stitchdir
+  fi
+done
+rm -rf $entiredir_fullGrid > /dev/null 2>&1
 
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
@@ -1398,7 +1425,7 @@ else
   exposuremapdone=$coaddDir/done_exposureMap.txt
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
-#exit 0
+
 if [[ "$filter" != "u" ]]; then
   #### PHOTOMETRIC CALIBRATION  ####
   echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
@@ -1426,7 +1453,7 @@ if [[ "$filter" != "u" ]]; then
                                               $pixelScale $sizeOfOurFieldDegrees $catName_gaia $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
 
 
-
+  
   # Calibration of coadd prephot
   writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
   if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
@@ -1581,7 +1608,7 @@ if [[ "$filter" != "u" ]]; then
   applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir
 
   coaddPrephotDir=$BDIR/coadds-prephot
-  coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated.fits
+  coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_coadd_"$filter"_it$iteration.fits
   if [ ! -f "$coaddPrephotCalibratedName" ]; then
     cp $BDIR/photCorr-coaddPrephot-dir_it$iteration/entirecamera_1.fits $coaddPrephotCalibratedName
   fi
@@ -2088,7 +2115,7 @@ applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $ph
 
 
 coaddPrephotDir=$BDIR/coadds-prephot_it$iteration
-coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_prephot_calibrated_it$iteration.fits
+coaddPrephotCalibratedName=$coaddPrephotDir/"$objectName"_coadd_"$filter"_it$iteration.fits
 if [ ! -f "$coaddPrephotCalibratedName" ]; then
   cp $photCorrPrePhotDir/entirecamera_1.fits $coaddPrephotCalibratedName
 fi

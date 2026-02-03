@@ -976,7 +976,7 @@ warpImage() {
     # Resample into the final grid
     # Be careful with how do you have to call this package, because in the SIE sofware is "SWarp" and in the TST-ICR is "SWarp"
     $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
-
+    
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
     astarithmetic $entiredir/"$currentIndex"_swarp1.fits -h0 $tmpFile1 -h1 0 eq nan where -o$frameFullGrid
@@ -1405,7 +1405,7 @@ getParametersFromHalfMaxRadius() {
     astnoisechisel $image -h1 -o $tmpFolder/det.fits --convolved=$tmpFolder/convolved.fits --tilesize=20,20 --detgrowquant=0.95 --erode=4 --numthreads=$num_cpus 1>/dev/null
     astsegment $tmpFolder/det.fits -o $tmpFolder/seg.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3 1>/dev/null
     astmkcatalog $tmpFolder/seg.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals.txt --zeropoint=22.5 1>/dev/null
-    astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
+    astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=ra,dec --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
 
     numOfStars=$( cat $tmpFolder/match_decals_gaia.txt | wc -l )
     median=$( asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median )
@@ -1458,7 +1458,11 @@ downloadSpectra() {
     if [ -f $spectraDone ]; then
         echo -e "\n\tSpectra already downloaded\n"
     else
-        python3 $pythonScriptsPath/downloadSpectraForField.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+        if [[ "$surveyForSpectra" == "GAIA" ]]; then
+            python3 $pythonScriptsPath/getSpectraFromBulk.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+        else
+            python3 $pythonScriptsPath/downloadSpectraForField.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+        fi
         echo "done" > $spectraDone
     fi
 }
@@ -1494,13 +1498,43 @@ downloadPanstarrsCatalogue() {
     local catName=$3
 
     astquery $query -o $catdir/"$objectName"_Panstarrs_S1_tmp.fits
-    asttable $catdir/"$objectName"_Panstarrs_S1_tmp.fits -c1,2,3  --colmetadata=1,RA,deg --colmetadata=2,DEC,deg --colmetadata=3,phot_g_mean_mag,mag -o$catName
+    asttable $catdir/"$objectName"_Panstarrs_S1_tmp.fits -c1,2,3 -o$catName
 
     # We are downloading Panstarrs for hipercam, this will stay as it is. We change the metadata to mimic that of 
 
     rm $catdir/"$objectName"_Panstarrs_S1_tmp.fits 
 }
 export -f downloadPanstarrsCatalogue
+
+downloadCatalogue() {
+    local surveyToUse=$1
+    local ra=$2
+    local dec=$3
+    local radius=$4
+    local catDir=$5
+    local catName=$6
+
+    case "$surveyToUse" in
+        gaia)
+            query_param="gaia --dataset=dr3 --center=$ra,$dec --radius=$radius --column=ra,dec,phot_g_mean_mag,parallax,parallax_error,pmra,pmra_error,pmdec,pmdec_error"
+            downloadGaiaCatalogue "$query_param" "$catDir" "$catName"
+            ;;
+        panstarrs)
+            query_param="vizier --dataset=panstarrs1 --center=$ra,$dec --radius=$radius --column=RAJ2000,DEJ2000,gmag"
+            downloadPanstarrsCatalogue "$query_param" "$catDir" "$catName"
+            ;;
+        des1)
+            query_param="vizier --dataset=des1 --center=$ra,$dec --radius=$radius --column=RAJ2000,DEJ2000,gmag"
+            downloadPanstarrsCatalogue "$query_param" "$catDir" "$catName" #I reuse the panstarrs function as des1 has the same columns
+            ;;
+        *)
+            echo "Unknown catalog source: $surveyToUse"
+            exit 222
+            ;;
+    esac
+
+}
+export -f downloadCatalogue
 
 downloadGaiaCatalogue() {
     local query=$1
@@ -1510,25 +1544,10 @@ downloadGaiaCatalogue() {
     astquery $query -o $catdir/"$objectName"_Gaia_DR3_tmp.fits
     asttable $catdir/"$objectName"_Gaia_DR3_tmp.fits -c1,2,3 -c'arith $4 abs' -c'arith $5 3 x' -c'arith $6 abs' -c'arith $7 3 x' -c'arith $8 abs' -c'arith $9 3 x' --noblank=4 -o$catdir/tmp.txt
 
-    # I have explored 3 different ways of selecting good stars.
-    # From the most restrictive to the less restrictive:
-
-    # # Here I demand that the gaia object fulfills simultaneously that:
-    # # 1.- Parallax > 3 times its error
-    # # 2.- Proper motion (ra) > 3 times its error
-    # # 3.- Proper motion (dec) > 3 times its error
-    # asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
-    # asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
-    # asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,2999,3001 -o $catName
-
-    # # Here I only demand that the parallax is > 3 times its error
-    # asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -o$catdir/test_.txt
-    # asttable $catdir/test_.txt -c1,2,3 --range=ARITH_2,999,1001 -o $catName
-
-    # Here I  demand that the parallax OR a proper motion is > 3 times its error
+    
     asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
     asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
-    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName --colmetadata=1,RA --colmetadata=2,DEC --colmetadata=3,phot_g_mean_mag
+    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName 
 
     # # Here we don't demand any condition
     # asttable $catdir/tmp.txt -o $catName
@@ -1542,11 +1561,33 @@ downloadIndex() {
     local re=$1
     local catName=$2
     local indexdir=$3
-
+    local surveyToUse=$4
+    
+    case "$surveyToUse" in
+        gaia)
+            local ra_to_index="ra"
+            local dec_to_index="dec"
+            local mag_to_index="phot_g_mean_mag"
+            ;;
+        panstarrs | des1)
+            local ra_to_index="RAJ2000"
+            local dec_to_index="DEJ2000"
+            local mag_to_index="gmag"
+            ;;
+        userspecified)
+            local ra_to_index=$raKeyCatalogue
+            local dec_to_index=$decKeyCatalogue
+            local mag_to_index=$magnitudeKeyCatalogue
+            ;;
+        *)
+            echo "Unknown catalog source: $surveyToUse"
+            exit 222
+            ;;
+    esac
     build-astrometry-index -i $catName -e1 \
                             -P $re \
-                            -S phot_g_mean_mag \
-                            -E -A RA -D  DEC \
+                            -S $mag_to_index \
+                            -E -A $ra_to_index -D  $dec_to_index \
                             -o $indexdir/index_$re.fits;
 }
 export -f downloadIndex
@@ -1982,7 +2023,7 @@ prepareCalibrationData() {
     local calibrationFaintLimit=${18}
     local mosaicDone=${19}
     local sizeOfBrick=${20}
-
+    
     if ! [ -d $mosaicDir ]; then mkdir $mosaicDir; fi
     if [ -f $mosaicDone ]; then 
         echo -e "\nSurvey data already prepared for photometric calibration\n"
@@ -2003,7 +2044,7 @@ prepareCalibrationData() {
 
             prepareSurveyDataForPhotometricCalibration $referenceImagesForMosaic $surveyImagesDir $filter $ra $dec $mosaicDir $selectedSurveyStarsDir $rangeUsedSurveyDir \
                                                 $dataPixelScale $surveyForCalibration $sizeOfOurFieldDegrees $gaiaCatalogue $aperturePhotDir $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                                $calibrationBrightLimit $calibrationFaintLimit $sizeOfBrick 
+                                                $calibrationBrightLimit $calibrationFaintLimit $sizeOfBrick
             
         fi
         echo done > $mosaicDone
@@ -2475,7 +2516,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
         exit $erroNumber
     fi
     
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=ra,dec --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS -o$mycatdir/match_"$a"_my_gaia.txt
     
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
@@ -3622,7 +3663,7 @@ computeFWHMSingleFrame(){
         exit $erroNumber
     fi
 
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_Gaia_DR3.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=ra,dec --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
     # Now we select the stars as we do for the photometry
     s=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
     std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
