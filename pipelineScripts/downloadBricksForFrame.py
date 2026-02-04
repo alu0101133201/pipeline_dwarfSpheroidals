@@ -126,7 +126,7 @@ def writeBricksAndItsCoordinates(file, brickNames, ra, dec, survey):
             if survey=='PANSTARRS':
                 #Just to avoid the .fits in the brick identification file, will be useful in the future
                 brickName=brickNames[i][:-5]
-            elif survey=='DECaLS':
+            elif (survey=='DECaLS' or survey=='SDSS'):
                 brickName=brickNames[i]
             f.write(brickName + "\t" + "{:.6f}".format(ra[i]) + "\t" +  "{:.6f}".format(dec[i]) + "\n")
 
@@ -195,6 +195,9 @@ elif survey=='PANSTARRS':
         i.start()
     for i in threadList:
         i.join()
+elif survey=='SDSS':
+    bricksNames, bricsRA,bricksDec=download_fields_mosaic(galaxyRA,galaxyDec,(fieldSize/2)+0.15,downloadDestination,filters,data_release=17)
+    remove_duplicate_bricks(".")
 else:
     raise Exception (f"Survey {survey} not supported for Photometric calibration")
     

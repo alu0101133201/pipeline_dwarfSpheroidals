@@ -274,7 +274,7 @@ checkIfStringVariablesHaveValidValues() {
         exit $errorCode
     fi
 
-    if [[ ("$surveyForPhotometry" != "PANSTARRS") && ("$surveyForPhotometry" != "DECaLS") && ("$surveyForPhotometry" != "SPECTRA") && ("$surveyForPhotometry" != "SLOAN") ]]; then
+    if [[ ("$surveyForPhotometry" != "PANSTARRS") && ("$surveyForPhotometry" != "DECaLS") && ("$surveyForPhotometry" != "SPECTRA") && ("$surveyForPhotometry" != "SDSS") ]]; then
         echo "Error. The variable surveyForPhotometry has a value ($surveyForPhotometry) which is not accepted"
         exit $errorCode
     fi
@@ -1853,6 +1853,11 @@ selectStarsAndSelectionRangeSurvey() {
                 currentName=$( basename $i )
                 brickList+=("$currentName")
             done
+        elif [ "$survey" = "SDSS" ]; then
+            for i in $( ls $dirWithBricks/sdss*.fits ); do
+                currentName=$( basename $i )
+                brickList+=("$currentName")
+            done
         fi
         headerWithData=0 # After decompressing the data ends up in the hdu 0
         noisechiselTileSize=50
@@ -1935,6 +1940,8 @@ performAperturePhotometryToSingleBrick() {
         brickName=decompressed_decal_image_"$brick".fits
     elif [[ "$survey" = "PANSTARRS" ]]; then
         brickName=cal_"$brick".fits
+    elif [[ "$survey" = "SDSS" ]]; then
+        brickName=$brick.fits
     fi
 
     brickImage=$brickDir/$brickName
@@ -1987,6 +1994,11 @@ performAperturePhotometryToBricks() {
         elif [[ "$survey" = "PANSTARRS" ]]; then
             for a in $( ls $brickDir/cal_*.fits); do
                 brickName=$(echo "$a" | awk -F'cal_' '{print $2}' | awk -F'.fits' '{print $1}')
+                brickList+=("$brickName")
+            done
+        elif [[ "$survey" = "SDSS" ]]; then
+            for a in $( ls $brickDir/sdss*.fits); do
+                brickName="sdss"$(echo "$a" | awk -F'/sdss' '{print $2}' | awk -F'.fits' '{print $1}')
                 brickList+=("$brickName")
             done
         else
