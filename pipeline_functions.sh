@@ -1441,6 +1441,9 @@ downloadSpectra() {
         echo -e "\n\tSpectra already downloaded\n"
     else
         python3 $pythonScriptsPath/downloadSpectraForField.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+        if [[ "$surveyForSpectra" == "GAIA" ]] && [ -z "$(ls -A $spectraDir/*.fits 2>/dev/null)" ]; then
+            python3 $pythonScriptsPath/getSpectraFromBulk.py $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
+        fi
         echo "done" > $spectraDone
     fi
 }
