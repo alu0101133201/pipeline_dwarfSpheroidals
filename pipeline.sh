@@ -1167,25 +1167,7 @@ iterationsForStdSigClip=3
 export sigmaForStdSigclip
 export iterationsForStdSigClip
 
-# Checking and removing bad frames based on the FWHM value ------
-fwhmFolder=$BDIR/seeing_values
-badFilesWarningsFile=identifiedBadFrames_fwhm.txt
-badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
-if [ -f $badFilesWarningsDone ]; then
-    echo -e "\nbadFiles warning already done\n"
-else
-  if ! [ -d $fwhmFolder ]; then mkdir $fwhmFolder; fi
-  imagesToFWHM=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-    base="$a".fits
-    imagesToFWHM+=("entirecamera_$base")
-  done
-  methodToUse="sextractor"
 
-  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $subskySmallGrid_dir $fwhmFolder 1 $methodToUse "'$noisechisel_param'"
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
-  echo done > $badFilesWarningsDone
-fi
 
 
 
@@ -1394,7 +1376,25 @@ echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
 alphatruedir=$BDIR/alpha-stars-true_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
+# Checking and removing bad frames based on the FWHM value ------
+fwhmFolder=$BDIR/seeing_values
+badFilesWarningsFile=identifiedBadFrames_fwhm.txt
+badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
+if [ -f $badFilesWarningsDone ]; then
+    echo -e "\nbadFiles warning already done\n"
+else
+  if ! [ -d $fwhmFolder ]; then mkdir $fwhmFolder; fi
+  imagesToFWHM=()
+  for a in $(seq 1 $totalNumberOfFrames); do
+    base="$a".fits
+    imagesToFWHM+=("entirecamera_$base")
+  done
+  methodToUse="sextractor"
 
+  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $photCorrSmallGridDir $fwhmFolder 1 $methodToUse "'$noisechisel_param'" $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames 
+  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $framesForCommonReductionDir $pixelScale $maximumSeeing
+  echo done > $badFilesWarningsDone
+fi
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
 

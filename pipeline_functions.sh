@@ -3708,7 +3708,8 @@ computeFWHMSingleFrame(){
     local headerToUse=$4
     local methodToUse=$5
     local noisechisel_param=$6           # This parameter will only be used if the catalogue is being generated with noisechisel
-    
+    local brightLimit=$7
+    local faintLimit=$8
     i=$framesForFWHMDir/$a
 
     # In the case of using it for Decals or Panstarrs, we need the variable survey
@@ -3725,16 +3726,16 @@ computeFWHMSingleFrame(){
 
     astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
     # Now we select the stars as we do for the photometry
-    s=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
-    std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-std)
-    minr=$(astarithmetic $s $sigmaForPLRegion $std x - -q)
-    maxr=$(astarithmetic $s $sigmaForPLRegion $std x + -q)
-    asttable $fwhmdir/match_"$a"_my_gaia.txt --noblank=MAGNITUDE --range=HALF_MAX_RADIUS,$minr:$maxr -c3,4,6 -c'arith $6 2 x' -o$fwhmdir/cat_fwhm_"$a".txt
+    s=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE --range=MAGNITUDE,$brightLimit:$faintLimit | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1.5,$iterationsForStdSigClip --sigclip-median)
+    std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE --range=MAGNITUDE,$brightLimit:$faintLimit | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1.5,$iterationsForStdSigClip --sigclip-std)
+    minr=$(astarithmetic $s 1.5 $std x - -q)
+    maxr=$(astarithmetic $s 1.5 $std x + -q)
+    asttable $fwhmdir/match_"$a"_my_gaia.txt --noblank=MAGNITUDE --range=MAGNITUDE,$brightLimit:$faintLimit --range=HALF_MAX_RADIUS,$minr:$maxr -c3,4,6 -c'arith $6 2 x' -o$fwhmdir/cat_fwhm_"$a".txt
     
     
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
-    FWHM=$(asttable $fwhmdir/cat_fwhm_"$a".txt  -c4 | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
+    FWHM=$(asttable $fwhmdir/cat_fwhm_"$a".txt  -c4 | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1.5,$iterationsForStdSigClip --sigclip-median)
     echo $FWHM > $fwhmdir/fwhm_"$a".txt
     rm $fwhmdir/match_"$a"_my_gaia.txt $outputCatalogue 
 }
