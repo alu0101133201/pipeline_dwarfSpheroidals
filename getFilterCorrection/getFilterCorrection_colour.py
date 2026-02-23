@@ -207,14 +207,14 @@ else:
     bandToStudy = "g"
 
 filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/GTC_OSIRIS.sdss_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
+filterName2 = f"./filters/PAUCam_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra
 
 # Compute colour g-r, always used for computing the offset
 
-filterName_g = "./filters/SLOAN_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
-filterName_r = "./filters/SLOAN_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
+filterName_g = "./filters/PANSTARRS_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
+filterName_r = "./filters/PANSTARRS_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
 
 wavelengths_g, transmittance_g = readFilterTransmittance(filterName_g, waveUnits_g, transmittanceUnits_g)
 wavelengths_r, transmittance_r = readFilterTransmittance(filterName_r, waveUnits_r, transmittanceUnits_r)
@@ -236,7 +236,8 @@ ra2, dec2, magnitudes2 = getMagnitudesFromSpectra(spectraFolder, wavelengths2, t
 comparisonPlot(magnitudes1, magnitudes2, g_r_colour, wavelengths1, transmittance1, filterName1, wavelengths2, transmittance2, filterName2, field, f"./images/{field}_{bandToStudy}_initialComparison.png", std=getStd(magnitudes1 - magnitudes2))
 
 # Now we obtain a colour correction and apply it
-coeffs = np.polyfit(g_r_colour, magnitudes1-magnitudes2, 2)
+mask_to_fit=np.where( (g_r_colour > 0.2) & (g_r_colour < 0.8) )[0]
+coeffs = np.polyfit(g_r_colour[mask_to_fit], magnitudes1[mask_to_fit]-magnitudes2[mask_to_fit], 2)
 x_fit = np.linspace(-1, 1, 500)
 y_fit = np.polyval(coeffs, x_fit)
 colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coeffs)
