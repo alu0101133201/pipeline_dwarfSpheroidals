@@ -17,6 +17,7 @@ totalFrames=len(glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
 #sizeGB=sizeBytes/(1024.0**3)
 #
 
+
 totalNumberOfPixels=coaddSizePx**2
 sizeBytes=4.*totalNumberOfPixels*totalFrames
 sizeGB=sizeBytes/1e9

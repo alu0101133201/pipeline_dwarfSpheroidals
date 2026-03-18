@@ -21,7 +21,7 @@ foldersToCreate=(
     "noise-it2-Running_n"
     "noise-it2-WholeNight_n"
     "masked-it2-Running_n"
-    "masked-it2-WholeNight_"
+    "masked-it2-WholeNight_n"
     "norm-it2-Running-images_n"
     "norm-it2-WholeNight-images_n"
     "flat-it2-Running_n"

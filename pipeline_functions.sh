@@ -964,6 +964,7 @@ maskVignettingOnImages() {
     propagateKeyword $i $pointingDEC $out
 }
 export -f maskVignettingOnImages
+
 runNoiseChiselOnFrame() {
     local baseName=$1
     local inputFileDir=$2
@@ -990,13 +991,15 @@ runNoiseChiselOnFrame() {
         warp_status=$?
         if [ $warp_status -ne 0 ]; then
             wMaskTmp=$outputDir/mkWTmp_$baseName
+            wMaskTmp2=$outputDir/mkWTmp2_$baseName
 
             echo "astwarp failed on $baseName (exit code $warp_status)" >&2
             echo "This happens when images are not astrometrised. The second solution is to warp and then crop to the desired size"
             astwarp $wMask -h1 --scale=$blockScale --gridhdu=1 --numthreads=$num_threads -o$wMaskTmp
-            astcrop $wMaskTmp --section="1:$detectorWidth,1:$detectorHeight" --mode=img -o $wMask2
+            astarithmetic $wMaskTmp -h1 set-i i i isblank 1 where -o $wMaskTmp2
+            astcrop $wMaskTmp2 --section="1:$detectorWidth,1:$detectorHeight" --mode=img -o $wMask2
 
-            rm $wMaskTmp
+            rm $wMaskTmp $wMaskTmp2
         fi
         astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o$output
         rm $wFile $wMask $wMask2
@@ -1122,10 +1125,10 @@ removeBadFramesFromReduction() {
     local prefixOfFilesToRemove=$5
 
     filePath=$badFilesWarningDir/$badFilesWarningFile
-
-    while IFS= read -r file_name; do
+    while IFS= read -r file_name || [ -n "$file_name" ]; do
         file_name=$(basename "$file_name")
         fileName=$prefixOfFilesToRemove"${file_name%.*}".fits
+
         if [ -f $sourceToRemoveFiles/$fileName ]; then
             mv $sourceToRemoveFiles/$fileName $destinationDir/$fileName
         fi
@@ -1289,7 +1292,7 @@ computeSky() {
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
-        echo -e "\n\tScience images are 'noisechiseled' for constant sky substraction for extension $h\n"
+        echo -e "\n\tScience images have the sky already computed\n"
     else
         framesToComputeSky=()
         for a in $( ls $framesToUseDir/*.fits ); do
@@ -1329,6 +1332,8 @@ subtractSkyForFrame() {
         else
             python3 $pythonScriptsPath/moveSurfaceFitToFullGrid.py $input $i 1 $NAXIS1_image $NAXIS2_image $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
             astarithmetic $input -h1 $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits" -h1 - -o$output
+            astarithmetic $input -h1 $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits" -h1 - -o$output
+
             rm $directoryToStoreSkySubtracted/"planeToSubtract_"$a".fits"
         fi
     fi

@@ -201,7 +201,6 @@ flatImagesDir=$2
 flatsDir=$3
 newFlatDir=$4
 night=$5 # Only used for image names
-filter=$6 # Only used for image names
 
 mkdir -p ./images
 
@@ -251,7 +250,6 @@ start=$(( 2 * runningFlatSize )) # 2 * because is an array of pairs
 end=$(( total_len - 4 * runningFlatSize ))
 rawObjectInfoTrimmed=("${rawObjectInfo[@]:start:end}")
 
-
 # Now we combine the flats and the object frames in a single data structure to later apply the operations
 objectsAndFlatsCombined=()
 mergeArrays rawObjectInfoTrimmed flatInfo objectsAndFlatsCombined
@@ -266,6 +264,7 @@ flatCorrectedArray=()
 objectCorrectedArray=()
 divideFlatAndObjects flatCorrectedArray objectCorrectedArray
 
+
 # Corrected plot
 rawObjectInfoPythonArgument=$(printf "%s " "${objectCorrectedArray[@]}")
 flatFieldInfoPythonArgument=$(printf "%s " "${rawFlatInfo[@]}")
@@ -278,12 +277,11 @@ if ! [ -d $newFlatDir ]; then mkdir $newFlatDir; fi
 counter=$(( runningFlatSize + 2 ))
 lastIndex=$(( ${#flatCorrectedArray[@]} - 2 ))  # because we're stepping in pairs
 
+test=1
 for ((i=0; i<${#flatCorrectedArray[@]}; i+=2)); do
-    # echo $counter $i
-    if (( i == 0 )); then
-        cp $flatsDir/${flatCorrectedArray[i]}  $newFlatDir/flat-it3_"$filter"_n"$night"_left_ccd0.fits
-    elif (( i == lastIndex)); then
-        cp $flatsDir/${flatCorrectedArray[i]}  $newFlatDir/flat-it3_"$filter"_n"$night"_right_ccd0.fits
+    # echo $test $counter
+    if (( i == 0 || i == lastIndex)); then
+        cp $flatsDir/${flatCorrectedArray[i]}  $newFlatDir/${flatCorrectedArray[i]}
     else
         currentFileName=${flatCorrectedArray[i]}
         newFileName=$(echo "$currentFileName" | sed -E "s/_f[0-9]+/_f$counter/")
@@ -296,5 +294,6 @@ for ((i=0; i<${#flatCorrectedArray[@]}; i+=2)); do
         cp $flatsDir/$currentFileName "$newFlatDir/$newFileName"
         counter=$(( counter + 1 ))
     fi
+    test=$(( test + 1 ))
 
 done
