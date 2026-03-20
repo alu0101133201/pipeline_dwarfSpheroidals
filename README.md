@@ -103,3 +103,13 @@ Take into account that the configuration file (the one corresponding to *templat
 
 Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree, we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. For solving this we compute this offset and correct it in each run of the pipeline (thus PANSTARRS always agreeing with GAIA)\\ 
 GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
+
+##### IMPORTANT Hipercam Notes
+ 
+* **Astrometry**. Astrometry might and probably will fail. Recomendation is to run the pipeline until solve-field (uncoment exit 0 in line 1139) and check manually if frames are properly astrometrized. If not, there is a python script called *manualAstrometry.py*. This script reads the RA and DEC (both in degrees) of any pixel in a refference image (one properly astrometrized, a good practice is to use the center of an star), X and Y coordinates of the pixel in the not-astrometrized image, and copies the WCS of the reference image but changing the reference value to the one of the star. It's usage is:
+
+`/path/to/pipeline/pipelineScripts/manualAstrometry.py RA_star DEC_star X_star Y_star /path/to/objectName/build/astro-ima/badFrame.fits /path/to/objectName/build/astro-ima/referenceImage.fits `
+
+This script updates the astrometry of *badFrame.fits* with *referenceImage.fits*
+
+* **Astrometry in u**. u-band is almost impossible to astrometrize due to lack of sources. Since observations in all filters are taken simultaneously, we can use astrometry of other bands to give astrometry to the u-band. If we save `astro-ima` folder of other filter as `/path/to/objectName/astro-ima_filterRef`, we can put in the .conf file the variable `astrometrizedFolder=astro-ima_filterRef` and the pipeline will copy wcs of the reference filter into teh u-band images. After some tests, the best filter to do so is the r-band filter, but g-band also returns good results.

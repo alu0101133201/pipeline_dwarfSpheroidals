@@ -126,6 +126,8 @@ outputConfigurationVariablesInformation() {
         "·The background is modelled as a constant:$MODEL_SKY_AS_CONSTANT"
         "  If so, the sky estimation method is:$sky_estimation_method"
         "  Otherwise, the polynomial degree is:$polynomialDegree"
+        " Noisechisel will be run with the following params: $noisechisel_param"
+        " Prior to noisechisel, a block will be applied with value: $blockScale (1=No block)"
         " "
         "·Indices scales for astrometrisation"
         "  Lowest index:$lowestScaleForIndex"
@@ -239,6 +241,8 @@ checkIfAllVariablesAreSet() {
                 MODEL_SKY_AS_CONSTANT \
                 sky_estimation_method \
                 polynomialDegree \
+                blockScale \
+                noisechisel_param \
                 filter \
                 pixelScale \
                 detectorWidth \
@@ -657,62 +661,53 @@ getStdValueInsideRing() {
 }
 export -f getStdValueInsideRing
 
-getSkewKurtoValueFromSkyPixels(){
+getSkewKurtoValueInsideRing(){
     local i=$1
-    local constantSkyMethod=$2
-    local commonRing=$3
-    local doubleRing_first=$4
-    local doubleRing_second=$5
-    local useCommonRing=$6
-    local keyWordToDecideRing=$7
-    local keyWordThreshold=$8
-    local keyWordValueForFirstRing=$9
-    local keyWordValueForSecondRing=${10}
-    local h=${11}
+    local commonRing=$2
+    local doubleRing_first=$3
+    local doubleRing_second=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    local keyWordThreshold=$7
+    local keyWordValueForFirstRing=$8
+    local keyWordValueForSecondRing=$9
+    local h=${10}
 
-    if [ "$constantSkyMethod" == "ring" ]; then
-        if [ "$useCommonRing" = true ]; then
-                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing $h)
-                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing $h)
-        else
-            # Case when we do NOT have one common normalisation ring
-            # All the following logic is to decide which normalisation ring apply
-            variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
-            firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
-            firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
-            secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
-            secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
-
-            if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
-                #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
-                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first $h)
-                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first $h)
-                # rm ring_masked.fits
-            elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
-                #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
-                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second $h)
-                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second $h)
-                # rm ring_masked.fits
-            else
-                errorNumber=5
-                echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
-                echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
-                exit $errorNumber
-            fi
-        fi
-
-    elif [ "$constantSkyMethod" == "noisechisel" ]; then
-            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS)
-            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS)
+    if [ "$useCommonRing" = true ]; then
+            # Case when we have one common normalisation ring
+            #astarithmetic $i -h1 $commonRing -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $commonRing $h)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $commonRing $h)
+            #rm ring_masked.fits
     else
-        errorNumber=555
-        echo -e "\nIn Function getSkewKurtoValueFromSkyPixels. Not identified the "constantSkyMethod" variable  value" >&2
-        echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
-        exit $errorNumber  
+        # Case when we do NOT have one common normalisation ring
+        # All the following logic is to decide which normalisation ring apply
+        variableToDecideRingToNormalise=$(gethead $i $keyWordToDecideRing)
+        firstRingLowerBound=$(echo "$keyWordValueForFirstRing - $keyWordThreshold" | bc)
+        firstRingUpperBound=$(echo "$keyWordValueForFirstRing + $keyWordThreshold" | bc)
+        secondRingLowerBound=$(echo "$keyWordValueForSecondRing - $keyWordThreshold" | bc)
+        secondRingUpperBound=$(echo "$keyWordValueForSecondRing + $keyWordThreshold" | bc)
+
+        if (( $(echo "$variableToDecideRingToNormalise >= $firstRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $firstRingUpperBound" | bc -l) )); then
+            #astarithmetic $i -h1 $doubleRing_first -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_first $h)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_first $h)
+            #rm ring_masked.fits
+        elif (( $(echo "$variableToDecideRingToNormalise >= $secondRingLowerBound" | bc -l) )) && (( $(echo "$variableToDecideRingToNormalise <= $secondRingUpperBound" | bc -l) )); then
+            #astarithmetic $i -h1 $doubleRing_second -h1 0 eq nan where -q -o ring_masked.fits
+            skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS $doubleRing_second $h)
+            kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS $doubleRing_second $h)
+            #rm ring_masked.fits
+        else
+            errorNumber=5
+            echo -e "\nMultiple normalisation ring have been tried to be used. The keyword selection value of one has not matched with the ranges provided" >&2
+            echo -e "Exiting with error number: $RED $errorNumber $NOCOLOUR" >&2
+            exit $errorNumber 
+        fi
     fi
     echo "$skew $kurto"
 }
-export -f getSkewKurtoValueFromSkyPixels
+export -f getSkewKurtoValueInsideRing
 
 normaliseImagesWithRing() {
     local imageDir=$1
@@ -910,14 +905,38 @@ runNoiseChiselOnFrame() {
     local baseName=$1
     local inputFileDir=$2
     local outputDir=$3
-    local noiseChiselParams=$4
+    local blockScale=$4
+    local noiseChiselParams=$5
 
     imageToUse=$inputFileDir/$baseName
     output=$outputDir/$baseName
     for h in $(seq 1 $num_ccd); do
-        astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$num_cpus -o $outputDir/temp_$baseName
-        astfits $outputDir/temp_$baseName --copy=DETECTIONS -o $output
-        rm $outputDir/temp_$baseName
+        if [ "$blockScale" -eq 1 ]; then
+            astnoisechisel $imageToUse -h$h $noiseChiselParams --numthreads=$num_threads -o $outputDir/temp_"$baseName"
+        else
+            wFile=$outputDir/imW_$baseName
+            wMask=$outputDir/mkW_$baseName
+            wMask2=$outputDir/mkW2_$baseName
+            astwarp $imageToUse -h$h --scale=1/$blockScale --numthreads=$num_threads -o $wFile
+            astnoisechisel $wFile -h1 $noiseChiselParams --numthreads=$num_threads -o $wMask
+            astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=$h --numthreads=$num_threads -o $wMask2
+            warp_status=$?
+            if [ $warp_status -ne 0 ]; then
+                wMaskTmp=$outputDir/mkWTmp_$baseName
+                NAXIS1=$(gethead $imageToUse -x $h NAXIS1)
+                NAXIS2=$(gethead $imageToUse -x $h NAXIS2)
+                echo "astwarp failed on $baseName (exit code $warp_status)" >&2
+                echo "This happens when images are not astrometrised. The second solution is to warp and then crop to the desired size"
+                astwarp $wMask -h1 --scale=$blockScale --gridhdu=1 --numthreads=$num_threads -o$wMaskTmp
+                astcrop $wMaskTmp --section="1:$NAXIS1,1:$NAXIS2" --mode=img -o $wMask2
+
+                rm $wMaskTmp
+            fi
+            astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o $outputDir/temp_"$baseName"
+            rm $wFile $wMask $wMask2
+        fi
+        astfits $outputDir/temp_"$baseName" --copy=1 -o $output
+        rm $outputDir/temp_"$baseName"
     done
 }
 export -f runNoiseChiselOnFrame
@@ -1084,127 +1103,191 @@ computeSkyForFrame(){
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
-    local noisechisel_param=${15}
-    local swarped=${16}
-    local manualMaskParams=${17}
-
+    local swarped=${15}
+    local blockScale=${16}
+    local noisechisel_param=${17}
+    local maskParams=${18}
+    i=$entiredir/$base
 
     # Masking the frames if they are not already 
-    i=$entiredir/$1
     out=$(echo $base | sed 's/.fits/.txt/')
+
     if [ "$constantSky" = true ]; then  # Case when we subtract a constant
         # Here we have two possibilities
         # Estimate the background within the normalisation ring or using noisechisel
-
-        if ! [ "$inputImagesAreMasked" = true ]; then
-            tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
-            tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
-            tmpMaskedImage_single=$(echo $base | sed 's/.fits/_masked_ccd.fits/')
-            for h in $(seq 1 $num_ccd); do
-                astnoisechisel $i -h$h $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$tmpMask
-                astarithmetic $i -h$h $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage_single --quiet
-                astfits $noiseskydir/$tmpMaskedImage_single --copy=1 -o $noiseskydir/$tmpMaskedImage
-                rm -rf $noiseskydir/$tmpMaskedImage_single
-            done
-            imageToUse=$noiseskydir/$tmpMaskedImage
-            rm -f $noiseskydir/$tmpMask
-
-            # manual masks defined by the user
-            #If we do not have wcs, we skip this step
-            #pixscale=$(astfits $i -h1 --pixelscale -q | awk '{print $1}')
-
-            if [ "$swarped" = "YES" ]; then
-                valueToPut=nan
-                read -r -a maskArray <<< "$manualMaskParams"
-                for ((i=0; i<${#maskArray[@]}; i+=5)); do
-                    ra="${maskArray[i]}"
-                    dec="${maskArray[i+1]}"
-                    r="${maskArray[i+2]}"
-                    axisRatio="${maskArray[i+3]}"
-                    pa="${maskArray[i+4]}"
-
-                    python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
-                done
-            fi
-        else    
-            imageToUse=$i
-        fi
-
-
-        # ****** Decision note *******
-        # Here we have implemented two possibilities. Either the background is estimated by a constant or by a polynomial.
-        # If it is a constant we store the fileName, the background value and the std. This is implemented this way because we
-        # need the background to subtract but also later the std for weighing the frames
-        # If it is a polynomial we only use it to subtract the background (the weighing is always with a constat) so we only store
-        # the coefficients of the polynomial.
-        #
-        # Storing this values is also relevant for checking for potential bad frames
-
 
         # The problem is that I can't use the same ring/s as in the normalisation because here we have warped and cropped the images... So I create a new normalisation ring from the centre of the images
         # I cannot even create a common ring for all, because they are cropped based on the number of non-nan (depending on the vignetting and how the NAN are distributed), so i create a ring per image
         # For that reason the subtraction of the background using the ring is always using a ring centered in the frame
         # More logic should be implemented to use the normalisation ring(s) and recover them after the warping and cropping
         if [ "$constantSkyMethod" = "ring" ]; then
-            tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
-            if [ "$swarped" = "YES" ]; then
-                tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
-                ###Images might be rotated. We are gonna use the astro-ima dir to compute the center in wcs
-                x_ring=$( awk ' {print $2}' $DIR/$commonRingDefinitionFile )
-                y_ring=$( awk ' {print $3}' $DIR/$commonRingDefinitionFile )
-                ringRadius=$( awk '{print $5}' $DIR/$commonRingDefinitionFile )
-                image_astro=${base#entirecamera_}
-                ringCentre=$( xy2sky $BDIR/astro-ima/$image_astro $x_ring $y_ring )
-                ringRa=$(echo "$ringCentre" | awk '{print $1}')
-                ringDec=$(echo "$ringCentre" | awk '{print $2}')
-                newringCentre=$( sky2xy $imageToUse $ringRa $ringDec )
-                x_new=$(echo "$newringCentre" | awk '{print $5}')
-                y_new=$(echo "$newringCentre" | awk '{print $6}')
-                echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
-                astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
+
+            # Mask the image if they are not already masked
+            if ! [ "$inputImagesAreMasked" = true ]; then
+                tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
+                tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
+                tmpMaskedImage_single=$(echo $base | sed 's/.fits/_masked_ccd.fits/')
+                runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale "$noisechisel_param"
                 
+                mv $noiseskydir/$1 $noiseskydir/$tmpMask
+                for h in $(seq 1 $num_ccd); do
+                    astarithmetic $i -h$h $noiseskydir/$tmpMask -h$h 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage_single -q
+                    astfits $noiseskydir/$tmpMaskedImage_single --copy=1 -o$noiseskydir/$tmpMaskedImage
+                    rm -f $noiseskydir/$tmpMaskedImage_single
+                    
+                done    
+                rm -f $noiseskydir/$tmpMask
+                imageToUse=$noiseskydir/$tmpMaskedImage
+                
+                ##Aply manual mask defined by user
+                valueToPut=nan
+                read -r -a maskArray <<< "$maskParams"
+                for ((i=0; i<${#maskArray[@]}; i+=5)); do
+                    ra="${maskArray[i]}"
+                    dec="${maskArray[i+1]}"
+                    r="${maskArray[i+2]}"
+                    axisRatio="${maskArray[i+3]}"
+                    pa="${maskArray[i+4]}"
+                    python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $imageToUse $valueToPut $ra $dec $r $axisRatio $pa
+                done 
             else
-                # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
-                #tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
-                
-                tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
-                for h in $(seq 1 $num_ccd); do 
-
-                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/ring_ccd"$h".txt
-
-                    astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
-                    rm -f $ringDir/$tmpRingFits_single
-                done
+                imageToUse=$i
             fi
+
+            # We generate the ring (we cannot use the normalisation ring because we have warped and cropped) and compute the background value within it
+            #tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
+            tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
+            tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
+            ##We get the reference from the first non rotated ccd
+            
+            #half_naxis1=$(echo "$naxis1 / 2" | bc)
+            #half_naxis2=$(echo "$naxis2 / 2" | bc)
+
+            #ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
+            #echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+            for h in $(seq 1 $num_ccd); do
+                if [ "$swarped" = "YES" ]; then
+                
+                    x_ring=$( awk ' {print $2}' $ringDir/ring_ccd"$h".txt )
+                    y_ring=$( awk ' {print $3}' $ringDir/ring_ccd"$h".txt )
+                    tmpRingDefinition=$(echo $base | sed 's/.fits/_ring_ccd.txt/')
+                    ringRadius=$( awk '{print $5}' $ringDir/ring_ccd"$h".txt )
+                    ##We first check if a rotation is needed by comparing naxis of the ring (which is already created) and naxis of the frame
+                    naxis1=$(fitsheader $imageToUse -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2=$(fitsheader $imageToUse -e $h | grep "NAXIS2" | awk '{print $3'})
+                    naxis1_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS2" | awk '{print $3'})
+
+                    #If the axis on ring and on image keeps the comparison, we don't need to do anything
+                    if [[ $naxis1 -gt $naxis2 && $naxis1_r -gt $naxis2_r ]] || [[ $naxis1 -lt $naxis2 && $naxis1_r -lt $naxis2_r ]]; then
+                        echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                    else
+                        #If image new is rotated, we look for the astrometrized, not rotated in order to get the correct position
+                        image_astro=${base#entirecamera_}
+                        ringCentre=$( xy2sky $BDIR/astro-ima/$image_astro,$h $x_ring $y_ring )
+                        ringRa=$(echo "$ringCentre" | awk '{print $1}')
+                        ringDec=$(echo "$ringCentre" | awk '{print $2}')
+                        newringCentre=$( sky2xy $imageToUse,$h $ringRa $ringDec )
+                        x_new=$(echo "$newringCentre" | awk '{print $5}')
+                        y_new=$(echo "$newringCentre" | awk '{print $6}')
+                        echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                   
+                        
+                    fi
+             
+                    astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
+                    rm -f $ringDir/$tmpRingDefinition
+                else
+                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/ring_ccd"$h".txt
+                fi
+                astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+                rm -f $ringDir/$tmpRingFits_single
+               
+            
+            done
+            #if [ "$swarped" = "YES" ]; then rm $ringDir/$tmpRingDefinition; fi
+            #Since getMedianValueInsideRing is modified to treat with a multiple layer ring we are forced to split the loops :(
             for h in $(seq 1 $num_ccd); do
                 me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
                 std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
-                read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
-                echo "$base $me $std $skew $kurto" > $noiseskydir/$out
+                read skew kurto < <(getSkewKurtoValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $h)
+                #This is introduced in order to make a jump line unless file is not written
+                echo "$base $me $std $skew $kurto" >> $noiseskydir/$out
             done
+            #rm $ringDir/$tmpRingDefinition
             
-            rm $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
+            rm $ringDir/$tmpRingFits
+
         elif [ "$constantSkyMethod" = "noisechisel" ]; then
             for h in $(seq 1 $num_ccd); do
                 sky=$(echo $base | sed 's/.fits/_sky.fits/')
-                astnoisechisel $imageToUse -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
+
+                # The sky substraction is done by using the --checksky option in noisechisel
+                astnoisechisel $i -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
                 mean=$(aststatistics $noiseskydir/$sky -hSKY --sigclip-mean)
                 std=$(aststatistics $noiseskydir/$sky -hSTD --sigclip-mean)
-
-                rskew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $noiseskydir/$sky SKEWNESS NO $h)
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $noiseskydir/$sky SKEWNESS NO $h)
                 kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $noiseskydir/$sky KURTOSIS NO $h)
                 echo "$base $mean $std $skew $kurto" >> $noiseskydir/$out
                 rm -f $noiseskydir/$sky
             done
-        elif [ "$constantSkyMethod" = "fullImage" ]; then
+        elif [ "$constantSkyMethod" = "wholeImage" ]; then
             for h in $(seq 1 $num_ccd); do
-                me=$(aststatistics $imageToUse -h$h --sigclip-median)
-                std=$(aststatistics $imageToUse -h$h --sigclip-std)
-
-                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $imageToUse SKEWNESS NO $h)
-                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $imageToUse KURTOSIS NO $h)
-                echo "$base $me $std $skew $kurto" >> $noiseskydir/$out
+                mean=$(aststatistics $i -h$h --sigclip-mean -q)
+                std=$(aststatistics $i -h$h --sigclip-std -q)
+                skew=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i SKEWNESS NO $h)
+                kurto=$(python3 $pythonScriptsPath/get_skewness_kurtosis.py $i KURTOSIS NO $h)
+                echo "$base $mean $std $skew $kurto" >> $noiseskydir/$out
             done
+        elif [ "$constantSkyMethod" = "ringAndDetector" ]; then
+            tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
+            tmpRingFits_single=$(echo $base | sed 's/.fits/_ring_single.fits/')
+            imageToUse=$i
+            if [ "$swarped" = "YES" ]; then
+                for h in $(seq 1 $num_ccd); do
+                    x_ring=$( awk ' {print $2}' $ringDir/ring_ccd"$h".txt )
+                    y_ring=$( awk ' {print $3}' $ringDir/ring_ccd"$h".txt )
+                    tmpRingDefinition=$(echo $base | sed 's/.fits/_ring_ccd.txt/')
+                    ringRadius=$( awk '{print $5}' $ringDir/ring_ccd"$h".txt )
+                    ##We first check if a rotation is needed by comparing naxis of the ring (which is already created) and naxis of the frame
+                    naxis1=$(fitsheader $imageToUse -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2=$(fitsheader $imageToUse -e $h | grep "NAXIS2" | awk '{print $3'})
+                    naxis1_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS1" | awk '{print $3'})
+                    naxis2_r=$(fitsheader $ringDir/ring.fits -e $h | grep "NAXIS2" | awk '{print $3'})
+
+                    #If the axis on ring and on image keeps the comparison, we don't need to do anything
+                    if [[ $naxis1 -gt $naxis2 && $naxis1_r -gt $naxis2_r ]] || [[ $naxis1 -lt $naxis2 && $naxis1_r -lt $naxis2_r ]]; then
+                        echo "1 $x_ring $y_ring 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                    else
+                        #If image new is rotated, we look for the astrometrized, not rotated in order to get the correct position
+                        image_astro=${base#entirecamera_}
+                        ringCentre=$( xy2sky $BDIR/astro-ima/$image_astro,$h $x_ring $y_ring )
+                        ringRa=$(echo "$ringCentre" | awk '{print $1}')
+                        ringDec=$(echo "$ringCentre" | awk '{print $2}')
+                        newringCentre=$( sky2xy $imageToUse,$h $ringRa $ringDec )
+                        x_new=$(echo "$newringCentre" | awk '{print $5}')
+                        y_new=$(echo "$newringCentre" | awk '{print $6}')
+                        echo "1 $x_new $y_new 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
+                   
+                        
+                    fi
+             
+                    astmkprof --background=$imageToUse --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/$tmpRingDefinition
+                    rm -f $ringDir/$tmpRingDefinition
+                    astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+                    rm -f $ringDir/$tmpRingFits_single
+                done
+            else
+                for h in $(seq 1 $num_ccd); do
+                    astmkprof --background=$imageToUse  --backhdu=$h --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --quiet -o $ringDir/$tmpRingFits_single $ringDir/ring_ccd"$h".txt
+                    astfits $ringDir/$tmpRingFits_single --copy=1 -o $ringDir/$tmpRingFits
+                    rm -f $ringDir/$tmpRingFits_single
+                done
+            fi
+            
+            python3 $pythonScriptsPath/getSkySTDSkewKurtosis_fullDetector.py $imageToUse $ringDir/$tmpRingFits $noiseskydir $num_ccd
+            rm $ringDir/$tmpRingFits
+
         else
             errorNumber=6
             echo -e "\nAn invalid value for the sky_estimation_method was provided" >&2
@@ -1213,11 +1296,23 @@ computeSkyForFrame(){
         fi
 
     else
-        # Case when we fit a plane
+        echo "\n\tMultiDetector pipeline has not been prepared yet to work with polynomial fitting of sky"
+        exit 35
+        # Case when we model a plane
+        noiseOutTmp=$(echo $base | sed 's/.fits/_sky.fits/')
+        maskTmp=$(echo $base | sed 's/.fits/_masked.fits/')
         planeOutput=$(echo $base | sed 's/.fits/_poly.fits/')
         planeCoeffFile=$(echo $base | sed 's/.fits/.txt/')
 
-        python3 $pythonScriptsPath/surface-fit.py -i $imageToUse -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
+        # This conditional allows us to introduce the images already masked (masked with the mask of the coadd) in the second and next iterations
+        if ! [ "$inputImagesAreMasked" = true ]; then
+            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
+            astarithmetic $i -h1 $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
+            python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
+        else
+            python3 $pythonScriptsPath/surface-fit.py -i $i -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
+        fi
+
         rm -f $noiseskydir/$noiseOutTmp
         rm -f $noiseskydir/$maskTmp
     fi
@@ -1239,9 +1334,10 @@ computeSky() {
     local keyWordValueForFirstRing=${12}
     local keyWordValueForSecondRing=${13}
     local ringWidth=${14}
-    local noisechisel_param=${15}
-    local swarped=${16}
-    local maskParams=${17}
+    local swarped=${15}
+    local blockScale=${16}
+    local noisechisel_param=${17}
+    local maskParams=${18}
 
 
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
@@ -1254,7 +1350,7 @@ computeSky() {
             framesToComputeSky+=("$base")
         done
 
-        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth "'$noisechisel_param'" $swarped "'$maskParams'" 
+        printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_cpus" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $swarped $blockScale $noisechisel_param $maskParams 
         echo done > $noiseskydone
     fi
 }
@@ -1317,19 +1413,24 @@ export -f subtractSky
 gainCorrection() {
     local image=$1
     local ringDir=$2
-    local noisechisel_param=$3
-    local outDir=$4
+    local outDir=$3
+    local blockScale=$4
+    local noisechisel_param=$5
     
     base=$( basename $image )
+    inputDir=$(dirname $image)
     output=$outDir/$base
     astfits $image --copy=0 --primaryimghdu -o$output
     ringFile=$ringDir/ring.fits
     noiseOut=$outDir/noise_$base
     maskOut=$outDir/mask_$base
     gainOut=$outDir/gain_$base
+    runNoiseChiselOnFrame $base $inputDir $outDir $blockScale "$noisechisel_param" 
+    mv $outDir/$base $noiseOut
     for h in $(seq 1 $num_ccd); do
-        astnoisechisel $image -h$h $noisechisel_param --numthreads=$num_cpus -o $noiseOut
-        astarithmetic $image -h$h $noiseOut -h1 0 ne nan where -q -o$outDir/temp_$base
+        
+        #astnoisechisel $image -h$h $noisechisel_param --numthreads=$num_cpus -o $noiseOut
+        astarithmetic $image -h$h $noiseOut -h$h 0 ne nan where -q -o$outDir/temp_$base
         astarithmetic $outDir/temp_$base -h1 $ringFile -h$h 0 eq nan where -q -o$maskOut
         gain_h=$(aststatistics $maskOut --sigclip-median -q)
         if [ $h -eq 1 ]; then
@@ -1340,9 +1441,9 @@ gainCorrection() {
             astfits $gainOut --copy=1 -o$output
             rm $gainOut
         fi
-        rm $outDir/temp_$base $noiseOut $maskOut
+        rm $outDir/temp_$base $maskOut
     done
-
+    rm $noiseOut
 }
 export -f gainCorrection
 
@@ -1568,23 +1669,26 @@ downloadIndex() {
             local ra_to_index="ra"
             local dec_to_index="dec"
             local mag_to_index="phot_g_mean_mag"
+            local extension=1
             ;;
         panstarrs | des1)
             local ra_to_index="RAJ2000"
             local dec_to_index="DEJ2000"
             local mag_to_index="gmag"
+            local extension=1
             ;;
-        userspecified)
+        user)
             local ra_to_index=$raKeyCatalogue
             local dec_to_index=$decKeyCatalogue
             local mag_to_index=$magnitudeKeyCatalogue
+            local extension=2
             ;;
         *)
             echo "Unknown catalog source: $surveyToUse"
             exit 222
             ;;
     esac
-    build-astrometry-index -i $catName -e1 \
+    build-astrometry-index -i $catName -e$extension \
                             -P $re \
                             -S $mag_to_index \
                             -E -A $ra_to_index -D  $dec_to_index \

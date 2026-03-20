@@ -7,9 +7,10 @@
 # 5) Survey of reference and filter
 # 6) Directory of working
 # The script will output a file with the photometry results, and the photometrized image.
-# Usage: photometryWithGalaxies.sh <image.fits> <config.conf> <output_file>
-pipelinePath=`dirname "$0"``
-pipelinePath=`( cd "$pipelinePath" && pwd )`
+# Usage: photometryWithGalaxies.sh  <config.conf> <image.fits> <output_file>
+scriptPath=`dirname "$0"`
+scriptPath=`( cd "$scriptPath" && pwd )`
+pipelinePath=$(dirname "$scriptPath")
 pythonScriptsPath=$pipelinePath/pipelineScripts
 scriptPath=$pipelinePath/checkScripts
 export pipelinePath
@@ -35,9 +36,16 @@ while getopts ${OPTSTRING} opt; do
   esac
 done
 
-imageFile=$1
-configFile=$2
+
+configFile=$1
+imageFile=$2
 outputPrefix=$3
+
+if [ -z "$configFile" ] || [ ! -f "$configFile" ]; then
+    echo "Error: Config file not provided or does not exist"
+    echo "Usage: photometryWithGalaxies.sh <config.conf> <image.fits> <output_file>"
+    exit 1
+fi
 
 loadVariablesFromFile $configFile
 
