@@ -887,7 +887,7 @@ nights=()
 for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
 done
-printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
+printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_parallel" oneNightPreProcessing {}
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames

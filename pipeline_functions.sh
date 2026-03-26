@@ -4034,7 +4034,7 @@ createBlocks(){
         availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
         echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
         
-        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
+        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix 200.0 $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
     fi
 }
 export -f createBlocks
