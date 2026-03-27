@@ -21,12 +21,14 @@ done
 for file in $outputFolder/*.hcm; do
     a=1
     name=$( basename $file )
-    name_ok="${name%.hcm}.hcm"
+    name_ok="${name%.hcm}.fits"
+    file_ok="$outputFolder/$name_ok"
+    mv $file $file_ok
     for filter in u g r i z; do
         if ! [ -d "$outputFolder/$filter" ]; then
             mkdir -p "$outputFolder/$filter"
         fi
-        out= "$outputFolder/$filter/$name_ok"
+        out="$outputFolder/$filter/$name_ok"
         astfits $file --copy=0 --primaryimghdu -o$out
         for ccd in $(seq 1 4); do
             h=$(((a - 1) * 4 + ccd))
@@ -40,6 +42,7 @@ for file in $outputFolder/*.hcm; do
         done
         ((a++))
     done
+    rm $file_ok
 done
 
 
