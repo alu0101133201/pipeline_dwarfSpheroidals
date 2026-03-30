@@ -204,10 +204,10 @@ if (len(sys.argv) == 5):
     bandToStudy = sys.argv[3]
     comparisonSurvey = sys.argv[4]
 else:
-    field="NGC6789"
-    currentInstrument = "TTT3_iKon"
-    bandToStudy = "u"
-    comparisonSurvey = "SDSS"
+    field="NGC3164"
+    currentInstrument = "TTT3_QHY"
+    bandToStudy = "z"
+    comparisonSurvey = "PANSTARRS"
 
 
 
