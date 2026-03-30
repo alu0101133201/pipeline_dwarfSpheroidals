@@ -4440,3 +4440,64 @@ computeStarScaleForFrame() {
 }
 export -f computeStarScaleForFrame
 
+#####PAUCAM Specific functions
+correctGainForPaucam() {
+    local inputImage=$1
+    local inputDir=$2
+    local gainCorDir=$3
+    local blockScale=$4
+    local noisechiselparam=$5
+    base=$( basename $inputImage )
+    tmpMask=$(echo $base | sed 's/.fits/_mask.fits/')
+    tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
+    tmpMaskedImage_single=$(echo $base | sed 's/.fits/_masked_ccd.fits/')
+    runNoiseChiselOnFrame $base $inputDir $gainCorDir $blockScale "$noisechiselparam"
+
+    mv $gainCorDir/$base $gainCorDir/$tmpMask
+    for h in $(seq 1 72); do
+        astarithmetic $inputImage -h$h $gainCorDir/$tmpMask -h$h 1 eq nan where float32 -o $gainCorDir/$tmpMaskedImage_single -q
+        astfits $gainCorDir/$tmpMaskedImage_single --copy=1 -o$gainCorDir/$tmpMaskedImage
+        rm -f $gainCorDir/$tmpMaskedImage_single
+    done
+    rm -f $gainCorDir/$tmpMask
+    astfits $inputImage --copy=0 --primaryimghdu -o $gainCorDir/$base
+    for h in $(seq 0 17); do
+        h1=$((h*4+1))
+        h2=$((h*4+2))
+        h3=$((h*4+3))
+        h4=$((h*4+4))
+        gain_ref=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h1 --sigclip-mean -q)
+        gain_h2=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h2 --sigclip-mean -q)
+        gain_h3=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h3 --sigclip-mean -q)
+        gain_h4=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h4 --sigclip-mean -q)
+        astfits $inputImage --copy=$h1 -o $gainCorDir/$base
+        astarithmetic $inputImage -h$h2 $gain_ref x $gain_h2 / float32 -o $gainCorDir/tmp_$base
+        astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+        astarithmetic $inputImage -h$h3 $gain_ref x $gain_h3 / float32 -o $gainCorDir/tmp_$base
+        astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+        astarithmetic $inputImage -h$h4 $gain_ref x $gain_h4 / float32 -o $gainCorDir/tmp_$base
+        astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+    done
+    rm -f $gainCorDir/tmp_$base $gainCorDir/$tmpMaskedImage
+}
+export -f correctGainForPaucam
+
+stitchPaucamFrames() {
+    local inputFrame=$1
+    local stitchdir=$2
+    local num_ccd=$3
+    base=$( basename $inputFrame )
+    out=$stitchdir/$base
+    astfits $inputFrame --copy=0 --primaryimghdu -o $out
+    for h in $(seq 0 $((num_ccd-1))); do
+        h1=$((h*4+1))
+        h2=$((h*4+2))
+        h3=$((h*4+3))
+        h4=$((h*4+4))
+        astarithmetic $inputFrame -h$h1 $inputFrame -h$h2 $inputFrame -h$h3 $inputFrame -h$h4 4 1 stitch -o $stitchdir/tmp_$base
+        astfits $stitchdir/tmp_$base --copy=1 -o $out
+    done
+    rm -f $stitchdir/tmp_$base
+
+}
+export -f stitchPaucamFrames

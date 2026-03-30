@@ -1087,6 +1087,63 @@ else
   #LBT frames are already astrometrized, so we will take advantage of that info
   if [ "$telescope" == "LBT" ] || [ "$telescope" == "OSIRIS" ]; then
     cp $framesForCommonReductionDir/*.fits $astroimadir/
+  elif [ "$telescope" == "PAUCam" ]; then
+    ###If frames are for Paucam, they are astrometrized, but there are windows of read-out, so we are gonna stitch them prior to scamp
+    #For that, first we need to correct gain
+    gaincordir=$BDIR/gain-corrected_ccds
+    gaincordone=$gaincordir/done.txt
+    if ! [ -d $gaincordir ]; then mkdir $gaincordir; fi
+    if [ -f $gaincordone ]; then
+      echo -e "\n\tFrames are already gain corrected for PAUCam\n"  
+    else
+      frameNames=()
+      for a in $framesForCommonReductionDir/*.fits; do
+          frameNames+=("$a")
+      done
+
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" correctGainForPaucam {} $framesForCommonReductionDir $gaincordir $blockScale "'$noisechisel_param'"
+      echo done > $gaincordone
+    fi
+    stitchdir=$BDIR/framesStitched
+    stitchdone=$stitchdir/done.txt
+    if ! [ -d $stitchdir ]; then mkdir $stitchdir; fi
+    if [ -f $stitchdone ]; then
+      echo -e "\n\tFrames are already stitched for PAUCam\n"
+    else
+      frameNames=()
+      for a in $gaincordir/*.fits; do
+          frameNames+=("$a")
+      done
+      num_ccd=18
+      export num_ccd
+      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" stitchPaucamFrames {} $stitchdir $num_ccd
+      echo done > $stitchdone
+    fi
+    frameNames=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+        base=$a.fits
+        i=$stitchdir/$base
+        frameNames+=("$i")
+    done
+    num_ccd=18
+    export num_ccd
+    #cp $stitchdir/* $astroimadir/
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir_layer $sexcfg $sizeOfOurFieldDegrees
+
+    for a in $(seq 1 $totalNumberOfFrames); do
+        base=$a.fits
+    $profileFolder/tmpMasked_$imageProf    i=$framesForCommonReductionDir/$base
+        out=$astroimadir/$base
+        astfits $i --copy=0 --primaryimghdu -o $out
+        for h in $(seq 1 $num_ccd); do
+          im_layer=$astroimadir_layer/layer"$h"_"$base"
+          if [ $h -ne 2 ] && [ $h -ne 9 ] && [ $h -ne 10 ] && [ $h -ne 12 ]; then
+                astfits $im_layer --copy=1 -o $out
+          fi
+        done
+    done
+    
+
   else
     frameNames=()
     for a in $(seq 1 $totalNumberOfFrames); do
@@ -1110,7 +1167,14 @@ else
   rm -rf $astroimadir_layer
   echo done > $astroimadone
 fi
-
+if [ "$telescope" == "PAUCam" ]; then
+  #Change of variables
+  num_ccd=14
+  export num_ccd
+  framsForCommonReductionDir=$stitchdir
+  detectorWidth=2048
+  detectorHeight=4096
+fi
 ########## Distorsion correction ##########
 echo -e "\n ${GREEN} ---Creating distorsion correction files--- ${NOCOLOUR}"
 
@@ -1149,7 +1213,10 @@ else
 
   for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
     echo -e "\tSExtractor + scamp iteration $i"
-
+    scampcfg_it=$CDIR/scamp_it"$i".cfg
+    if [ -f $scampcfg_it ]; then
+      scampcfg=$scampcfg_it
+    fi
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold 
     scamp -c $scampcfg $(ls -v $sexdir/*.cat)
     cp $sexdir/*.head $astroimadir
