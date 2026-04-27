@@ -134,7 +134,7 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
         file=allTable.loc[row]['File']
         match=re.search(pattern,file)
         frame=int(match.group(1))
-        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        file=folderWithFramesWithAirmasses+'/entirecamera_'+str(frame)+'.fits'
         date=obtainKeyWordFromFits(file,'DATE-OBS')
         air=obtainKeyWordFromFits(file,'AIRMASS')
         date_ok=datetime.fromisoformat(date)
@@ -155,7 +155,7 @@ def saveFWHMevol(allTable, fwhmRejectedIndices, astrometryRejectedIndices, fwhmT
     for j in range(len(fwhmRejectedFiles)):
         match=re.search(pattern, fwhmRejectedFiles[j])
         frame=int(match.group(1))
-        file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+        file=folderWithFramesWithAirmasses+'/entirecamera_'+str(frame)+'.fits'
         date=obtainKeyWordFromFits(file,'DATE-OBS')
         air=obtainKeyWordFromFits(file,'AIRMASS')
         date_ok=datetime.fromisoformat(date)

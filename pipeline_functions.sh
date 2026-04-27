@@ -356,8 +356,8 @@ checkUnitsAndConvertToCommonUnitsIfNeeded() {
     # Since we may change the file (depending on the units) I create a backup in order not to loose the original file
     cp $filterFile $filterFile.original
 
-    read units transmittanceFormat < <(head -n 1 $filterFile)
-    transmittanceFormat="${transmittanceFormat//$'\r'/}" # Remove the final endline
+    IFS=$' \t\n' read -r units transmiattanceFormat < <(head -n 1 $filterFile)
+    #transmittanceFormat="${transmittanceFormat//$'\r'/}" # Remove the final endline
 
     if [[ ("$units" != "A") && ("$units" != "nm" ) ]]; then
         echo "format ($transmittanceFormat) for transmittance not accepted. It is expected either A or nm"
@@ -439,6 +439,7 @@ subtractBiasFromFrame(){
     if [ "$USE_COMMON_RING" = false ]; then
         propagateKeyword $i $keyWordToDecideRing $out
     fi
+    rm $i
 }
 export -f subtractBiasFromFrame
 # Functions used in Flat
@@ -448,6 +449,7 @@ maskImages() {
     local outputDirectory=$3
     local useCommonRing=$4
     local keyWordToDecideRing=$5
+    local n_exp=$6
     images=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -518,9 +520,9 @@ propagateKeyword() {
     local keyWordToPropagate=$2
     local out=$3
 
-    valueToPropagate=$(astfits $image --keyvalue=$keyWordToPropagate --quiet)
+    valueToPropagate=$(gethead $image $keyWordToPropagate)
     eval "astfits --delete=$keyWordToPropagate $out -h1 2&>/dev/null" # I redirect the error descriptor so I avoid the error message if the keyword didn't exist
-    eval "astfits --write=$keyWordToPropagate,$valueToPropagate $out -h1"
+    eval "astfits $out -h1 --write=$keyWordToPropagate,$valueToPropagate "
 }
 export -f propagateKeyword
 
@@ -721,6 +723,7 @@ normaliseImagesWithRing() {
     local keyWordThreshold=$8
     local keyWordValueForFirstRing=$9
     local keyWordValueForSecondRing=${10}
+    local n_exp=${11}
     imagesToNormalise=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -769,7 +772,7 @@ calculateFlat() {
     if [ "$(echo "$gnuastro_version > 0.22" | bc)" -eq 1 ]; then
         astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 --writeall -o $flatName
     else
-        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 -o $flatName
+        astarithmetic $filesToUse $numberOfFiles $sigmaValue $iterations sigclip-median -g1 -o $flatName 
     fi
 }
 export -f calculateFlat
@@ -788,6 +791,7 @@ calculateRunningFlat() {
 
     lefFlatFiles=("${fileArray[@]:0:$windowSize}")
     echo "Computing left flat - iteration $iteration"
+    
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits" "${lefFlatFiles[@]}"
     propagateKeyword "${lefFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits"
 
@@ -797,11 +801,10 @@ calculateRunningFlat() {
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits" "${rightFlatFiles[@]}"
     propagateKeyword "${rightFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits"
 
-
     echo "Computing non-common flats - iteration $iteration"
     #aValues=()
-    for a in $(seq 1 $n_exp); do
-        if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($n_exp - $halfWindowSize))" ]; then
+    for a in $(seq 1 $(ls $normalisedDir/*.fits | wc -l)); do
+	if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($(ls $normalisedDir/*.fits | wc -l) - $halfWindowSize))" ]; then
             leftLimit=$(( a - $halfWindowSize - 1))
             calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits" "${fileArray[@]:$leftLimit:$windowSize}"
 
@@ -815,6 +818,49 @@ calculateRunningFlat() {
     echo done > $doneFile
 }
 export -f calculateRunningFlat
+calculateWholeNightFlat() {
+    local flatName=$1
+    local normalisedDir=$2
+    local night=$3
+    local flatDir=$4
+    ### Number of images mught be too large to do a single astarithmetic
+    ### We apply what is applied as well in buildCoadd: crop in different sections
+    python3 $pythonScriptsPath/createCropSections.py $normalisedDir $detectorWidth,$detectorHeight 75.0 $BDIR/cropSections_$night.txt $BDIR/numberOfBlocks_$night.txt
+    numBlocksX=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks_"$night".txt)
+    numBlocksY=$(awk 'NR=='1'{print $2}' $BDIR/numberOfBlocks_"$night".txt)
+    if [ $numBlocksX -eq 1 ]; then
+	calculateFlat $flatName $(ls -v $normalisedDir/*Decals-"$filter"_n*_f*_ccd"$h".fits)
+    else
+        if ! [ -f $BDIR/sectionsToCombine_$night.txt ]; then
+            mkdir -p $BDIR/sectionsToCombine_$night
+        fi
+        while IFS=' ' read -r cropSection m n; do
+            cropInSections $normalisedDir $cropSection $BDIR/sectionsToCombine_$night $BDIR/sectionsToCombine_$night/done_"$m""$n".txt 
+            flat_mn=$flatDir/flat_"$m"_"$n".fits
+            calculateFlat $flat_mn $(ls -v $BDIR/sectionsToCombine_$night/*fits)
+            rm $BDIR/sectionsToCombine_$night/*
+        done < $BDIR/cropSections_$night.txt
+        stitchCommand=""
+        for m in $(seq 1 $numBlocksX); do
+            for n in $(seq 1 $numBlocksY); do
+                flat_mn=$flatDir/flat_"$m"_"$n".fits
+                stitchCommand+="$flat_mn -h1 "
+            done
+            stitchCommand+="$numBlocksY 2 stitch "
+        done
+        astarithmetic $stitchCommand $numBlocksX 1 stitch -o $flatName
+        rm -rf $BDIR/sectionsToCombine_$night
+        for m in $(seq 1 $numBlocksX); do
+            for n in $(seq 1 $numBlocksY); do
+                flat_mn=$flatDir/flat_"$m"_"$n".fits
+                rm $flat_mn
+            done
+        done
+    fi
+    rm $BDIR/cropSections_$night.txt $BDIR/numberOfBlocks_$night.txt
+
+}
+export -f calculateWholeNightFlat
 calculateNonCommonFlat() {
     local a=$1
     local outputDir=$2
@@ -841,6 +887,7 @@ divideImagesByRunningFlats(){
     local outputDir=$2
     local flatDir=$3
     local flatDone=$4
+    local n_exp=$5
     imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -887,6 +934,7 @@ divideImagesByWholeNightFlat(){
     local outputDir=$2
     local flatToUse=$3
     local flatDone=$4
+    local n_exp=$5
     imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -971,7 +1019,7 @@ runNoiseChiselOnFrame() {
     local outputDir=$3
     local blockScale=$4
     local noiseChiselParams=$5
-
+    local num_threads=4
     ###If a block scale is given, we will block, highlighting LSB regions, detect, and un-block the mask
 
     imageToUse=$inputFileDir/$baseName
@@ -986,9 +1034,10 @@ runNoiseChiselOnFrame() {
         wMask2=$outputDir/mkW2_$baseName
         astwarp $imageToUse --scale=1/$blockScale --numthreads=$num_threads -o $wFile
         astnoisechisel $wFile $noiseChiselParams --numthreads=$num_threads -o $wMask
+        rm $wFile
         astwarp $wMask -h1 --gridfile=$imageToUse --gridhdu=1 --numthreads=$num_threads -o$wMask2
 
-        warp_status=$?
+        local warp_status=$?
         if [ $warp_status -ne 0 ]; then
             wMaskTmp=$outputDir/mkWTmp_$baseName
             wMaskTmp2=$outputDir/mkWTmp2_$baseName
@@ -996,13 +1045,15 @@ runNoiseChiselOnFrame() {
             echo "astwarp failed on $baseName (exit code $warp_status)" >&2
             echo "This happens when images are not astrometrised. The second solution is to warp and then crop to the desired size"
             astwarp $wMask -h1 --scale=$blockScale --gridhdu=1 --numthreads=$num_threads -o$wMaskTmp
+            rm -f $wMask
             astarithmetic $wMaskTmp -h1 set-i i i isblank 1 where -o $wMaskTmp2
+            rm -f $wMaskTmp
             astcrop $wMaskTmp2 --section="1:$detectorWidth,1:$detectorHeight" --mode=img -o $wMask2
-
-            rm $wMaskTmp $wMaskTmp2
+       
+            rm -f $wMaskTmp2
         fi
         astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o$output
-        rm $wFile $wMask $wMask2
+        rm -f $wMask $wMask2 2>/dev/null
     fi
 }
 export -f runNoiseChiselOnFrame
@@ -1059,7 +1110,6 @@ warpImage() {
     # Resample into the final grid
     SWARP_CMD=$( detect_swarp )
     $SWARP_CMD -c $swarpcfg $imageToSwarp -NTHREADS $num_cpus -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
-
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
     astarithmetic $entiredir/"$currentIndex"_swarp1.fits -h0 $tmpFile1 -h1 0 eq nan where -o$frameFullGrid
@@ -1073,6 +1123,7 @@ warpImage() {
 
     # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but  swarp for some reason propagates it incorrectly
     propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 
+    propagateKeyword $imageToSwarp $airMassKeyWord $entiredir/entirecamera_"$currentIndex".fits
 }
 export -f warpImage
 
@@ -1092,6 +1143,7 @@ smallGridToFullGridSingleFrame(){
         astfits $fullDir/ccd_$base --copy=1 -o $out
         rm $fullDir/ccd_$base
     done
+    rm $smallFrame
 }
 export -f smallGridToFullGridSingleFrame
 
@@ -1176,7 +1228,6 @@ computeSkyForFrame(){
         tmpMaskedImage=$(echo $base | sed 's/.fits/_masked.fits/')
         runNoiseChiselOnFrame $1 $entiredir $noiseskydir $blockScale "$noisechisel_param"
         mv $noiseskydir/$1 $noiseskydir/$tmpMask #This is because of the output of runNoiseChiselOnFrame 
-        
         #astnoisechisel $i $noisechisel_param --numthreads=$num_threads -o $noiseskydir/$tmpMask
         astarithmetic $i -h1 $noiseskydir/$tmpMask -h1 1 eq nan where float32 -o $noiseskydir/$tmpMaskedImage -quiet
         imageToUse=$noiseskydir/$tmpMaskedImage
@@ -1217,15 +1268,14 @@ computeSkyForFrame(){
             tmpRingDefinition=$(echo $base | sed 's/.fits/_ring.txt/')
             tmpRingFits=$(echo $base | sed 's/.fits/_ring.fits/')
 
-            naxis1=$(fitsheader $imageToUse | grep "NAXIS1" | awk '{print $3}')
-            naxis2=$(fitsheader $imageToUse | grep "NAXIS2" | awk '{print $3}')
+            naxis1=$(gethead $imageToUse NAXIS1)
+            naxis2=$(gethead $imageToUse NAXIS2)
             half_naxis1=$(echo "$naxis1 / 2" | bc)
             half_naxis2=$(echo "$naxis2 / 2" | bc)
 
             ringRadius=$( awk '{print $5}' $ringDir/ring.txt )
             echo "1 $half_naxis1 $half_naxis2 6 $ringRadius 1 1 1 1 1" > $ringDir/$tmpRingDefinition
             astmkprof --background=$imageToUse  -h1 --mforflatpix --mode=img --type=uint8 --circumwidth=$ringWidth --clearcanvas --numthreads=$num_threads -o $ringDir/$tmpRingFits $ringDir/$tmpRingDefinition
-            
             me=$(getMedianValueInsideRing $imageToUse  $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
             std=$(getStdValueInsideRing $imageToUse $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $noiseskydir)
             read skew kurto < <(getSkewKurtoValueFromSkyPixels $imageToUse $constantSkyMethod $ringDir/$tmpRingFits "" "" true $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing)
@@ -1392,7 +1442,7 @@ getParametersFromHalfMaxRadius() {
     astnoisechisel $image -h1 -o $tmpFolder/det.fits --convolved=$tmpFolder/convolved.fits --tilesize=20,20 --detgrowquant=0.95 --erode=4 --numthreads=$num_cpus 1>/dev/null
     astsegment $tmpFolder/det.fits -o $tmpFolder/seg.fits --snquant=0.1 --gthresh=-10 --objbordersn=0    --minriverlength=3 1>/dev/null
     astmkcatalog $tmpFolder/seg.fits --ra --dec --magnitude --half-max-radius --sum --clumpscat -o $tmpFolder/decals.txt --zeropoint=22.5 1>/dev/null
-    astmatch $tmpFolder/decals_c.txt --hdu=1    $BDIR/catalogs/"$objectName"_"$surveyToUseInSolveField".fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
+    astmatch $tmpFolder/decals_c.txt --hdu=1    $DIR/catalogs/"$objectName"_"$surveyToUseInSolveField".fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=bRA,bDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o $tmpFolder/match_decals_gaia.txt 1>/dev/null
 
     numOfStars=$( cat $tmpFolder/match_decals_gaia.txt | wc -l )
     median=$( asttable $tmpFolder/match_decals_gaia.txt -h1 -c3 --noblank=MAGNITUDE | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median )
@@ -1608,7 +1658,7 @@ solveField() {
     # Maybe a bug? I have not managed to make it work
     max_attempts=4
     attempt=1
-    sex_path=$( which source-extractor )
+    sex_path=$( which sex )
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
@@ -1646,7 +1696,7 @@ runSextractorOnImage() {
     # These two values (saturation level and gain) are key for astrometrising correctly, they are used by scamp for identifying saturated sources and weighting the sources
     # I was, in fact, having frames bad astrometrised due to this parameters.
     i=$astroimadir/"$a".fits
-    source-extractor $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat -SATUR_LEVEL=$saturationThreshold -GAIN=$gain
+    sex $i -c $sexcfg -PARAMETERS_NAME $sexparam -FILTER_NAME $sexconv -CATALOG_NAME $sexdir/$a.cat -SATUR_LEVEL=$saturationThreshold -GAIN=$gain
 }
 export -f runSextractorOnImage
 
@@ -2032,7 +2082,6 @@ prepareSpectraDataForPhotometricCalibration() {
 
     if ! [ -d $spectraDir ]; then mkdir $spectraDir; fi
     downloadSpectra $mosaicDir $spectraDir $ra $dec $sizeOfOurFieldDegrees $surveyForSpectra
-
     aperturePhotDone=$mosaicDir/done_"$filter".txt
     if [ -f $aperturePhotDone ]; then
         echo -e "\n\tThe catalogue with the magnitudes of the spectra already built\n"
@@ -2486,7 +2535,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
     fi
     
     
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o$mycatdir/match_"$a"_my_gaia.txt   
+    astmatch $outputCatalogue --hdu=1 $DIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aHALF_MAX_RADIUS,aMAGNITUDE -o$mycatdir/match_"$a"_my_gaia.txt   
     # The intermediate step with awk is because I have come across an Inf value which make the std calculus fail
     # Maybe there is some beautiful way of ignoring it in gnuastro. I didn't find int, I just clean de inf fields.
     s=$(asttable $mycatdir/match_"$a"_my_gaia.txt -h1 -c5 --noblank=MAGNITUDE   | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --sigclip-median)
@@ -2648,7 +2697,7 @@ buildOurCatalogueOfMatchedSources() {
             #buildOurCatalogueOfMatchedSourcesForFrame $frameName $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
         done
 
-        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_parallel" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
         echo done > $ourDatadone
     fi
 }
@@ -2848,7 +2897,7 @@ computeCalibrationFactors() {
     
 
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
-    buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
+   buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
     
     #if [ $iteration -eq 2 ]; then exit; fi
     # If we are calibrating with spectra we just have the whole catalogue of the field
@@ -3547,7 +3596,7 @@ generateCatalogueFromImage_sextractor(){
 
     # I specify the configuration path here because in the photometric calibration the working directory changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
-    source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII_HEAD 1>/dev/null 2>&1
+    sex $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII_HEAD 1>/dev/null 2>&1
 
     # The following code is to identify the FWHM and Re columns numbers. This is needed because it is dependant
     # on the order of the parameters in the .param file.
@@ -3729,7 +3778,7 @@ computeFWHMSingleFrame(){
         exit $erroNumber
     fi
 
-    astmatch $outputCatalogue --hdu=1 $BDIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $DIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
     # Now we select the stars as we do for the photometry
     s=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE --range=MAGNITUDE,$brightLimit:$faintLimit | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1.5,$iterationsForStdSigClip --sigclip-median)
     std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE --range=MAGNITUDE,$brightLimit:$faintLimit | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1.5,$iterationsForStdSigClip --sigclip-std)
@@ -4034,7 +4083,7 @@ createBlocks(){
         availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
         echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
         
-        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix 200.0 $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
+        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix,$coaddSizeInPix 75.0 $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
     fi
 }
 export -f createBlocks

@@ -92,7 +92,7 @@ def obtainKeyWordFromFits(file, keyword):
 def obtainAirmassFromFile(currentFile, airMassesFolder, airMassKeyWord):
     frameNumber = obtainNumberFromFrame(currentFile)
 
-    fitsFileNamePatter = f"{frameNumber}.fits"
+    fitsFileNamePatter = f"entirecamera_{frameNumber}.fits"
     fitsFilePath = os.path.join(airMassesFolder, fitsFileNamePatter)
 
     airMass = obtainKeyWordFromFits(fitsFilePath, airMassKeyWord)
@@ -204,7 +204,7 @@ def saveScatterFactors(factors, rejectedAstrometryIndices, rejectedFWHMIndices, 
         if (not pd.isna(i[0])): 
             match=re.search(r"_(\d+).",i[0])
             frame = match.group(1)
-            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+            file=folderWithFramesWithAirmasses+'/entirecamera_'+str(frame)+'.fits'
             date=obtainKeyWordFromFits(file,'DATE-OBS')
             air=obtainKeyWordFromFits(file,'AIRMASS')
             date_ok=datetime.fromisoformat(date)
@@ -284,7 +284,7 @@ def saveBackEvolution(magnitudesPerArcSecSq, rejectedAstrometryIndices, rejected
         if (not pd.isna(i[0])): 
             match=re.search(r"_(\d+).",i[0])
             frame = match.group(1)
-            file=folderWithFramesWithAirmasses+'/'+str(frame)+'.fits'
+            file=folderWithFramesWithAirmasses+'/entirecamera_'+str(frame)+'.fits'
             date=obtainKeyWordFromFits(file,'DATE-OBS')
             air=obtainKeyWordFromFits(file,'AIRMASS')
             date_ok=datetime.fromisoformat(date)
@@ -519,7 +519,6 @@ for currentFile in glob.glob(folderWithSkyEstimations + "/*.txt"):
         raise Exception(f"Number not found in the file name ({currentFile}). Something went wrong here")
 
     originalBackground, normalisedBackground = obtainNormalisedBackground(currentFile, folderWithFramesWithAirmasses, airMassKeyWord)
-
     files[number-1] = currentFile
     normalisedBackgroundValues[number-1] = [currentFile.split('/')[-1], normalisedBackground]
     originalBackgroundValues[number-1] = [currentFile.split('/')[-1], originalBackground]
