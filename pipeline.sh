@@ -121,26 +121,6 @@ fi
 export num_parallel
 export num_threads
 
-# ****** Decision note *******
-# Rebinned data
-#tileSize=35
-#noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                    --detgrowmaxholesize=5000 \
-#                    --rawoutput"
-
-# # These paremeters are oriented to TST data at original resolution. 
-# astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-# tileSize=15
-# noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                      --detgrowquant=0.4 \
-#                      --rawoutput"
-#export noisechisel_param
-
-#echo -e "\n-Noisechisel parameters used for masking:"
-#echo -e "\t" $noisechisel_param
-
-######## Loading and transforming to needed format the user-defined masks to apply
-
 maskParams=$(printf "%s " "${masksToApply[@]}")
 echo $maskParams
 export maskParams
@@ -180,9 +160,6 @@ echo -e "\t·Data directory (INDIR): ${ORANGE} ${INDIR} ${NOCOLOUR}"
 echo -e "\t·Dark Data directory (DARKDIR): ${ORANGE} ${DARKDIR} ${NOCOLOUR}"
 echo -e "\t·KeyWords directory (keyWordDirectory): ${ORANGE} ${keyWordDirectory} ${NOCOLOUR}"
 
-# Getting the coordinates of the galaxy
-ra=$ra_gal
-dec=$dec_gal
 export ra
 export dec
 
@@ -923,11 +900,12 @@ catdir=$BDIR/catalogs
 catdone=$catdir/done.txt
 
 # We always need gaia for photometry (to select point sources). But for astrometry we might want to use panstarrs or another survey
-if [ "$surveyToUseInSolveField" = "gaia" ]; then
-    surveys_to_download=("gaia")
-elif [ "$surveyToUseInSolveField" = "panstarrs" ]; then
-    surveys_to_download=("panstarrs" "gaia")
+surveys_to_download=("gaia")
+if [ "$surveyToUseInSolveField" = "panstarrs" ]; then
+    surveys_to_download+=("panstarrs")
 fi
+
+
 
 if ! [ -d $catdir ]; then mkdir $catdir; fi
 if [ -f $catdone ]; then
@@ -956,9 +934,7 @@ if ! [ "$surveyToUseInSolveField" = "gaia" ]; then
   rm $BDIR/catalogs/"$objectName"_gaia_tmp.fits
 fi
 
-# # Making the indexes
-# writeTimeOfStepToFile "Download Indices for astrometrisation" $fileForTimeStamps
-# echo -e "·Downloading Indices for astrometrisation"
+# Making the indexes
 
 indexdir=$BDIR/indexes
 indexdone=$indexdir/done_"$filter".txt
@@ -966,9 +942,6 @@ if ! [ -d $indexdir ]; then mkdir $indexdir; fi
 if [ -f $indexdone ]; then
   echo -e "\n\tIndexes for astrometrisation are already created\n"
 else
-  # Here we build the indices for different index scales
-  # The index defines the scale on which the stars are selected
-  # It is recommended to build a range of scales
   indexes=()
   for re in $(seq $lowestScaleForIndex $highestScaleForIndex); do
       indexes+=("$re")
@@ -989,14 +962,15 @@ echo cpulimit 300 >> $astrocfg
 echo "add_path $indexdir" >> $astrocfg
 echo autoindex >> $astrocfg
 
+telescopes_already_astrometrised=("TST" "TTT3_iKon" "TTT3_QHY")
+
 astroimadir=$BDIR/astro-ima
 astroimadone=$astroimadir/done_"$filter".txt
 if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
 if [ -f $astroimadone ]; then
   echo -e "\n\tImages are already astrometrized\n"
 else
-  if [ "$telescope" == "TST" ] || [ "$telescope" == "TTT3_ikon" ] || [ "$telescope" == "TTT3_QHY" ]; then
-    #This 2 telescopes on a monolitic detector come astrometrized, so we skip solve-field
+  if [[ " ${telescopes_already_astrometrised[*]} " == *" $telescope "* ]]; then
     cp $framesForCommonReductionDir/*.fits $astroimadir/
   else
     frameNames=()

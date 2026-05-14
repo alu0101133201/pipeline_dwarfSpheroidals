@@ -1,10 +1,10 @@
 # Small Telescopes Pipeline
 
-This repository contains the source code of a pipeline implemented for reducing astronomical data from small aperture and large FOV telescopes. The purpose of the pipeline is to reduce and produce low-surface brightness friendly data.
+This repository contains the source code of a pipeline implemented for reducing astronomical data in a low surface brightnes compliant way. 
 
 ### Software requirements (this has to be updated)
 
-* gnuastro (currently I'm using 0.22)
+* gnuastro (using >= 0.22)
 * astrometry (using 0.96)
 * Scamp (using 2.10)
 * Swarp (using 2.41.4)
@@ -24,7 +24,7 @@ This repository contains the source code of a pipeline implemented for reducing 
 * Config directory for software used by the pipeline (template given)
 * Configuration file for the specific reduction to perform (.conf file, template give)
 * "filters" directory containing the transmittances of the filters needed for reduction
-* Files specifing the rings to perform the normalisation (also used in data calibration - template given)
+* Files specifing the ring to perform the normalisation (also used in data calibration - template given)
 
 ##### How the pipeline expects the data
 
