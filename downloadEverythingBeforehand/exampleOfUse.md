@@ -1,0 +1,1 @@
+./wrapper.sh ./mosaic ./catalogs ./indexes Draco 260.0409 57.9280 4 gaia
