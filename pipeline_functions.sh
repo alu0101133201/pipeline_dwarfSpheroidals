@@ -1582,10 +1582,11 @@ solveField() {
     LC_NUMERIC=C  # Format to get rid of scientific notation if needed
 
     pointingRAValue=$( astfits $i --keyvalue=$pointingRA --quiet)
-    pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
     if [[ "$pointingRAUnits" == "hours" ]]; then
+        pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
         pointRA=$(echo "$pointingRAValue * 15" | bc -l)
     elif [[ "$pointingRAUnits" == "deg" || "$pointingRAUnits" == "degrees" ]]; then
+        pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
         pointRA="$pointingRAValue"
     elif [[ "$pointingRAUnits" == "hms" ]]; then
             ra_dec=$(skycoor -d "$pointingRAValue" "$pointingDecValue")
@@ -1596,10 +1597,11 @@ solveField() {
     fi
 
     pointingDecValue=$( astfits $i --keyvalue=$pointingDEC --quiet)
-    pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
     if [[ "$pointingDECUnits" == "hours" ]]; then
+        pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
         pointDec=$(echo "$pointingDecValue * 15" | bc -l)
     elif [[ "$pointingDECUnits" == "deg" || "$pointingDECUnits" == "degrees" ]]; then
+        pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
         pointDec="$pointingDecValue"
     elif [[ "$pointingDECUnits" == "dms" ]]; then
         ra_dec=$(skycoor -d "$pointingRAValue" "$pointingDecValue")
