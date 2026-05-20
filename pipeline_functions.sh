@@ -1587,6 +1587,9 @@ solveField() {
         pointRA=$(echo "$pointingRAValue * 15" | bc -l)
     elif [[ "$pointingRAUnits" == "deg" || "$pointingRAUnits" == "degrees" ]]; then
         pointRA="$pointingRAValue"
+    elif [[ "$pointingRAUnits" == "hms" ]]; then
+            ra_dec=$(skycoor -d "$pointingRAValue" "$pointingDecValue")
+            pointRA=$(echo "$ra_dec" | awk '{print $1}')
     else
         echo "Error: Unsupported RA units: $pointingRAUnits"
         exit 888
@@ -1598,6 +1601,9 @@ solveField() {
         pointDec=$(echo "$pointingDecValue * 15" | bc -l)
     elif [[ "$pointingDECUnits" == "deg" || "$pointingDECUnits" == "degrees" ]]; then
         pointDec="$pointingDecValue"
+    elif [[ "$pointingDECUnits" == "dms" ]]; then
+        ra_dec=$(skycoor -d "$pointingRAValue" "$pointingDecValue")
+        pointDec=$(echo "$ra_dec" | awk '{print $2}')
     else
         echo "Error: Unsupported RA units: $pointingDECUnits"
         exit 888
