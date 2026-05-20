@@ -58,11 +58,20 @@ def readFilterTransmittance(fileWithFilterTransmittance, waveUnits, transmittanc
     transmittance = []
 
     with open(fileWithFilterTransmittance, 'r') as f:
-        next(f)
+        
         for line in f:
-            splittedLine = line.split()
-            wavelengths.append(float(splittedLine[0]))
-            transmittance.append(float(splittedLine[1]))
+            splittedLine = line.replace(',', ' ').split()
+            if len(splittedLine) < 2:
+                continue
+            
+            try:
+                w_val = float(splittedLine[0])
+                t_val = float(splittedLine[1])
+            
+                wavelengths.append(w_val)
+                transmittance.append(t_val)
+            except ValueError:
+                continue
 
     wavelengths = np.array(wavelengths)
     transmittance = np.array(transmittance)
