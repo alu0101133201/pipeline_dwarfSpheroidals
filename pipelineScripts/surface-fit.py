@@ -191,7 +191,7 @@ with fits.open(image) as hdul:
         hdu_out.header[pname] = pvalue
 
     # Write coefficients in a file
-    with open(fileToWriteCoeff, 'w') as file:
+    with open(fileToWriteCoeff, 'a') as file:
         for pname, pvalue in zip(polyfit.param_names, polyfit.parameters):
             file.write(str(pname) + " " + str(pvalue) + " ")
             file.write("\n")

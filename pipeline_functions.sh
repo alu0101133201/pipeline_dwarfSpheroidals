@@ -1034,8 +1034,16 @@ runNoiseChiselOnFrame() {
             astarithmetic $wMask2 -h1 set-i i i 0 gt i isnotblank and 1 where -q float32 -o $outputDir/temp_"$baseName"
             rm $wFile $wMask $wMask2
         fi
-        astfits $outputDir/temp_"$baseName" --copy=1 -o $output
-        rm $outputDir/temp_"$baseName"
+        if [ -f $outputDir/temp_"$baseName" ]; then
+            astfits $outputDir/temp_"$baseName" --copy=1 -o $output
+            rm $outputDir/temp_"$baseName"
+        else
+            echo "NoiseChisel did not produce an output for $baseName, ccd$h. This can happen if the image is too noisy or if there are issues with the input file. Please check the input file and the noisechisel parameters." >&2
+            echo "A 0 mask will be produced for this ccd, but it is recommended to investigate the issue further." >&2
+            astarithmetic $imageToUse -h$h 0 x -o $outputDir/temp_"$baseName"
+            astfits $outputDir/temp_"$baseName" --copy=1 -o $output
+            rm $outputDir/temp_"$baseName"
+        fi
     done
 }
 export -f runNoiseChiselOnFrame
@@ -1117,7 +1125,7 @@ warpImage() {
         echo "Error: SWarp not found" >&2
         exit 1
     }
-
+    
     SWARP_CMD=$(detect_swarp)
     $SWARP_CMD -c $swarpcfg $imageToSwarp -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL -DELETE_TMPFILES N
     
@@ -1128,9 +1136,13 @@ warpImage() {
         tmpFile1=$entiredir/"$currentIndex"_ccd"$h"_temp.fits
         tmpFile2=$entiredir/"$currentIndex"_ccd"$h"_temp2.fits
         tmpFile3=$entiredir/"$currentIndex"_ccd"$h"_temp3.fits
-        
-        astarithmetic "$currentIndex".000"$h".resamp.weight.fits -h0 set-i i i 0 lt nan where -o $tmpFile1
-        astarithmetic "$currentIndex".000"$h".resamp.fits -h0 $tmpFile1 -h1 0 eq nan where -o $tmpFile2
+        if [ $h -lt 10 ]; then
+            baseIndex="$currentIndex".000"$h"
+        else
+            baseIndex="$currentIndex".00"$h"
+        fi
+        astarithmetic "$baseIndex".resamp.weight.fits -h0 set-i i i 0 lt nan where -o $tmpFile1
+        astarithmetic "$baseIndex".resamp.fits -h0 $tmpFile1 -h1 0 eq nan where -o $tmpFile2
         #astfits $tmpFile2 --copy=1 -o $frameSmallGrid #Would be easier but will make the maskPointings of 2nd iteration coadd not work
         astcrop $tmpFile2 --mode=wcs --center=$ra,$dec --widthinpix --width=$coaddSizePx,$coaddSizePx --zeroisnotblank -o $tmpFile3
         #astfits $tmpFile3 --copy=1 -o $frameFullGrid
@@ -1141,7 +1153,7 @@ warpImage() {
         tmpFile4=$entiredir/entirecamera_sg_"$currentIndex"_ccd"$h".fits 
         astcrop $tmpFile3 --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpFile4 --quiet
         astfits $tmpFile4 --copy=1 -o $frameSmallGrid
-        rm $tmpFile1 $tmpFile2 $tmpFile3  "$currentIndex".000"$h"*.fits $tmpFile4
+        rm $tmpFile1 $tmpFile2 $tmpFile3  "$baseIndex"*.fits $tmpFile4
         #propagateKeyword $imageToSwarp $gain $frameFullGrid $h 
         propagateKeyword $imageToSwarp $gain $frameSmallGrid $h
     done
@@ -1164,7 +1176,7 @@ warpImage() {
         #propagateKeyword $imageToSwarp $gain $entiredir/entirecamera_"$currentIndex".fits $h
     #done
     
-    rm -rf $entiredir/"$currentIndex"_swarp*.fits
+    rm -rf $entiredir/"$currentIndex"*swarp*.fits
 }
 export -f warpImage
 
@@ -1173,6 +1185,7 @@ removeBadFramesFromReduction() {
     local destinationDir=$2
     local badFilesWarningDir=$3
     local badFilesWarningFile=$4
+    local prefixOfFilesToRemove=$5
 
     filePath=$badFilesWarningDir/$badFilesWarningFile
 
@@ -1414,23 +1427,29 @@ computeSkyForFrame(){
         fi
 
     else
-        echo "\n\tMultiDetector pipeline has not been prepared yet to work with polynomial fitting of sky"
-        exit 35
+        #echo "\n\tMultiDetector pipeline has not been prepared yet to work with polynomial fitting of sky"
+        #exit 35
         # Case when we model a plane
         noiseOutTmp=$(echo $base | sed 's/.fits/_sky.fits/')
         maskTmp=$(echo $base | sed 's/.fits/_masked.fits/')
         planeOutput=$(echo $base | sed 's/.fits/_poly.fits/')
         planeCoeffFile=$(echo $base | sed 's/.fits/.txt/')
-
-        # This conditional allows us to introduce the images already masked (masked with the mask of the coadd) in the second and next iterations
-        if ! [ "$inputImagesAreMasked" = true ]; then
-            astnoisechisel $i --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
-            astarithmetic $i -h1 $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
-            python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
-        else
-            python3 $pythonScriptsPath/surface-fit.py -i $i -o $noiseskydir/$planeOutput -d $polyDegree -f $noiseskydir/$planeCoeffFile
-        fi
-
+        astfits $i --copy=0 --primaryimghdu -o $noiseskydir/$planeOutput
+        for h in $(seq 1 $num_ccd); do
+            planeOutput_ccd=$(echo $base | sed 's/.fits/_poly_ccd.fits/')
+            # This conditional allows us to introduce the images already masked (masked with the mask of the coadd) in the second and next iterations
+            if ! [ "$inputImagesAreMasked" = true ]; then
+                astnoisechisel $i -h$h --tilesize=20,20 --interpnumngb=5 --dthresh=0.1 --snminarea=2 --checksky $noisechisel_param --numthreads=$num_cpus -o $noiseskydir/$base
+                astarithmetic $i -h$h $noiseskydir/$noiseOutTmp -hDETECTED 1 eq nan where -q float32 -o $noiseskydir/$maskTmp
+                python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput_ccd -d $polyDegree -f $noiseskydir/$planeCoeffFile
+            else
+                astfits $i --copy=$h -o $noiseskydir/$maskTmp
+                python3 $pythonScriptsPath/surface-fit.py -i $noiseskydir/$maskTmp -o $noiseskydir/$planeOutput_ccd -d $polyDegree -f $noiseskydir/$planeCoeffFile
+                rm $noiseskydir/$maskTmp
+            fi
+            astfits $noiseskydir/$planeOutput_ccd --copy=1 -o $noiseskydir/$planeOutput
+            rm -f $noiseskydir/$planeOutput_ccd
+        done
         rm -f $noiseskydir/$noiseOutTmp
         rm -f $noiseskydir/$maskTmp
     fi
@@ -1496,6 +1515,7 @@ subtractSkyForFrame() {
         done
     else
         i=$directoryWithSkyValues/"entirecamera_"$a"_poly.fits"
+        astfits $input --copy=0 --primaryimghdu -o $output
         for h in $(seq 1 $num_ccd); do
             temp_file=$directoryToStoreSkySubtracted/temp_$base
             NAXIS1_image=$(gethead $input -x $h NAXIS1); NAXIS2_image=$(gethead $input -x $h NAXIS2)
@@ -1746,7 +1766,8 @@ solveField() {
     local confFile=$7
     local astroimadir_layer=$8
     local sexcfg_sf=$9
-    local sizeOfOurFieldDegrees=${10}
+    local radius=${10}
+    local previousAstrometry=${11}
     base=$( basename $i)
     LC_NUMERIC=C  # Format to get rid of scientific notation if needed
 
@@ -1793,16 +1814,29 @@ solveField() {
         layer_temp=$astroimadir_layer/layer"$h"_$base
         max_attempts=4
         attempt=1
+        ####If frame is astrometrized, we take pointRa and pointDec from --skycoverage
+        if [ "$previousAstrometry" = "True" ]; then
+            pointRA=$(astfits $i -h$h --skycoverage | grep "Center" | awk '{print $2}')
+            pointDec=$(astfits $i -h$h --skycoverage | grep "Center" | awk '{print $3}')
+            radius=$(astfits $i -h$h --skycoverage | awk '/Width:/ { print $2 "\n" $3}' | sort -n | tail -1 )
+        fi
+        if [ "$previousAstrometry" = "Galaxy" ]; then
+            #If frames are bad astrometrized or not astrometrized, we can also use the central part of the field
+            pointRA=$ra_gal
+            pointDec=$dec_gal
+            radius=$sizeOfOurFieldDegrees
+        fi
         while [ $attempt -le $max_attempts ]; do
             #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
             #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
             solve-field $image_temp --no-plots \
             -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
+            --ra $pointRA --dec $pointDec --radius $radius \
             --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
             --use-source-extractor --source-extractor-path=/usr/bin/source-extractor \
             --source-extractor-config=$sexcfg_sf --x-column X_IMAGE --y-column Y_IMAGE \
             --sort-column MAG_AUTO --sort-ascending  \
-            -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone -N$layer_temp ;
+            -Unone --temp-axy  --no-tweak -Snone -Mnone -Rnone -Bnone -N$layer_temp ;
             if [ -s "$layer_temp" ]; then
                 attempt=$max_attempts
             fi
@@ -2794,6 +2828,7 @@ buildOurCatalogueOfMatchedSourcesForFrame() {
         columnWithYCoordForOutDataWCS=3
         photometryOnImage_photutils $a $ourDatadir $automaticCatalogue $i $r_myData_pix $ourDatadir/"$base"_ccd"$dataHdu".fits 22.5 $dataHdu \
                                 $columnWithXCoordForOutDataPx $columnWithYCoordForOutDataPx $columnWithXCoordForOutDataWCS $columnWithYCoordForOutDataWCS
+        
         astfits $ourDatadir/"$base"_ccd"$dataHdu".fits --copy=1 -o$ourDatadir/"$base".cat
         rm $ourDatadir/"$base"_ccd"$dataHdu".fits
     done
@@ -3038,7 +3073,6 @@ computeCalibrationFactors() {
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $apertureUnits "'$noisechisel_param'"
      
-    
     echo -e "\n ${GREEN} ---Building catalogues to our data with aperture photometry --- ${NOCOLOUR}"
     buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
       
@@ -3058,6 +3092,7 @@ computeCalibrationFactors() {
     
     echo -e "\n ${GREEN} ---Computing calibration factors (alpha)--- ${NOCOLOUR}"
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
+    
 }
 export -f computeCalibrationFactors
 
@@ -3344,7 +3379,7 @@ removeOutliersFromWeightedFrames () {
       for a in $wdir/*.fits; do
           framesToRemoveOutliers+=("$a")
       done
-      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrame {} $mowdir $clippingdir $wdir
+      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_parallel" removeOutliersFromFrame {} $mowdir $clippingdir $wdir
       echo done > $mowdone 
   fi
 }
@@ -3362,7 +3397,7 @@ removeOutliersFromWeightedFramesNew () {
       for a in $wdir/*.fits; do
           framesToRemoveOutliers+=("$a")
       done
-      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_cpus" removeOutliersFromFrameNew {} $mowdir $clippingdir $wdir
+      printf "%s\n" "${framesToRemoveOutliers[@]}" | parallel -j "$num_parallel" removeOutliersFromFrameNew {} $mowdir $clippingdir $wdir
       echo done > $mowdone 
   fi
 }
@@ -3380,15 +3415,23 @@ cropAndApplyMaskPerFrame() {
     frameToMask=$dirOfFramesToMask/entirecamera_$a.fits
     fileWithCropParameters=$dirWithCropParameters/entirecamera_"$a"_cropRegion.txt
       
-    
-    for h in $(seq 1 $num_ccd); do
+    h=1
+    for row in $(seq 1 $num_ccd); do
     # Parameters for identifing our frame in the full grid
         tmpMaskFile=$dirOfFramesMasked/maskFor"$a"_ccd"$h".fits
-        read row_min row_max col_min col_max < <(sed -n "${h}p" "$fileWithCropParameters")
+        read row_min row_max col_min col_max < <(sed -n "${row}p" "$fileWithCropParameters")
+        
+        if [ -z "$row_min" ]; then
+            echo "No crop parameters for frame $a ccd $row. Skipping masking for this frame and ccd."
+            
+            continue
+        fi
+        
         astcrop $wholeMask --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $tmpMaskFile --quiet
         astarithmetic $frameToMask -h$h $tmpMaskFile -h1 1 eq nan where float32 -o $dirOfFramesMasked/entirecamera_"$a"_ccd"$h".fits -q
         astfits $dirOfFramesMasked/entirecamera_"$a"_ccd"$h".fits --copy=1 -o $dirOfFramesMasked/entirecamera_"$a".fits
         rm $tmpMaskFile $dirOfFramesMasked/entirecamera_"$a"_ccd"$h".fits
+        h=$((h+1))
     done
 }
 export -f cropAndApplyMaskPerFrame
@@ -3903,7 +3946,7 @@ photometryOnImage_photutils() {
 
     tmpCatalogName=$directoryToWork/tmp_"$a".cat
     python3 $pythonScriptsPath/photutilsPhotometry.py $matchedCatalogue $imageToUse $aperture_radius_px $tmpCatalogName $zeropoint $hduWithData $xColumnPx $yColumnPx $xColumnWCS $yColumnWCS
-
+    
     asttable $tmpCatalogName -p4 --colmetadata=2,X,px,"X" \
                             --colmetadata=3,Y,px,"Y" \
                             --colmetadata=4,RA,deg,"Right ascension" \
@@ -4053,17 +4096,18 @@ smallGridToFullGridAndWeightSingleFrame(){
         string="$base -h$h"
         detectorIsBad "$string" $identifiedBadDetectors
         isBad=$?
+        echo "Is $string bad? $isBad"
         ##Crop
         if [ $h -eq 1 ]; then
-            astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $tmpNormal
+            astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank  --numthreads=$num_threads -o $tmpNormal
             if [ $isBad -eq 0 ]; then
                 mv $tmpNormal $fullDir/ccd1_$base
                 astarithmetic $fullDir/ccd1_$base nan x -o $tmpNormal
                 rm $fullDir/ccd1_$base
             fi
         else
-            astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank -o $fullDir/ccd_$base
             if [ $isBad -ne 0 ]; then
+                astcrop $smallFrame -h$h --mode=wcs --center=$fullRA,$fullDEC --widthinpix --width=$fullSize,$fullSize --zeroisnotblank --numthreads=$num_threads  -o $fullDir/ccd_$base
                 
                 mv $tmpNormal $fullDir/prev_normal_$base
                 astarithmetic $fullDir/prev_normal_$base $fullDir/ccd_$base -g1 2 3 0.2 sigclip-mean $gnu_vers -o $tmpNormal
@@ -4075,6 +4119,9 @@ smallGridToFullGridAndWeightSingleFrame(){
         weight=$(astarithmetic $rms_min 2 pow $rms_f 2 pow / -q)
         
         if [ $isBad -eq 0 ]; then
+            if [ $h -ne 1 ]; then
+                astarithmetic $fullSize $fullSize 2 makenew float32 -o $fullDir/ccd_$base
+            fi
             weight=nan
         fi
         if [ $h -eq 1 ]; then
@@ -4109,6 +4156,7 @@ smallGridtoFullGridAndWeight(){
     local minRmsFileName=$8
     local iteration=$9
     local identifiedBadDetectors=${10}
+    
 
     if [ -f $fullGridDone ]; then
         echo -e "\n\tFrames from {$smallGridDir} have been already pased into the full grid\n"
@@ -4117,7 +4165,8 @@ smallGridtoFullGridAndWeight(){
         for frame in $smallGridDir/*.fits; do
             framesToGrid+=("$frame")
         done
-        printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_cpus" smallGridToFullGridAndWeightSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC $skydir $minRmsFileName $iteration $identifiedBadDetectors $sumWeightsFileName
+        printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_parallel" smallGridToFullGridAndWeightSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC $skydir $minRmsFileName $iteration $identifiedBadDetectors 
+        #smallGridToFullGridAndWeightSingleFrame $smallGridDir/entirecamera_1.fits $fullGridDir $fullGridSize $fullGridRA $fullGridDEC $skydir $minRmsFileName $iteration $identifiedBadDetectors
         echo done > $fullGridDone
         
     fi
@@ -4461,22 +4510,54 @@ correctGainForPaucam() {
     done
     rm -f $gainCorDir/$tmpMask
     astfits $inputImage --copy=0 --primaryimghdu -o $gainCorDir/$base
+    #We are gonna get rid of the most external window of 
+    # - CCD 11 (hdu 11_1=13,h=53)
+    # - CCD 14 (hdu 14_4=0,h=4)
+    # - CCD 16 (hdu 16_1=3 ,h=13)
+    # - CCD 18 (hdu 18_1=7, h=29)
+    # - CCD 9 (hdu 9_4=10, h=44)
+    # - CCD 13 (hdu 13_1=17, h=69)
     for h in $(seq 0 17); do
         h1=$((h*4+1))
         h2=$((h*4+2))
         h3=$((h*4+3))
         h4=$((h*4+4))
-        gain_ref=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h1 --sigclip-mean -q)
-        gain_h2=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h2 --sigclip-mean -q)
-        gain_h3=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h3 --sigclip-mean -q)
-        gain_h4=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h4 --sigclip-mean -q)
-        astfits $inputImage --copy=$h1 -o $gainCorDir/$base
-        astarithmetic $inputImage -h$h2 $gain_ref x $gain_h2 / float32 -o $gainCorDir/tmp_$base
-        astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
-        astarithmetic $inputImage -h$h3 $gain_ref x $gain_h3 / float32 -o $gainCorDir/tmp_$base
-        astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
-        astarithmetic $inputImage -h$h4 $gain_ref x $gain_h4 / float32 -o $gainCorDir/tmp_$base
-        astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+        if [ $h -ne 0 ] && [ $h -ne 3 ] && [ $h -ne 7 ] && [ $h -ne 10 ] && [ $h -ne 13 ] && [ $h -ne 17 ]; then
+            gain_ref=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h1 --sigclip-mean -q)
+            gain_h2=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h2 --sigclip-mean -q)
+            gain_h3=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h3 --sigclip-mean -q)
+            gain_h4=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h4 --sigclip-mean -q)
+            astfits $inputImage --copy=$h1 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h2 $gain_ref x $gain_h2 / float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h3 $gain_ref x $gain_h3 / float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h4 $gain_ref x $gain_h4 / float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+        elif [ $h -eq 13 ] || [ $h -eq 3 ] || [ $h -eq 7 ] || [ $h -eq 17 ]; then
+            gain_ref=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h2 --sigclip-mean -q)
+            gain_h3=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h3 --sigclip-mean -q)
+            gain_h4=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h4 --sigclip-mean -q)
+            astarithmetic $inputImage -h$h1 nan x float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+            astfits $inputImage --copy=$h2 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h3 $gain_ref x $gain_h3 / float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h4 $gain_ref x $gain_h4 / float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+        else
+            gain_ref=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h1 --sigclip-mean -q)
+            gain_h2=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h2 --sigclip-mean -q)
+            gain_h3=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h3 --sigclip-mean -q)
+            gain_h4=$(aststatistics $gainCorDir/$tmpMaskedImage --hdu=$h4 --sigclip-mean -q)
+            astfits $inputImage --copy=$h1 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h2 $gain_ref x $gain_h2 / float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h3 $gain_ref x $gain_h3 / float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+            astarithmetic $inputImage -h$h4 nan x float32 -o $gainCorDir/tmp_$base
+            astfits $gainCorDir/tmp_$base --copy=1 -o $gainCorDir/$base
+        fi
     done
     rm -f $gainCorDir/tmp_$base $gainCorDir/$tmpMaskedImage
 }

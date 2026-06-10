@@ -71,6 +71,7 @@ def get_profileRange(star_file,star_mag,psf_file,pixScale,calFactor,satThresh,ga
             Rmin=R_star[max_idx]
             Rmax=R_star[indexes_belBck[0][0]] if len(indexes_belBck[0])>0 else R_star[indexes[0][-1]]
             indexes_ok=indexes[0][(R_star[indexes[0]]>=Rmin)&(R_star[indexes[0]]<=Rmax)]
+        
     return Rmin,Rmax,indexes_ok 
 
 #r_min,r_max=get_profileRange(star_file,star_mag,psf_file,pixScale)

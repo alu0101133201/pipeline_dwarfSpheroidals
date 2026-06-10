@@ -290,7 +290,7 @@ for h in range(num_ccd):
     diffs[:,h]= magnitudesPerArcSecSqNormalised[:,ccd_ref-1] - magnitudesPerArcSecSqNormalised[:,h]
 
 # Now we save the mean results
-collapsed = np.mean(diffs, axis=0)
+collapsed = np.nanmean(diffs, axis=0)
 parameter=10**(-0.4*collapsed)
 np.savetxt(outputRatioFile, parameter, fmt="%.12f")
 saveScatterPlot(magnitudesPerArcSecSqNormalised,parameter,ccd_ref,"Evolution of Normalised Background magnitude per ccd",destinationFolder+"/backgroundCCDcomparison.png")
