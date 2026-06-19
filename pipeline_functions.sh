@@ -463,27 +463,84 @@ maskImages() {
     local outputDirectory=$3
     local useCommonRing=$4
     local keyWordToDecideRing=$5
-
-    for a in $(seq 1 $n_exp); do
-        base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a".fits
-        i=$inputDirectory/$base
-        out=$outputDirectory/$base
-        astfits $i --copy=0 --primaryimghdu -o $out
-        for h in $(seq 1 $num_ccd); do
-            astarithmetic $i -h$h $masksDirectory/$base -h$h 1 eq nan where float32 -o $outputDirectory/temp_"$base" -q
-            astfits $outputDirectory/temp_"$base" --copy=1 -o $out
-            rm $outputDirectory/temp_"$base"
-        done
-        propagateKeyword $i $dateHeaderKey $out 0
-        propagateKeyword $i $airMassKeyWord $out 0
-        # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
-        # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
-        if [ "$useCommonRing" = false ]; then
-            propagateKeyword $i $keyWordToDecideRing $out 0
-        fi
+    local badDetectors=$6
+    imagesToMask=()
+    for a in $(ls -v $inputDirectory/*.fits); do
+        base=$(basename $a)
+        imagesToMask+=("$base")
     done
+    printf "%s\n" "${imagesToMask[@]}" | parallel -j "$num_cpus" maskIndividualImage {} $inputDirectory $masksDirectory $outputDirectory $useCommonRing $keyWordToDecideRing $badDetectors
 }
 export -f maskImages
+
+maskIndividualImage() {
+    local base=$1
+    local inputDirectory=$2
+    local masksDirectory=$3 
+    local outputDirectory=$4
+    local useCommonRing=$5
+    local keyWordToDecideRing=$6
+    local badDetectors=$7
+    i=$inputDirectory/$base
+    out=$outputDirectory/$base
+    astfits $i --copy=0 --primaryimghdu -o $out
+    for h in $(seq 1 $num_ccd); do
+        string="$base -h$h"
+        detectorIsBad "$string" $badDetectors
+        isBad=$?
+        if [ $isBad -eq 0 ]; then
+            astarithmetic $i -h$h nan x float32 -o $outputDirectory/temp_"$base" -q
+        else
+            astarithmetic $i -h$h $masksDirectory/$base -h$h 0 gt nan where float32 -o $outputDirectory/temp_"$base" -q
+        fi
+        astfits $outputDirectory/temp_"$base" --copy=1 -o $out
+        rm $outputDirectory/temp_"$base"
+    done
+        #propagateKeyword $i $airMassKeyWord $out 
+        # If we are not doing a normalisation with a common ring we propagate the keyword that will be used to decide
+        # which ring is to be used. This way we can check this value in a comfortable way in the normalisation section
+    if [ "$useCommonRing" = false ]; then
+        propagateKeyword $i $keyWordToDecideRing $out 0
+    fi
+}
+export -f maskIndividualImage
+
+maskBadDetectors() {
+    local inputDirectory=$1
+    local outputDirectory=$2
+    local badDetectors=$3
+    imagesToMask=()
+    for a in $(ls -v $inputDirectory/*.fits); do
+        base=$(basename $a)
+        imagesToMask+=("$base")
+    done
+    printf "%s\n" "${imagesToMask[@]}" | parallel -j "$num_cpus" maskBadDetectorsIndividualImage {} $inputDirectory $outputDirectory $badDetectors
+}
+export -f maskBadDetectors
+
+maskBadDetectorsIndividualImage(){
+    local base=$1
+    local inputDirectory=$2
+    local outputDirectory=$3
+    local badDetectors=$4
+    i=$inputDirectory/$base
+    out=$outputDirectory/$base
+    astfits $i --copy=0 --primaryimghdu -o $out
+    for h in $(seq 1 $num_ccd); do
+        string="$base -h$h"
+        detectorIsBad "$string" $badDetectors
+        isBad=$?
+        if [ $isBad -eq 0 ]; then
+            astarithmetic $i -h$h nan x float32 -o $outputDirectory/temp_"$base" -q
+            astfits $outputDirectory/temp_"$base" --copy=1 -o $out
+            rm $outputDirectory/temp_"$base"
+        else
+            astfits $i --copy=$h -o $out
+        fi
+        
+    done
+}
+export -f maskBadDetectorsIndividualImage
 
 getInitialMidAndFinalFrameTimes() {
   local directoryWithNights=$1

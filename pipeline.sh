@@ -212,6 +212,8 @@ else
   fi
   echo done > $ringtempDone
 fi
+
+if ! [ -f $CDIR/identifiedBadDetectors_flat.txt ]; then touch $CDIR/identifiedBadDetectors_flat.txt; fi
 # Function which processes a whole night
 oneNightPreProcessing() {
   local currentNight=$1
@@ -452,7 +454,16 @@ oneNightPreProcessing() {
   # For the running flat being effective we need a great dithering pattern. The data right now has a not appropriate dithering for the running flat
   # So the whole night flat approach will be used. But In order to generalise the pipeline the option of using the running flat or not is
   # configure by the parameter "RUNNING_FLAT"
-
+  ###MASK BAD DETECTORS WHEN CREATING FLATS
+  maskedit1dir=$BDIR/masked-images-it1_n$currentNight
+  maskedit1done=$maskedit1dir/done_"$filter".txt
+  if ! [ -d $maskedit1dir ]; then mkdir $maskedit1dir; fi
+  if [ -f $maskedit1done ]; then
+    echo -e "\nBad detectors are masked, night $currentNight\n"
+  else
+    maskBadDetectors $mbiascorrdir $maskedit1dir $CDIR/identifiedBadDetectors_flat.txt
+    echo done > $maskedit1done
+  fi
 
   # Creating iteration 1 flat_it1. First we need to normalise the science images.
   normit1dir=$BDIR/norm-it1-images_n$currentNight
@@ -461,7 +472,7 @@ oneNightPreProcessing() {
   if [ -f $normit1done ]; then
     echo -e "\nScience images are already normalized for night $currentNight\n"
   else
-    normaliseImagesWithRing $mbiascorrdir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
+    normaliseImagesWithRing $maskedit1dir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing 
     echo done > $normit1done
   fi
 
@@ -561,7 +572,7 @@ oneNightPreProcessing() {
     if [ -f $maskedit2done ]; then
       echo -e "\nScience images are masked for running flat, night $currentNight \n"
     else
-      maskImages $mbiascorrdir $noiseit2dir $maskedit2dir $USE_COMMON_RING $keyWordToDecideRing
+      maskImages $mbiascorrdir $noiseit2dir $maskedit2dir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
       echo done > $maskedit2done
     fi
   fi
@@ -573,7 +584,7 @@ oneNightPreProcessing() {
   if [ -f $maskedit2WholeNightdone ]; then
     echo -e "\nScience images are masked for whole night flat, night $currentNight\n"
   else
-    maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir $USE_COMMON_RING $keyWordToDecideRing
+    maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
     echo done > $maskedit2WholeNightdone
   fi
 
@@ -664,22 +675,22 @@ oneNightPreProcessing() {
   # This is a simplified version of the more thorough check that is done in the future (with normalised background, std, skewness and kurtosis)
   # but since the data here is not much processed and I'm not sure how reliable is the background for that detailed study, we use a simplified version
   # using only the std in order to remove the frames with moved sections
-  tmpNoiseDir=$BDIR/noisesky_forCleaningBadFramesBeforeFlat_n$currentNight
-  tmpNoiseDone=$tmpNoiseDir/done_n$currentNight.txt
-  if ! [ -d $tmpNoiseDir ]; then mkdir $tmpNoiseDir; fi
-
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd_n$currentNight.txt
-  badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_stdPreFlat_n$currentNight.txt
-  if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
-  if [ -f $badFilesWarningsDone ]; then
-      echo -e "\n\tFrames with strange background value and std values already cleaned\n"
-  else
-    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth NO $blockScale "'$noisechisel_param'" "'$maskParams'" 
-    numberOfStdForBadFrames=5
-    python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $currentNight
-    echo "done" > $badFilesWarningsDone
-  fi
+  #tmpNoiseDir=$BDIR/noisesky_forCleaningBadFramesBeforeFlat_n$currentNight
+  #tmpNoiseDone=$tmpNoiseDir/done_n$currentNight.txt
+  #if ! [ -d $tmpNoiseDir ]; then mkdir $tmpNoiseDir; fi
+#
+  #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+  #badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd_n$currentNight.txt
+  #badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_stdPreFlat_n$currentNight.txt
+  #if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
+  #if [ -f $badFilesWarningsDone ]; then
+  #    echo -e "\n\tFrames with strange background value and std values already cleaned\n"
+  #else
+  #  #computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth NO $blockScale "'$noisechisel_param'" "'$maskParams'" 
+  #  numberOfStdForBadFrames=5
+  #  python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $currentNight
+  #  echo "done" > $badFilesWarningsDone
+  #fi
 
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
@@ -730,7 +741,7 @@ oneNightPreProcessing() {
     if [ -f $maskedit3done ]; then
       echo -e "\nScience images are masked for running flat, night $currentNight \n"
     else
-      maskImages $mbiascorrdir $noiseit3dir $maskedit3dir $USE_COMMON_RING $keyWordToDecideRing
+      maskImages $mbiascorrdir $noiseit3dir $maskedit3dir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
       echo done > $maskedit3done
     fi
   fi
@@ -743,7 +754,7 @@ oneNightPreProcessing() {
   if [ -f $maskedit3WholeNightdone ]; then
     echo -e "\nScience images are masked for whole night flat, night $currentNight \n"
   else
-    maskImages $mbiascorrdir $noiseit3WholeNightDir $maskedit3WholeNightdir $USE_COMMON_RING $keyWordToDecideRing
+    maskImages $mbiascorrdir $noiseit3WholeNightDir $maskedit3WholeNightdir $USE_COMMON_RING $keyWordToDecideRing $CDIR/identifiedBadDetectors_flat.txt
     echo done > $maskedit3WholeNightdone
   fi
 
@@ -774,12 +785,12 @@ oneNightPreProcessing() {
   
   
   # Remove the identified bad frames ONLY for the flat, they will still be present in following steps, but not used in the flat calculation
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd_n$currentNight.txt
-  rejectedFramesDir=$BDIR/rejectedFrames_std_preFlat_n$currentNight
-  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-  removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
-  removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+  #diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+  #badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd_n$currentNight.txt
+  #rejectedFramesDir=$BDIR/rejectedFrames_std_preFlat_n$currentNight
+  #if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+  #removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
+  #removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile
 
 
 
@@ -936,7 +947,7 @@ oneNightPreProcessing() {
   rm -rf $BDIR/flat-it2-WholeNight_n$currentNight
   rm -rf $BDIR/noise-it2-Running_n$currentNight
   rm -rf $BDIR/noise-it2-WholeNight_n$currentNight
-
+  rm -rf $BDIR/masked-images-it1_n$currentNight
   for a in $(seq 1 3); do
     rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
     rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
@@ -955,9 +966,9 @@ writeTimeOfStepToFile "Process the individual nights" $fileForTimeStamps
 nights=()
 for currentNight in $(seq 1 $numberOfNights); do
       nights+=("$currentNight")
-      oneNightPreProcessing $currentNight
+      #oneNightPreProcessing $currentNight
 done
-#printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_cpus" oneNightPreProcessing {}
+printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$numberOfNights" oneNightPreProcessing {}
 
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
@@ -1151,7 +1162,7 @@ else
     writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
     echo -e "·Creating SExtractor catalogues and running scamp"
     #
-    numOfSextractorPlusScampIterations=3
+    numOfSextractorPlusScampIterations=2
     #
     sexcfg=$CDIR/sextractor_astrometry.sex
     sexparam=$CDIR/sextractor_astrometry.param
@@ -1188,6 +1199,7 @@ else
       done
       echo done > $scampdone
     fi
+    
   else
     #Use already astrometrized images for making the astrometry
     frameNames=()
@@ -1398,7 +1410,7 @@ else
   rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
   removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
   removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-
+  
 	python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
   
   echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
@@ -1426,38 +1438,37 @@ else
  
 	coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
 	buildCoadd $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
-  maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-  if [ -f $maskName ]; then
-    echo -e "\tThe mask of the weighted coadd is already done"
-  else
-    if [ "$blockScale" -gt 1 ]; then
-      astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
-      imToMask=$coaddDir/coadd_blocked.fits
-    else
-      imToMask=$coaddName
-    fi
-    kernelFile=$CDIR/kernel.fits
-    if [ -f $kernelFile ]; then
-      astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o$coaddDir/coadd_convolved.fits
-      imToMask=$coaddDir/coadd_convolved.fits
-    fi
-    astnoisechisel $imToMask $noisechisel_param --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
-    echo $blockScale
-    if [ $blockScale -gt 1 ]; then
-      astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
-      astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt i isnotblank and 1 where float32 -q -o $maskName
-      rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits $coaddDir/coadd_blocked.fits
-    else
-      mv $coaddDir/mask_warped.fits $maskName
-    fi
-    rm $coaddDir/coadd_convolved.fits 2>/dev/null
-  fi
-
   exposuremapDir=$coaddDir/"$objectName"_exposureMap
   exposuremapdone=$coaddDir/done_exposureMap.txt
   computeExposureMap $wdir $exposuremapDir $exposuremapdone
 fi
+maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
+if [ -f $maskName ]; then
+  echo -e "\tThe mask of the weighted coadd is already done"
+else
+   if [ "$blockScale" -gt 1 ]; then
+     astwarp $coaddName -h1 --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+     imToMask=$coaddDir/coadd_blocked.fits
+   else
+     imToMask=$coaddName
+   fi
+   kernelFile=$CDIR/kernel.fits
+   if [ -f $kernelFile ]; then
+     astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o$coaddDir/coadd_convolved.fits
+     imToMask=$coaddDir/coadd_convolved.fits
+   fi
+   astnoisechisel $imToMask $noisechisel_param --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+   if [ $blockScale -gt 1 ]; then
+     astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
+     astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt i isnotblank and 1 where float32 -q -o $maskName
+     rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits $coaddDir/coadd_blocked.fits
+   else
+     mv $coaddDir/mask_warped.fits $maskName
+   fi
+   rm $coaddDir/coadd_convolved.fits 2>/dev/null
+fi
+
 
 if [[ "$filter" == "y" ]]; then
   #### PHOTOMETRIC CALIBRATION  ####
@@ -1925,6 +1936,7 @@ if [ -f $CDIR/mask.fits ]; then
   mv $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits
   astarithmetic $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where -o $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_mask.fits --quiet
 fi
+
 ####### ITERATION 2 ######
 iteration=2
 
@@ -1992,7 +2004,7 @@ else
   subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_maskPrephot_it$iteration
   subskyfullGridDone=$subskyfullGrid_dir/done.txt
   if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
-  smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
+  smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra_gal $dec_gal
   
   rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
   echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
