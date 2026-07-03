@@ -160,8 +160,13 @@ echo -e "\t·Data directory (INDIR): ${ORANGE} ${INDIR} ${NOCOLOUR}"
 echo -e "\t·Dark Data directory (DARKDIR): ${ORANGE} ${DARKDIR} ${NOCOLOUR}"
 echo -e "\t·KeyWords directory (keyWordDirectory): ${ORANGE} ${keyWordDirectory} ${NOCOLOUR}"
 
+export ra_gal
+export dec_gal
+ra=$ra_gal
+dec=$dec_gal
 export ra
 export dec
+
 
 numberOfNights=$(ls -d $INDIRo/night* | wc -l)
 export numberOfNights
