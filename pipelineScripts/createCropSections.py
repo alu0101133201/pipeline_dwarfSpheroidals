@@ -5,7 +5,7 @@ import math
 ##Arguments:
 
 framesDir=sys.argv[1]
-coaddSizePx=int(sys.argv[2])
+sizeX,sizeY=map(int,sys.argv[2].split(","))
 availMemory=float(sys.argv[3]) #In GB
 outputFile=sys.argv[4]
 numberOfBlocksFile=sys.argv[5]
@@ -18,25 +18,29 @@ totalFrames=len(glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
 #
 
 
-totalNumberOfPixels=coaddSizePx**2
+totalNumberOfPixels=sizeX*sizeY
 sizeBytes=4.*totalNumberOfPixels*totalFrames
 sizeGB=sizeBytes/1e9
 #The idea is how much memory is needed to combine all frames at one pixel
-#In other words, with $sizeGB we know how much memory is needed to combine a frame of coaddSizePx x coaddSizePx
+#In other words, with $sizeGB we know how much memory is needed to combine a frame of sizeX x sizeY
 #We want to know the minimum value of N such that we can combine N frames at once with availMemory
 GbPerPx=sizeGB/totalNumberOfPixels #This is: GB needed to combine a block of one pixel
 maxPixelsPerCombination=availMemory/GbPerPx
-sizeBlock_pix=int(np.sqrt(maxPixelsPerCombination))
-numberOfBlocks=math.ceil(coaddSizePx/sizeBlock_pix)
+ratio=sizeX/sizeY
+sizeBlockX_pix=max(1,int(np.sqrt(maxPixelsPerCombination*ratio)))
+sizeBlockY_pix=max(1,int(np.sqrt(maxPixelsPerCombination/ratio)))
+numberOfBlocksX=math.ceil(sizeX/sizeBlockX_pix)
+numberOfBlocksY=math.ceil(sizeY/sizeBlockY_pix)
+
 
 sections=[]
-for i in range(numberOfBlocks):
-    for j in range(numberOfBlocks):
-        i1=i*sizeBlock_pix+1
-        i2=min((i+1)*sizeBlock_pix,coaddSizePx)
-        j1=j*sizeBlock_pix+1
-        j2=min((j+1)*sizeBlock_pix,coaddSizePx)
-        sections.append((i1,i2,j1,j2,i+1,j+1))
+for i in range(numberOfBlocksX):
+        for j in range(numberOfBlocksY):
+                i1=i*sizeBlockX_pix+1
+                i2=min((i+1)*sizeBlockX_pix,sizeX)
+                j1=j*sizeBlockY_pix+1
+                j2=min((j+1)*sizeBlockY_pix,sizeY)
+                sections.append((i1,i2,j1,j2,i+1,j+1))
 
 with open(outputFile,"w") as f:
         for (i1,i2,j1,j2,i,j) in sections:
@@ -44,5 +48,5 @@ with open(outputFile,"w") as f:
 
 
 with open(numberOfBlocksFile,"w") as f2:
-      f2.write(f"{numberOfBlocks}")
+        f2.write(f"{numberOfBlocksX} {numberOfBlocksY}")
 

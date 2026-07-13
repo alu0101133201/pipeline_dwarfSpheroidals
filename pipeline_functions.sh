@@ -773,7 +773,48 @@ calculateFlat() {
     fi
 }
 export -f calculateFlat
-
+calculateWholeNightFlat(){
+    local flatName=$1
+    local normalisedDir=$2
+    local night=$3
+    local flatDir=$4
+    ### Number of images might be too large to do a single astarithmetic
+    ### We apply what is applied as well in buildCoadd: crop in different sections
+    python3 $pythonScriptsPath/createCropSections.py $normalisedDir $detectorWidth,$detectorHeight 200.0 $BDIR/cropSections_$night.txt $BDIR/numberOfBlocks_$night.txt
+    numBlocksX=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks_$night.txt)
+    numBlocksY=$(awk 'NR=='2'{print $1}' $BDIR/numberOfBlocks_$night.txt)
+    if [ $numBlocksX - eq 1 ]; then
+        calculateFlat $flatName $(ls -v $normalisedDir/*Decals-"$filter"_n"$night"_f*_ccd"$h".fits)
+    else
+        if ! [ -f $BDIR/sectionsToCombine_$night.txt ]; then
+            mkdir -p $BDIR/sectionsToCombine_$night
+        fi
+        while IFS=' ' read -r cropSection m n; do
+            cropInSections $normalisedDir $cropSection $BDIR/sectionsToCombine_$night $BDIR/sectionsToCombine_$night/done_"$m""$n".txt
+            flat_mn=$flatDir/flat_"$m"_"$n".fits
+            calculateFlat $flat_mn $(ls -v $BDIR/sectionsToCombne_$night/*.fits)
+            rm $BDIR/sectionsToCombine_$night/*.fits
+        done < $BDIR/cropSections_$night.txt
+        stitchCommand=""
+        for m in $(seq 1 $numBlocksX); do
+            for n in $(seq 1 $numBlocksY); do
+                flat_mn=$flatDir/flat_"$m"_"$n".fits
+                stitchCommand+="$flat_mn -h1 "
+            done
+            stitchCommand+="$numBlocksY 2 stitch "
+        done
+        astarithmetic $stitchCommand $numBlocksX 1 stitch -o $flatName
+        rm -rf $BDIR/sectionsToCombine_$night
+        for m in $(seq 1 $numBlocksX); do
+            for n in $(seq 1 $numBlocksY); do
+                flat_mn=$flatDir/flat_"$m"_"$n".fits
+                rm $flat_mn
+            done
+        done
+    fi
+    rm $BDIR/cropSections_$night.txt $BDIR/numberOfBlocks_$night.txt
+}
+export -f calculateWholeNightFlat
 calculateRunningFlat() {
     local normalisedDir=$1
     local outputDir=$2
@@ -4042,7 +4083,7 @@ createBlocks(){
         availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
         echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
         
-        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix 200.0 $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
+        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix,$coaddSizeInPix 200.0 $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
     fi
 }
 export -f createBlocks

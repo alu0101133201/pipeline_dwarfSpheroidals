@@ -451,7 +451,7 @@ oneNightPreProcessing() {
   if [ -f $flatit1WholeNightdone ]; then
     echo -e "\nWhole night flat it-1 already built for night $currentNight and extension $h\n"
   else
-    calculateFlat $flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits $normit1dir/*.fits
+    calculateWholeNightFlat $flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits $normit1dir $currentNight $flatit1WholeNightdir
     echo "done" >> $flatit1WholeNightdone
   fi
 
@@ -588,7 +588,7 @@ oneNightPreProcessing() {
   if [ -f $flatit2WholeNightdone ]; then
     echo -e "\nWhole night flat it-2 already built for night $currentNight and extension $h\n"
   else
-    calculateFlat $flatit2WholeNightdir/flat-it2_wholeNight_n$currentNight.fits $normit2WholeNightdir/*.fits
+    calculateWholeNightFlat $flatit2WholeNightdir/flat-it2_wholeNight_n$currentNight.fits $normit2WholeNightdir $currentNight $flatit2WholeNightdir
     echo "done" >> $flatit2WholeNightdone
   fi
 
@@ -771,7 +771,7 @@ oneNightPreProcessing() {
   if [ -f $flatit3WholeNightdone ]; then
     echo -e "\nWhole night flat it-3 already built for night $currentNight and extension $h\n"
   else
-    calculateFlat $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits $normit3WholeNightdir/*.fits
+    calculateWholeNightFlat $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits $normit3WholeNightdir $currentNight $flatit3WholeNightdir
     echo "done" >> $flatit3WholeNightdone
   fi
 
