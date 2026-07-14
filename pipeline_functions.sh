@@ -4361,7 +4361,7 @@ subtractStars(){
         printf "%s\n" "${framesToComputeScale[@]}" | parallel -j "$num_parallel" computeStarScaleForFrame {} $profileFolder $scaleDir $inputFolder_small $psfProfile $starMag $starSatThreshold $cFactorFile $gainCorrectionFile 
         echo done > $scaleDone
     fi
-
+    
     echo -e "·Subtracting star from frames"
     limMag=32 #bellow surface brightness limit
 
@@ -4373,18 +4373,38 @@ subtractStars(){
     else
         ##First step: create the PSFfile
         psfCrop=$outputDir_small/PSF.fits
-        rCrop=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile $limMag $pixelScale )
-	    echo "Radius to crop PSF: {$rCrop}"
-	
-        if (( $(echo "$rCrop == 0" | bc -l) )); then
-            cp $psfFile $psfCrop
+        if [ -f $psfCrop ]; then
+            echo "PSF file already cropped"
         else
-            rWidth=$((2*rCrop))
-            astcrop $psfFile --mode=img --center=8001,8001 --width=$rWidth,$rWidth --zeroisnotblank -o$outputDir_small/temp.fits
-            echo "1 $rCrop $rCrop 5 $rCrop 0.0 0 1 1 1" | astmkprof --background=$outputDir_small/temp.fits --mforflatpix --clearcanvas -o$outputDir_small/mask.fits
-            astarithmetic $outputDir_small/temp.fits $outputDir_small/mask.fits -g1 0 eq nan where -q -o$psfCrop
-            rm $outputDir_small/temp.fits $outputDir_small/mask.fits
+            rCrop=$(python3 $pythonScriptsPath/get_cropRadiusPSF.py $starMag $psfProfile $limMag $pixelScale )
+	        echo "Radius to crop PSF: {$rCrop}"
+    
+            if (( $(echo "$rCrop == 0" | bc -l) )); then
+                cp $psfFile $psfCrop
+            else
+                rWidth=$((2*rCrop))
+                psfaxises=$(astfits $psfFile --hdu=1 --quiet \
+                        --keyvalue ZNAXIS1,ZNAXIS2,NAXIS1,NAXIS2)
+                psfnaxises=$(echo $psfaxises \
+                      | sed 's/n\/a//g' \
+                      | awk '{print NF}')
+                if [ x$psfnaxises = x4 ]; then
+                    xpsfaxis=$(echo $psfaxises | awk '{print $1}')
+                    ypsfaxis=$(echo $psfaxises | awk '{print $2}')
+                else
+                    xpsfaxis=$(echo $psfaxises | awk '{print $3}')
+                    ypsfaxis=$(echo $psfaxises | awk '{print $4}')
+                fi     
+
+                xpsfcenter=$(astarithmetic $xpsfaxis float32 2.0 / --quiet)
+                ypsfcenter=$(astarithmetic $ypsfaxis float32 2.0 / --quiet) 
+                astcrop $psfFile --mode=img --center=$xpsfcenter,$ypsfcenter --width=$rWidth,$rWidth --zeroisnotblank -o$outputDir_small/temp.fits
+                echo "1 $rCrop $rCrop 5 $rCrop 0.0 0 1 1 1" | astmkprof --background=$outputDir_small/temp.fits --mforflatpix --clearcanvas -o$outputDir_small/mask.fits
+                astarithmetic $outputDir_small/temp.fits $outputDir_small/mask.fits -g1 0 eq nan where -q -o$psfCrop
+                rm $outputDir_small/temp.fits $outputDir_small/mask.fits
+            fi
         fi
+            
         
         
         for a in $(seq 1 $totalNumberOfFrames); do
@@ -4415,11 +4435,9 @@ subtractStarFromFrame() {
         cp $image $output
     else
         astfits $image --copy=0 --primaryimghdu -o$output
-        for h in $(seq 1 4); do
-        
-
+        for h in $(seq 1 $num_ccd); do
             output_temp=$output_folder/"$base"_temp.fits
-            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp 
+            astscript-psf-subtract $image -h$h --scale=$scale --mode=wcs --center=$star_ra,$star_dec --psf=$psf -o $output_temp
             astfits $output_temp --copy=1 -o$output
             gain=$(astfits $image -h$h --keyvalue=GAIN -q)
             astfits $output -h$h --write=GAIN,$gain

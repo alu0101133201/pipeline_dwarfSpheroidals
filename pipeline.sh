@@ -2622,7 +2622,7 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
   query_param="gaia --dataset=dr3 --center=$ra_gal,$dec_gal --radius=$radiusToSearch --column=ra,dec,phot_g_mean_mag"
   if ! [ -f $starsToSubtract ]; then
     astquery $query_param -o$BDIR/starsToSubtract_temp.fits
-    asttable $BDIR/starsToSubtract_temp.fits --range=3,0:13.5 --sort=3 -o$starsToSubtract
+    asttable $BDIR/starsToSubtract_temp.fits --range=3,0:9.5 --sort=3 -o$starsToSubtract
     rm $BDIR/starsToSubtract_temp.fits
   fi
   if [ -z "$starSatThreshold" ]; then
@@ -2638,8 +2638,8 @@ if [[ "$subtractStarsFromRaw" == "true" ]]; then
     ((starId++))
     outputDir_small=$BDIR/pointings_smallGrid_sub$starId
     subtractStars $input_subStar_small "$line" $psfFile $psfRadFile $outputDir_small $starId $starSatThreshold $BDIR/commonCalibrationFactor_it2.txt $gainCorrectionFile
-#  
-    #if (( $(echo "$starId == 2" | bc -l) )); then exit; fi
+   
+    #if (( $(echo "$starId == 1" | bc -l) )); then exit; fi
     if ! (( $(echo "$starId == 1" | bc -l) )); then
 	    rm $input_subStar_small/*.fits
     fi
