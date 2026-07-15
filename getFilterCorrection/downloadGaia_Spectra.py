@@ -66,79 +66,75 @@ def parse_gaia_array(s):
     # 1. s[1:-1] elimina el '[' del inicio y el ']' del final
     # 2. sep=',' le dice a numpy que corte por comas
     return np.fromstring(s[1:-1], sep=',')
-def transformCSVintoFITS(spectraDir,ra,dec,sizeOfField):
+
+def transformCSVintoFITS(spectraDir, ra, dec, sizeOfField):
     Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
-    #We're gonna use only 2000 spectra divided equaly between files
-    for file in glob.glob(spectraDir+'/*.csv'):
-        nameFile=os.path.basename(file)
-        sampling_grid=np.linspace(336.0,1020.0,343)
-        df = pd.read_csv(file,skiprows=63,sep=',')
-        df['flux_arr']=df['flux'].apply(parse_gaia_array)
-        df['error_arr']=df['flux_error'].apply(parse_gaia_array)
-        #Since Gaia creates a huge ammount of data, and we only need spectra within a certain magnitude
-        source_ids=df['source_id'].unique()
-        chunk_size=50
-        source_ids_ok=[]
-        for i in range(0,len(source_ids),chunk_size):
-            chunk_ids=source_ids[i:i+chunk_size]
-            ids_str=','.join([str(sid) for sid in chunk_ids])
-            raMin=ra-sizeOfField/2
-            raMax=ra+sizeOfField/2
-            decMin=dec-sizeOfField/2
-            decMax=dec+sizeOfField/2
-            query=f"""
-            SELECT source_id,ra,dec 
-            FROM gaiadr3.gaia_source
-            WHERE (ra BETWEEN {raMin} AND {raMax}) AND (dec BETWEEN {decMin} AND {decMax})
-            AND source_id IN ({ids_str})
-            """
-            job=Gaia.launch_job(query)
-            res=job.get_results()
-            source_ids_ok.extend(res['source_id'].tolist())
-        valid_ids_set=set(source_ids_ok)
-        df_filtered=df[df['source_id'].isin(valid_ids_set)].copy()
-        for index,row in df_filtered.iterrows():
-            source_id=row['source_id']
-            if source_id in source_ids_ok:
-                flux=row['flux_arr']
-                flux_error=row['error_arr']
-                ra=row['ra']
-                dec=row['dec']
-                solution_id=row['solution_id']
-                col_wave=fits.Column(name='wavelength', format='D', unit='nm', array=sampling_grid)
-                col_flux = fits.Column(name='flux', format='E', unit='W.m**-2.nm**-1', array=flux)
-                col_error = fits.Column(name='flux_error', format='E', unit='W.m**-2.nm**-1', array=flux_error)
-                hdu_table = fits.BinTableHDU.from_columns([col_wave, col_flux, col_error])
-                head = hdu_table.header
-                head['EXTNAME']='BINTABLE'
-                head['SOURCEID'] = str(source_id)
-                head['SOLUTION'] = str(solution_id)
-                head['POS']      = f'({ra}, {dec})'
-                head['REFEPOCH'] = '2016.0'
-                head['EPOCHEXT'] = '2.83'
-                head['WAVEERRO'] = '0.0'
-                head['SPECTRAL'] = '0.0'
-                head['WAVEEXTE'] = '684.0'
-                head['WAVESTAR'] = '336.0'
-                head['WAVEEND']  = '1020.0'
-                head['APERTURE'] = '5.8932666E-4'
-                head['DATAMODE'] = 'Spectrum 1.01'
-                head['PUBLISHE'] = 'ESA/Gaia/DPAC'
-                head['TITLE']    = 'Spectrum'
-                head['DATE-HDU'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
 
-                prihdu = fits.PrimaryHDU()
-                prihdu.header.add_comment("Dummy header; see following table extension")
+    # Do the positional query ONCE for the whole field, not per file/chunk
+    radius_deg = sizeOfField / 2
+    query = f"""
+    SELECT source_id, ra, dec
+    FROM gaiadr3.gaia_source
+    WHERE 1=CONTAINS(
+        POINT('ICRS', ra, dec),
+        CIRCLE('ICRS', {ra}, {dec}, {radius_deg})
+    )
+    """
+    job = Gaia.launch_job_async(query)  # async avoids polling limits on big results
+    field_sources = job.get_results().to_pandas()
+    valid_ids_set = set(field_sources['source_id'])
+    coords_lookup = field_sources.set_index('source_id')[['ra', 'dec']]
 
-                hdul = fits.HDUList([prihdu, hdu_table])
-                filename = f"XP_SAMPLED-Gaia DR3 {source_id}.fits"
-                outfile = os.path.join(spectraDir, filename)
-                hdul.writeto(outfile, overwrite=True)
+    sampling_grid = np.linspace(336.0, 1020.0, 343)
+
+    for file in glob.glob(spectraDir + '/*.csv'):
+        df = pd.read_csv(file, skiprows=63, sep=',')
+        df_filtered = df[df['source_id'].isin(valid_ids_set)].copy()
+        df_filtered['flux_arr'] = df_filtered['flux'].apply(parse_gaia_array)
+        df_filtered['error_arr'] = df_filtered['flux_error'].apply(parse_gaia_array)
+
+        for _, row in df_filtered.iterrows():
+            source_id = row['source_id']
+            flux = row['flux_arr']
+            flux_error = row['error_arr']
+            ra_i, dec_i = coords_lookup.loc[source_id, ['ra', 'dec']]
+            solution_id = row['solution_id']
+
+            col_wave = fits.Column(name='wavelength', format='D', unit='nm', array=sampling_grid)
+            col_flux = fits.Column(name='flux', format='E', unit='W.m**-2.nm**-1', array=flux)
+            col_error = fits.Column(name='flux_error', format='E', unit='W.m**-2.nm**-1', array=flux_error)
+            hdu_table = fits.BinTableHDU.from_columns([col_wave, col_flux, col_error])
+            head = hdu_table.header
+            head['EXTNAME'] = 'BINTABLE'
+            head['SOURCEID'] = str(source_id)
+            head['SOLUTION'] = str(solution_id)
+            head['POS'] = f'({ra_i}, {dec_i})'
+            head['REFEPOCH'] = '2016.0'
+            head['EPOCHEXT'] = '2.83'
+            head['WAVEERRO'] = '0.0'
+            head['SPECTRAL'] = '0.0'
+            head['WAVEEXTE'] = '684.0'
+            head['WAVESTAR'] = '336.0'
+            head['WAVEEND'] = '1020.0'
+            head['APERTURE'] = '5.8932666E-4'
+            head['DATAMODE'] = 'Spectrum 1.01'
+            head['PUBLISHE'] = 'ESA/Gaia/DPAC'
+            head['TITLE'] = 'Spectrum'
+            head['DATE-HDU'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+
+            prihdu = fits.PrimaryHDU()
+            prihdu.header.add_comment("Dummy header; see following table extension")
+
+            hdul = fits.HDUList([prihdu, hdu_table])
+            filename = f"XP_SAMPLED-Gaia DR3 {source_id}.fits"
+            outfile = os.path.join(spectraDir, filename)
+            hdul.writeto(outfile, overwrite=True)
+
         os.system(f'rm {file}')
-
-fieldName   = "ngc891"
-ra          = 35.6369
-dec         = 42.3484
+        
+fieldName   = "UGC00180"
+ra          = 4.7840
+dec         = 15.7492
 
 sizeOfField = 1
 

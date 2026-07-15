@@ -1157,11 +1157,16 @@ else
         i=$framesForCommonReductionDir/$base
         frameNames+=("$i")
     done
-    if [ "$telescope" == "LBT" ]; then
+
+
+    telescopes_with_previousAstrometry=("LBT" "OSIRIS")
+
+    if [[ " ${telescopes_with_previousAstrometry[*]} " == *" $telescope "* ]]; then
       previousAstrometry="True"
     else
       previousAstrometry="False"
     fi
+
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir_layer $sexcfg $sizeOfOurFieldDegrees $previousAstrometry
 
     for a in $(seq 1 $totalNumberOfFrames); do

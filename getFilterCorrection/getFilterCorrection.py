@@ -181,9 +181,9 @@ def computeOffset(mag1, mag2, limits):
 
 setMatplotlibConf()
 
-field = "ngc4010"
-filterName1 = "./filters/panstarrs_i.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = "./filters/INTWFC_i.dat";       waveUnits2 = "nm"; transmittanceUnits2 = "percentage"
+field = "UGC00180"
+filterName1 = "./filters/DECaLS_g.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
+filterName2 = "./filters/OSIRIS_g.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 
 regionToComputeOffset = [12, 15]
 

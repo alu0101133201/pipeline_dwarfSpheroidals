@@ -166,7 +166,7 @@ def comparisonPlot(mag1, mag2, colours, waveUnits1, transmittanceUnits1, filter1
 def colourDependencePlot(g_r_colour, magnitudes1, magnitudes2, x_fit, y_fit, coeffs):
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     plt.tight_layout(pad=7.0)
-    configureAxis(ax, 'g-r', 'g_panstarrs - g_tst', logScale=False)
+    configureAxis(ax, 'g-r', 'g_reference - g_telescope', logScale=False)
     ax.set_xlim(0, 1)
     ax.set_ylim(-0.15, 0.15)
     ax.scatter(g_r_colour, magnitudes1-magnitudes2, s=80, edgecolors="black", linewidths=1.75, label="Gaia stars")
@@ -188,7 +188,7 @@ def getStd(data):
 
 def plotTSTDirectVsTSTProxy(magnitudesDirect, magnitudesProxy, fileName):
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
-    configureAxis(ax, r'mag $TST_{GAIA}$', r'mag $TST_{GAIA}$ - mag $TST_{PANSTARRS_proxy}$', logScale=False)
+    configureAxis(ax, r'mag $Telescope_{GAIA}$', r'mag $Telescope_{GAIA}$ - mag $Telescope_{proxy}$', logScale=False)
     plt.tight_layout(pad=7.0)
     ax.text(7.5, 0.3, f"std: " + "{:.2}".format(getStd(magnitudesDirect - magnitudesProxy)), fontsize=22, color="blue")
     ax.set_ylim(-0.5, 0.5)
@@ -203,24 +203,26 @@ if (len(sys.argv) == 3):
     field = sys.argv[1]
     bandToStudy = sys.argv[2]
 else:
-    field="ngc598"
-    bandToStudy = "g"
+    field="UGC00180"
+    bandToStudy = "i"
 
-filterName1 = f"./filters/panstarrs_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
-filterName2 = f"./filters/PAUCam_{bandToStudy}.dat";       waveUnits2 = "A"; transmittanceUnits2 = "normalised"
+filterName1 = f"./filters/DECaLS_{bandToStudy}.dat"; waveUnits1 = "A";  transmittanceUnits1 = "normalised"
+filterName2 = f"./filters/OSIRIS_{bandToStudy}.dat";    waveUnits2 = "A"; transmittanceUnits2 = "normalised"
 spectraFolder = f"./gaiaSpectra_{field}"
 WAVELENGTHS_TO_SAMPLE = np.linspace(3000, 11000, 10000) # Needed in order to have the same wavelengths in filter and spectra
 
 # Compute colour g-r, always used for computing the offset
 
-filterName_g = "./filters/PANSTARRS_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
-filterName_r = "./filters/PANSTARRS_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
+filterName_g = "./filters/DECaLS_g.dat"; waveUnits_g = "A";  transmittanceUnits_g = "normalised"
+filterName_r = "./filters/DECaLS_r.dat"; waveUnits_r = "A";  transmittanceUnits_r = "normalised"
 
 wavelengths_g, transmittance_g = readFilterTransmittance(filterName_g, waveUnits_g, transmittanceUnits_g)
 wavelengths_r, transmittance_r = readFilterTransmittance(filterName_r, waveUnits_r, transmittanceUnits_r)
 
 _, _, magnitudes_g = getMagnitudesFromSpectra(spectraFolder, wavelengths_g, transmittance_g)
 _, _, magnitudes_r = getMagnitudesFromSpectra(spectraFolder, wavelengths_r, transmittance_r)
+
+
 
 g_r_colour = magnitudes_g - magnitudes_r
 

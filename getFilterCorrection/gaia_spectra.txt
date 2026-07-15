@@ -1,1 +1,2 @@
-http://cdn.gea.esac.esa.int/Gaia/gdr3/Spectroscopy/xp_sampled_mean_spectrum/XpSampledMeanSpectrum_038234-038797.csv.gz
+http://cdn.gea.esac.esa.int/Gaia/gdr3/Spectroscopy/xp_sampled_mean_spectrum/XpSampledMeanSpectrum_313368-315968.csv.gz
+http://cdn.gea.esac.esa.int/Gaia/gdr3/Spectroscopy/xp_sampled_mean_spectrum/XpSampledMeanSpectrum_315969-318482.csv.gz
