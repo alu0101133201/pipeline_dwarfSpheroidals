@@ -1177,7 +1177,7 @@ else
 fi
 
 
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
   writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
   iteration=1
@@ -1304,7 +1304,7 @@ prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $apertureP
 
 
 # Calibration of coadd prephot
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   writeTimeOfStepToFile "Computing calibration factor for coadd prephot" $fileForTimeStamps
   if ! [ -d "$BDIR/coaddForCalibration_it$iteration" ]; then mkdir "$BDIR/coaddForCalibration_it$iteration"; fi
   cp $BDIR/coadds-prephot/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits $BDIR/coaddForCalibration_it$iteration/entirecamera_1_tmp.fits
@@ -1418,7 +1418,7 @@ else
 fi
 
 # Calibration
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
   alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
   applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
@@ -1454,7 +1454,7 @@ fi
 
 # Getting depth, mask and adding keywords to the calibrated coadd prephot
 # ---------------------------------------------------
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   # Since we calibrated the coadd in the high snr region, we need to restore the whole image
   # I don't do that before so the calibration plot is with the calibrated area
   iteration=1
@@ -1776,7 +1776,7 @@ find $BDIR/framesWithCoaddSubtracted_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/weight-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 find $BDIR/only-w-dir_it1 -type f ! -name 'done*' -exec rm {} \;
 
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   find $BDIR/weight-dir_prephot -type f ! -name 'done*' -exec rm {} \;
   find $BDIR/only-w-dir_prephot -type f ! -name 'done*' -exec rm {} \;
   find $BDIR/noise-sky_prephot -type f ! -name 'done*' -exec rm {} \;
@@ -1891,7 +1891,7 @@ subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
 subtractSky $starsSub_small $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT 
 
 
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   # MASK FROM THE COADD PREPHOT
   coaddDir=$BDIR/coadds-prephot
   maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
@@ -2071,7 +2071,7 @@ subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
 
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   alphatruedir=$BDIR/alpha-stars-true_coaddPrephot_it$iteration
   photCorrPrePhotDir=$BDIR/photCorr-coaddPrephot-dir_it$iteration
   applyCalibrationFactors $BDIR/coaddForCalibration_it$iteration $alphatruedir $photCorrPrePhotDir $iteration False
@@ -2097,7 +2097,7 @@ else
 fi
 
 
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   iteration=2
   aperturesFolder=$BDIR/my-catalog-halfmaxradius_coaddPrephot_it$iteration
   calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_coaddPrephot_it$iteration.png
@@ -2116,7 +2116,7 @@ if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]];
 fi
 
 
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" )]]; then
+if [[ "${produceCoaddPrephot,,}" = "true" ]]; then
   # Getting depth, mask and adding keywords to the calibrated coadd prephot
   # ---------------------------------------------------
 
