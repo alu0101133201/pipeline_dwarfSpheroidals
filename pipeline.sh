@@ -114,47 +114,32 @@ outputConfigurationVariablesInformation
 
 
 # The following lines are responsible of the cpu's used for paralellise
-# If it is running in a system with slurm it takes the number of cpu's from the slurm job
-# Otherwise it takes it from the provided configuration file
-num_cpus=$SLURM_CPUS_ON_NODE
-if [ -z $num_cpus ]; then
+if [ -n "$SLURM_CPUS_ON_NODE" ]; then
+  num_cpus=$SLURM_CPUS_ON_NODE
+else
   num_cpus=$defaultNumOfCPUs
 fi
 
 echo -e "\nNumber of CPUs allocated: $num_cpus"
 export num_cpus
 
-###For noisechisel runs: when we parallelize, we are parallelizing a process that already benefits from multi-threading
-#Because of that, using $num_cpu for both parallel jobs and --numthreads when parallelizing noisechisel is not optimal at all
-#We divide the num_cpus into 4 for num_threads and num_cpus/4 for jobs, if num_cpus>4
-max_thread_per_process=8
-if (( num_cpus < max_thread_per_process )); then
+# After some testing we find that it is efficient to use noisechisel with 4 threads. So we parallelise accordingly
+noisechiselNumThreads=4
+export noisechiselNumThreads
+
+if (( num_cpus < noisechiselNumThreads )); then
   num_threads=$num_cpus
   num_parallel=1
 else
-  num_threads=$max_thread_per_process
-  num_parallel=$(( num_cpus / num_threads ))
+  num_threads=$noisechiselNumThreads
+  num_parallel=$(( num_cpus / noisechiselNumThreads ))
 fi
+
 export num_parallel
 export num_threads
 
-# ****** Decision note *******
-# Rebinned data
-#tileSize=35
-#noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                    --detgrowmaxholesize=5000 \
-#                    --rawoutput"
+echo -e "NoiseChisel-related steps: running ${num_parallel} frames in parallel, ${num_threads} threads each"
 
-# # These paremeters are oriented to TST data at original resolution. 
-# astmkprof --kernel=gaussian,2,3 --oversample=1 -o$ROOTDIR/"$objectName"/kernel.fits 
-# tileSize=15
-# noisechisel_param="--tilesize=$tileSize,$tileSize \
-#                      --detgrowquant=0.4 \
-#                      --rawoutput"
-#export noisechisel_param
-
-#echo -e "\n-Noisechisel parameters used for masking:"
-#echo -e "\t" $noisechisel_param
 
 ######## Loading and transforming to needed format the user-defined masks to apply
 
@@ -297,12 +282,9 @@ oneNightPreProcessing() {
   fi
   mdadir=$BDIR/masterdark_n$currentNight
   
+  ########## Creating master bias ##########
   for h in 0; do
- 
-    ########## Creating master bias ##########
-
     echo -e "\n ${GREEN} Creating master bias/dark-bias ${NOCOLOUR}"
- 
     mdadone=$mdadir/mdark_"$filter"_ccd"$h".txt
  
     if ! [ -d $mdadir ]; then mkdir $mdadir; fi
@@ -430,7 +412,6 @@ oneNightPreProcessing() {
           # Signal to all other nodes that the rings are fully written and ready
           touch "$DONE_FILE"
           rmdir "$LOCK_DIR"
-          
       else
           # 3. Another node is currently building the ring. Wait for it to finish.
           echo -e "\tAnother night is currently building the ring(s). Waiting..."
@@ -467,6 +448,7 @@ oneNightPreProcessing() {
     normaliseImagesWithRing $mbiascorrdir $normit1dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $n_exp 
     echo done > $normit1done
   fi
+
   # Then, if the running flat is configured to be used, we combine the normalised images with a sigma clipping median
   # using the running flat strategy
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
@@ -480,6 +462,7 @@ oneNightPreProcessing() {
       calculateRunningFlat $normit1dir $flatit1dir $flatit1done $iteration
     fi
   fi
+
   # We compute the flat using all the frames of the night
   flatit1WholeNightdir=$BDIR/flat-it1-WholeNight_n$currentNight
   flatit1WholeNightdone=$flatit1WholeNightdir/done_"$filter"_ccd"$h".txt
@@ -491,7 +474,9 @@ oneNightPreProcessing() {
     calculateWholeNightFlat $flatit1WholeNightdir/flat-it1_wholeNight_n$currentNight.fits $normit1dir $currentNight $flatit1WholeNightdir
     echo "done" >> $flatit1WholeNightdone
   fi
+
   rm -f $normit1dir/*.fits
+
   # Dividing the science images for the running it1 flat
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
     flatit1imadir=$BDIR/flat-it1-Running-ima_n$currentNight
@@ -500,7 +485,7 @@ oneNightPreProcessing() {
     if [ -f $flatit1imadone ]; then
       echo -e "\nScience images are divided by flat it1 for night $currentNight and extension $h\n"
     else
-      divideImagesByRunningFlats $mbiascorrdir $flatit1imadir $flatit1dir $flatit1imadone $n_exp
+      divideImagesByRunningFlats $mbiascorrdir $flatit1imadir $flatit1dir $flatit1imadone $n_exp 1
     fi
   fi
   rm -f $flatit1dir/*.fits
@@ -515,118 +500,16 @@ oneNightPreProcessing() {
     divideImagesByWholeNightFlat $mbiascorrdir $flatit1WholeNightimaDir $wholeNightFlatToUse $flatit1WholeNightimaDone $n_exp
   fi
   rm -f $flatit1WholeNightdir/*.fits
-  ########## Creating the it2 master flat image ##########
-  echo -e "${GREEN} --- Flat iteration 2 --- ${NOCOLOUR}"
-  # Obtain a mask using noisechisel on the running flat images
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    noiseit2dir=$BDIR/noise-it2-Running_n$currentNight
-    noiseit2done=$noiseit2dir/done_"$filter"_ccd"$h".txt
-    if ! [ -d $noiseit2dir ]; then mkdir $noiseit2dir; fi
-    if [ -f $noiseit2done ]; then
-      echo -e "\nScience images are 'noisechiseled' for it2 running flat for night $currentNight and extension $h\n"
-    else
-      frameNames=()
-      for a in $(seq 1 $n_exp); do
-          base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-          frameNames+=("$base")
-      done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit1imadir $noiseit2dir $blockScale "'$noisechisel_param'"
-      echo done > $noiseit2done
-    fi
-  fi
-  rm -f $flatit1imadir/*.fits
 
-  # Obtain a mask using noisechisel on the whole night flat images
-  noiseit2WholeNightDir=$BDIR/noise-it2-WholeNight_n$currentNight
-  noiseit2WholeNightdone=$noiseit2WholeNightDir/done_"$filter"_ccd"$h".txt
-  if ! [ -d $noiseit2WholeNightDir ]; then mkdir $noiseit2WholeNightDir; fi
-  if [ -f $noiseit2WholeNightdone ]; then
-    echo -e "\nScience images are 'noisechiseled' for it2 whole night flat for night $currentNight and extension $h\n"
-  else
-    frameNames=()
-    for a in $(seq 1 $n_exp); do
-      base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-      frameNames+=("$base")
-    done
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit1WholeNightimaDir $noiseit2WholeNightDir $blockScale "'$noisechisel_param'"
-    echo done > $noiseit2WholeNightdone
-  fi
-  rm -f $flatit1WholeNightimaDir/*.fits
-  
-# Mask the images (running flat)
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    maskedit2dir=$BDIR/masked-it2-Running_n$currentNight
-    maskedit2done=$maskedit2dir/done_"$filter"_ccd"$h".txt
-    if ! [ -d $maskedit2dir ]; then mkdir $maskedit2dir; fi
-    if [ -f $maskedit2done ]; then
-      echo -e "\nScience images are masked for running flat, night $currentNight and extension $h\n"
-    else
-      maskImages $mbiascorrdir $noiseit2dir $maskedit2dir $USE_COMMON_RING $keyWordToDecideRing $n_exp
-      echo done > $maskedit2done
-    fi
-  fi
-  rm -f $noiseit2dir/*.fits
-  # Mask the images (whole night flat)
-  maskedit2WholeNightdir=$BDIR/masked-it2-WholeNight_n$currentNight
-  maskedit2WholeNightdone=$maskedit2WholeNightdir/done_"$filter"_ccd"$h".txt
-  if ! [ -d $maskedit2WholeNightdir ]; then mkdir $maskedit2WholeNightdir; fi
-  if [ -f $maskedit2WholeNightdone ]; then
-    echo -e "\nScience images are masked for whole night flat, night $currentNight and extension $h\n"
-  else
-    maskImages $mbiascorrdir $noiseit2WholeNightDir $maskedit2WholeNightdir $USE_COMMON_RING $keyWordToDecideRing $n_exp
-    echo done > $maskedit2WholeNightdone
-  fi
-  rm -f $noiseit2WholeNightDir/*.fits
-  # Normalising masked images (running flat)
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    normit2dir=$BDIR/norm-it2-Running-images_n$currentNight
-    normit2done=$normit2dir/done_"$filter"_ccd"$h".txt
-    if ! [ -d $normit2dir ]; then mkdir $normit2dir; fi
-    if [ -f $normit2done ]; then
-      echo -e "\nMasked science images are normalized for running flat, night $currentNight and extension $h\n"
-    else
-      normaliseImagesWithRing $maskedit2dir $normit2dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $n_exp 
-      echo done > $normit2done
-    fi
-  fi
-  rm -f $maskedit2dir/*.fits
-  # Normalising masked images (whole night flat)
-  normit2WholeNightdir=$BDIR/norm-it2-WholeNight-images_n$currentNight
-  normit2WholeNightdone=$normit2WholeNightdir/done_"$filter"_ccd"$h".txt
-  if ! [ -d $normit2WholeNightdir ]; then mkdir $normit2WholeNightdir; fi
-  if [ -f $normit2WholeNightdone ]; then
-    echo -e "\nMasked science images are normalized for whole night flat, night $currentNight and extension $h\n"
-  else
-    normaliseImagesWithRing $maskedit2WholeNightdir $normit2WholeNightdir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $n_exp
-    echo done > $normit2WholeNightdone
-  fi
-  rm -f $maskedit2WholeNightdir/*.fits
-  
-  # Combining masked normalized images to make it2 running flat
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    flatit2dir=$BDIR/flat-it2-Running_n$currentNight
-    flatit2done=$flatit2dir/done_"$filter"_ccd"$h".txt
-    iteration=2
-    if ! [ -d $flatit2dir ]; then mkdir $flatit2dir; fi
-    if [ -f $flatit2done ]; then
-      echo -e "\nScience images are stacked for it2 running flat for night $currentNight and extension $h\n"
-    else
-      calculateRunningFlat $normit2dir $flatit2dir $flatit2done $iteration
-    fi
-  fi
-  rm -f $normit2dir/*.fits
-  # We also compute the flat using all the frames of the night.
-  flatit2WholeNightdir=$BDIR/flat-it2-WholeNight_n$currentNight
-  flatit2WholeNightdone=$flatit2WholeNightdir/done_"$filter"_ccd"$h".txt
-  iteration=2
-  if ! [ -d $flatit2WholeNightdir ]; then mkdir $flatit2WholeNightdir; fi
-  if [ -f $flatit2WholeNightdone ]; then
-    echo -e "\nWhole night flat it-2 already built for night $currentNight and extension $h\n"
-  else
-    calculateWholeNightFlat $flatit2WholeNightdir/flat-it2_wholeNight_n$currentNight.fits $normit2WholeNightdir $currentNight $flatit2WholeNightdir
-    echo "done" >> $flatit2WholeNightdone
-  fi
-  rm -f $normit2WholeNightdir/*.fits
+
+
+  # Iteration 2 -----
+
+  maskAndNormaliseForFlatIteration 2 "$flatit1imadir" "$flatit1WholeNightimaDir" "$n_exp" "$currentNight"
+
+  flatit2dir=$BDIR/flat-it2-Running_n$currentNight
+  flatsForIteration 2 "$flatit2dir" "$currentNight"
+
 
   # Dividing the science image by the it2 flat
   if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
@@ -636,10 +519,11 @@ oneNightPreProcessing() {
     if [ -f $flatit2imadone ]; then
       echo -e "\nRunning flats it2-2 already built for night $currentNight and extension $h\n"
     else
-      divideImagesByRunningFlats $mbiascorrdir $flatit2imadir $flatit2dir $flatit2imadone $n_exp
+      divideImagesByRunningFlats $mbiascorrdir $flatit2imadir $flatit2dir $flatit2imadone $n_exp 2
     fi
   fi
   rm -f $flatit2dir/*.fits
+
   # Dividing the science images for the whole night it2 flat
   flatit2WholeNightimaDir=$BDIR/flat-it2-WholeNight-ima_n$currentNight
   flatit2WholeNightimaDone=$flatit2WholeNightimaDir/done_"$filter"_ccd"$h".txt
@@ -652,164 +536,15 @@ oneNightPreProcessing() {
   fi
   rm -f $flatit2WholeNightdir/*.fits
 
-  
-  
-  #  **** Decision note *****
-  # We do here the check for bad frames in std and for not including them in the flat
-  # This is done because the frames which have moved sections have a really bad impact in the flat
-  # The background is not cleaned here because we don't want to run out of frames for the flats
 
-  # I use the flatit2WholeNightIma because maybe the running flat has not been selected, but the whole night flat is 
-  # going to be constructed always (either by user selection or for correcting the running)
 
-  # This is a simplified version of the more thorough check that is done in the future (with normalised background, std, skewness and kurtosis)
-  # but since the data here is not much processed and I'm not sure how reliable is the background for that detailed study, we use a simplified version
-  # using only the std in order to remove the frames with moved sections
-  tmpNoiseDir=$BDIR/noisesky_forCleaningBadFramesBeforeFlat_n$currentNight
-  tmpNoiseDone=$tmpNoiseDir/done_n$currentNight.txt
-  if ! [ -d $tmpNoiseDir ]; then mkdir $tmpNoiseDir; fi
-
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd_n$currentNight.txt
-  badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_stdPreFlat_n$currentNight.txt
-  if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
-  if [ -f $badFilesWarningsDone ]; then
-      echo -e "\n\tFrames with strange background value and std values already cleaned\n"
-  else
-    computeSky $flatit2WholeNightimaDir $tmpNoiseDir $tmpNoiseDone true $sky_estimation_method -1 false $ringdir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
-    numberOfStdForBadFrames=5
-    python3 $pythonScriptsPath/checkForBadFrames_beforeFlat_std.py  $tmpNoiseDir $diagnosis_and_badFilesDir $badFilesWarningsFile $numberOfStdForBadFrames $currentNight
-    echo "done" > $badFilesWarningsDone
-  fi
-  
   ########## Creating the it3 master flat image ##########
   echo -e "${GREEN} --- Flat iteration 3 --- ${NOCOLOUR}"
 
-
-  # Obtain a mask using noisechisel on the running flat images
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    noiseit3dir=$BDIR/noise-it3-Running_n$currentNight
-    noiseit3done=$noiseit3dir/done_"$filter"_ccd"$h".txt
-    if ! [ -d $noiseit3dir ]; then mkdir $noiseit3dir; fi
-    if [ -f $noiseit3done ]; then
-      echo -e "\nScience images are 'noisechiseled' for it3 running flat for night $currentNight and extension $h\n"
-    else
-      frameNames=()
-      for a in $(seq 1 $n_exp); do
-          base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-          frameNames+=("$base")
-      done
-      printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit2imadir $noiseit3dir $blockScale "'$noisechisel_param'"
-      echo done > $noiseit3done
-    fi
-  fi
-  rm -f $flatit2imadir/*.fits
-
-  # Obtain a mask using noisechisel on the whole night flat images
-  noiseit3WholeNightDir=$BDIR/noise-it3-WholeNight_n$currentNight
-  noiseit3WholeNightdone=$noiseit3WholeNightDir/done_"$filter"_ccd"$h".txt
-  if ! [ -d $noiseit3WholeNightDir ]; then mkdir $noiseit3WholeNightDir; fi
-  if [ -f $noiseit3WholeNightdone ]; then
-    echo -e "\nScience images are 'noisechiseled' for it3 whole night flat for night $currentNight and extension $h\n"
-  else
-    frameNames=()
-    for a in $(seq 1 $n_exp); do
-      base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-      frameNames+=("$base")
-    done
-
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} $flatit2WholeNightimaDir $noiseit3WholeNightDir $blockScale "'$noisechisel_param'"
-    echo done > $noiseit3WholeNightdone 
-  fi
-  rm -f $flatit2WholeNightimaDir/*.fits
-  # Mask the images (running flat)
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    maskedit3dir=$BDIR/masked-it3-Running_n$currentNight
-    maskedit3done=$maskedit3dir/done_"$filter"_ccd"$h".txt
-    if ! [ -d $maskedit3dir ]; then mkdir $maskedit3dir; fi
-    if [ -f $maskedit3done ]; then
-      echo -e "\nScience images are masked for running flat, night $currentNight and extension $h\n"
-    else
-      maskImages $mbiascorrdir $noiseit3dir $maskedit3dir $USE_COMMON_RING $keyWordToDecideRing $n_exp
-      echo done > $maskedit3done
-    fi
-  fi
-  rm -f $noiseit3dir/*.fits
-  
-  # Mask the images (whole night flat)
-  maskedit3WholeNightdir=$BDIR/masked-it3-WholeNight_n$currentNight
-  maskedit3WholeNightdone=$maskedit3WholeNightdir/done_"$filter"_ccd"$h".txt
-  if ! [ -d $maskedit3WholeNightdir ]; then mkdir $maskedit3WholeNightdir; fi
-  if [ -f $maskedit3WholeNightdone ]; then
-    echo -e "\nScience images are masked for whole night flat, night $currentNight and extension $h\n"
-  else
-    maskImages $mbiascorrdir $noiseit3WholeNightDir $maskedit3WholeNightdir $USE_COMMON_RING $keyWordToDecideRing $n_exp
-    echo done > $maskedit3WholeNightdone
-  fi
-  rm -f $noiseit3WholeNightDir/*.fits
-
+  maskAndNormaliseForFlatIteration 3 "$flatit2imadir" "$flatit2WholeNightimaDir" "$n_exp" "$currentNight"
  
-  # Normalising masked images (running flat)
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    normit3dir=$BDIR/norm-it3-Running-images_n$currentNight
-    normit3done=$normit3dir/done_"$filter"_ccd"$h".txt
-    if ! [ -d $normit3dir ]; then mkdir $normit3dir; fi
-    if [ -f $normit3done ]; then
-      echo -e "\nMasked science images are normalized for running flat, night $currentNight and extension $h\n"
-    else
-      normaliseImagesWithRing $maskedit3dir $normit3dir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $n_exp
-      echo done > $normit3done
-    fi
-  fi
-  rm -f $maskedit3dir/*.fits
-  # Normalising masked images (whole night flat)
-  normit3WholeNightdir=$BDIR/norm-it3-WholeNight-images_n$currentNight
-  normit3WholeNightdone=$normit3WholeNightdir/done_"$filter"_ccd"$h".txt
-  if ! [ -d $normit3WholeNightdir ]; then mkdir $normit3WholeNightdir; fi
-  if [ -f $normit3WholeNightdone ]; then
-    echo -e "\nMasked science images are normalized for whole night flat, night $currentNight and extension $h\n"
-  else
-    normaliseImagesWithRing $maskedit3WholeNightdir $normit3WholeNightdir $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $n_exp
-    echo done > $normit3WholeNightdone
-  fi
-  rm -f $maskedit3WholeNightdir/*.fits
-  
-  # Remove the identified bad frames ONLY for the flat, they will still be present in following steps, but not used in the flat calculation
-  diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-  badFilesWarningsFile=identifiedBadFrames_preFlat_onlyStd_n$currentNight.txt
-  rejectedFramesDir=$BDIR/rejectedFrames_std_preFlat_n$currentNight.txt
-  prefix="$objectName"-Decals-"$filter"_n"$currentNight"_f
-  if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-  removeBadFramesFromReduction $normit3dir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile $prefix
-  removeBadFramesFromReduction $normit3WholeNightdir $rejectedFramesDir $diagnosis_and_badFilesDir $badFilesWarningsFile $prefix
-
-  # Combining masked normalized images to make it3 flat
-  if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
-    flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
-    flatit3BeforeCorrectiondone=$flatit3BeforeCorrectiondir/done_"$filter"_ccd"$h".txt
-    iteration=3
-    if ! [ -d $flatit3BeforeCorrectiondir ]; then mkdir $flatit3BeforeCorrectiondir; fi
-    if [ -f $flatit3BeforeCorrectiondone ]; then
-      echo -e "\nRunning flats it3 before correction are already build for night $currentNight and extension $h\n"
-    else
-      calculateRunningFlat $normit3dir $flatit3BeforeCorrectiondir $flatit3BeforeCorrectiondone $iteration
-    fi
-  fi
-  rm -f $normit3dir/*.fits
-    
-  # We also compute the flat using all the frames of the night.
-  flatit3WholeNightdir=$BDIR/flat-it3-WholeNight_n$currentNight
-  flatit3WholeNightdone=$flatit3WholeNightdir/done_"$filter"_ccd"$h".txt
-  iteration=3
-  if ! [ -d $flatit3WholeNightdir ]; then mkdir $flatit3WholeNightdir; fi
-  if [ -f $flatit3WholeNightdone ]; then
-    echo -e "\nWhole night flat it-3 already built for night $currentNight and extension $h\n"
-  else
-    calculateWholeNightFlat $flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits $normit3WholeNightdir $currentNight $flatit3WholeNightdir
-    echo "done" >> $flatit3WholeNightdone
-  fi
-  rm -f $normit3WholeNightdir/*.fits
-  
+  flatit3BeforeCorrectiondir=$BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
+  flatsForIteration 3 "$flatit3BeforeCorrectiondir" "$currentNight"
 
 
   # Correct the running flats using the whole night flat
@@ -840,12 +575,13 @@ oneNightPreProcessing() {
     if [ -f $flatit3imadone ]; then
       echo -e "\nScience images are divided by the it3 flat for night $currentNight and extension $h\n"
     else
-      divideImagesByRunningFlats $mbiascorrdir $flatit3imadir $flatit3dir $flatit3imadone $n_exp
+      divideImagesByRunningFlats $mbiascorrdir $flatit3imadir $flatit3dir $flatit3imadone $n_exp 3
     fi
   else
       wholeNightFlatToUse=$flatit3WholeNightdir/flat-it3_wholeNight_n$currentNight.fits
       divideImagesByWholeNightFlat $mbiascorrdir $flatit3imadir $wholeNightFlatToUse $flatit3imadone $n_exp
   fi
+
   
   ########## Masking the vignetting zones ##########
   # Enmascarando las esquinas
@@ -865,44 +601,36 @@ oneNightPreProcessing() {
     printf "%s\n" "${imagesForVignetting[@]}" | parallel -j "$num_cpus" maskVignettingOnImages {} $flatit3imadir $maskedcornerdir $flatit3dir $flatit3WholeNightdir $RUNNING_FLAT $n_exp $currentNight $lowerVignettingThreshold $upperVignettingThreshold 
     echo done > $maskedcornerdone
   fi
+
   rm  $flatit3dir/*.fits  
+
+  
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
   if [ -f $framesForCommonReductionDone ]; then
     echo -e "\nFrames already placed in the folder for frames prepared to common reduction"
   else
-   # This lockfile is created in order to handle the race conditions that could happen here
-    #lockfile="$framesForCommonReductionDir/lockfile"
-    #exec 200>$lockfile
-    #flock -x 200
-
-    #initialValue=$( getHighestNumberFromFilesInFolder $framesForCommonReductionDir )
     for a in $(seq 1 $n_exp); do
       base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
-      #name=$(( $initialValue + $a ))
       cp $maskedcornerdir/$base $framesForCommonReductionDir/$base
-      #astfits $framesForCommonReductionDir/$name.fits -h1 --write=ORIGINAL_FILE,$base
     done
     echo "done" > $framesForCommonReductionDone
     rm $maskedcornerdir/*.fits 
-    #flock -u 200 
-    #exec 200>&- 
+- 
   fi
-  
+
   # # Removing intermediate information to save space - We maintain the final flats for checking them
   # rm -rf $BDIR/masked-corner_n$currentNight
   rm -rf $BDIR/bias-corrected_n$currentNight
   rm -rf $BDIR/masterdark_n$currentNight
   rm -rf $BDIR/flat-it3-Running-BeforeCorrection_n$currentNight
   rm -rf $BDIR/flat-it3-ima_n$currentNight
-  rm -rf $BDIR/flat-it1-Running_n$currentNight
-  rm -rf $BDIR/flat-it1-WholeNight_n$currentNight
-  rm -rf $BDIR/flat-it2-Running_n$currentNight
-  rm -rf $BDIR/flat-it2-WholeNight_n$currentNight
-  rm -rf $BDIR/noise-it2-Running_n$currentNight
-  rm -rf $BDIR/noise-it2-WholeNight_n$currentNight
 
   for a in $(seq 1 3); do
+    rm -rf $BDIR/flat-it"$a"-Running_n$currentNight
+    rm -rf $BDIR/flat-it"$a"-WholeNight_n$currentNight
+    rm -rf $BDIR/noise-it"$a"-Running_n$currentNight
+    rm -rf $BDIR/noise-it"$a"-WholeNight_n$currentNight
     rm -rf $BDIR/flat-it"$a"-Running-ima_n$currentNight
     rm -rf $BDIR/flat-it"$a"-WholeNight-ima_n$currentNight
     rm -rf $BDIR/masked-it"$a"-Running_n$currentNight
@@ -917,7 +645,6 @@ export -f oneNightPreProcessing
 
 writeTimeOfStepToFile "Process the individual nights" $fileForTimeStamps
 
-#1. Run a specific night if -n is passed (adapted for GPU SLURM based works)
 if [ -n "$RUN_NIGHT" ]; then
   echo -e "\n${GREEN} --- Processing night $RUN_NIGHT --- ${NOCOLOUR}\n"
   
@@ -926,29 +653,25 @@ if [ -n "$RUN_NIGHT" ]; then
   echo "Night $RUN_NIGHT actually finished all its work naturally at $(date)"
   
   sleep 30 # Add a delay
-  exit 0
 fi
-#2. Keep compatibility with the previous version, CPU based
-if [ "$RUN_COMMON" = false ] && [ -z "$RUN_NIGHT" ]; then
-  nights=()
-  for currentNight in $(seq 1 $numberOfNights); do
-      nights+=("$currentNight")
-  done
-  printf "%s\n" "${nights[@]}" | parallel --line-buffer -j "$num_parallel" oneNightPreProcessing {}
-fi
+
 
 #3. Now we recover the common reduction part
 lockfile_rename="$framesForCommonReductionDir/rename_done.txt"
+index=1
+echo $lockfile_rename
 if [ ! -f "$lockfile_rename" ]; then
   echo -e "\n ${GREEN} --- Sequentially renaming frames for common reduction --- ${NOCOLOUR} \n"
-  index=1
-  for file in $(ls -v $framesForCommonReductionDir/*-Decals-*.fits 2>/dev/null); do
+  for file in $(ls -v $framesForCommonReductionDir/*ccd0.fits); do
     mv "$file" "$framesForCommonReductionDir/$index.fits"
-   # astfits "$framesForCommonReductionDir/${index}.fits" -h1 --write=ORIGINAL_FILE,$(basename "$file")
-    index=$((index + 1))
+    # astfits "$framesForCommonReductionDir/${index}.fits" -h1 --write=ORIGINAL_FILE,$(basename "$file")
+    index=$(( index+1 ))
   done
   echo done > $lockfile_rename
 fi
+
+
+
 totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
 export totalNumberOfFrames
 echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
@@ -962,27 +685,52 @@ echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
 
 writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
 echo -e "·Downloading Gaia Catalogue"
-
-# Here I add some extra size to the field used to download the gaia catalogue for two reasons
-# 1.- This is because you don't want to use a field too big in order not to download bricks that you don't need
-# So I expect the "sizeofOurFieldDegrees" value to be quite tight. But since the catalogue is text and it doesn't take
-# long I prefer to add something and be sure that I don't lose any source because of the catalogue
-
-# 2.- This gaia catalogue is used to match the survey data for calibration to gaia, calibrating thus the survey to our photometric framework
-# of gaia. It has to be large enough to be to perform this calibration process
-
-
-
-
-
 catdir=$DIR/catalogs
-
 catName=$catdir/"$objectName"_gaia.fits
       
+
+
+sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
+writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
+echo -e "·Solving fields"
+
+astrocfg=$CDIR/astrometry_$objectName.cfg
+
+indexdir=$BDIR/indexes
+rm $astrocfg
+echo inparallel > $astrocfg
+echo cpulimit 300 >> $astrocfg
+echo "add_path $indexdir" >> $astrocfg
+echo autoindex  0 >> $astrocfg
+
+
+telescopes_already_astrometrised=( "TTT3_iKon" "TTT3_QHY" )
+
+astroimadir=$BDIR/astro-ima
+astroimadone=$astroimadir/done_"$filter".txt
+if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
+if [ -f $astroimadone ]; then
+  echo -e "\n\tImages are already astrometrized\n"
+else
+  if [[ " ${telescopes_already_astrometrised[*]} " == *" $telescope "* ]]; then
+    cp $framesForCommonReductionDir/*.fits $astroimadir/
+  else
+    frameNames=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+        base=$a.fits
+        i=$framesForCommonReductionDir/$base
+        frameNames+=("$i")
+    done
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
+  fi
+  echo done > $astroimadone
+fi
+
+
 writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
 echo -e "·Creating SExtractor catalogues and running scamp"
 
-numOfSextractorPlusScampIterations=2
+numOfSextractorPlusScampIterations=1
 
 sexcfg=$CDIR/sextractor_astrometry.sex
 sexparam=$CDIR/sextractor_astrometry.param
@@ -1002,22 +750,37 @@ if [ -f $scampdone ]; then
     echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
 else
   frameNames=()
+  totalNumberOfFrames=$( /bin/ls $BDIR/framesForCommonReduction/*.fits | wc -l )
   for a in $(seq 1 $totalNumberOfFrames); do
       frameNames+=("$a")
   done
 
   for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
     echo -e "\tSExtractor + scamp iteration $i"
+    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
 
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $framesForCommonReductionDir $sexdir $saturationThreshold $gain
-    scamp -c $scampcfg $sexdir/*.cat -NTHREADS=$num_cpus
-    cp $sexdir/*.head $framesForCommonReductionDir/
-    mv *.pdf $scampres/
-    mv scamp.xml $scampdir
+    N=100
+    for (( start=0; start<totalNumberOfFrames; start+=N )); do
+      chunk=( "${frameNames[@]:$start:$N}" )
+      catFiles=()
+      for f in "${chunk[@]}"; do
+        catFiles+=("$sexdir/$f.cat")
+      done
+      scamp -c $scampcfg "${catFiles[@]}" -NTHREADS=$num_cpus
+      mv *.pdf $scampres/
+      mv scamp.xml $scampdir
+    done
+    cp $sexdir/*.head $astroimadir/
     rm -f $sexdir/*.cat
   done
   echo done > $scampdone
 fi
+
+
+# diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+# if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
+# mv $scampdir $diagnosis_and_badFilesDir
+
 
 
 echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
@@ -1031,7 +794,12 @@ writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
 # and later we recover de full grid just before stacking
 
 
-folderWithFramesToWarp=$BDIR/framesForCommonReduction
+if ! [ -d "$BDIR/astro-ima" ]; then
+  folderWithFramesToWarp=$BDIR/framesForCommonReduction
+else
+  folderWithFramesToWarp=$BDIR/astro-ima
+fi
+
 
 
 
@@ -1059,7 +827,9 @@ else
   echo done > $entiredone
 fi
 
-rm -f $framesForCommonReductionDir/*.fits
+
+# rm -f $framesForCommonReductionDir/*.fits
+
 # Checking bad astrometrised frames ------
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 badFilesWarningsFile=identifiedBadFrames_astrometry.txt
@@ -1072,7 +842,7 @@ else
   # I create the file because we need it even if empty (for future python scripts). 
   # If you use frames already astrometrised it won't be created if we do not do that explicitly with the touch commmand
   touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
-  python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid
+  # python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid
   echo done > $badFilesWarningsDone
 fi
 totalNumberOfFrames=$(ls $entiredir_smallGrid/*.fits | wc -l)
@@ -1087,6 +857,7 @@ imagesAreMasked=false
 ringDir=$BDIR/ring
 writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
 computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
+
 
 # If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
 noiseskyctedir=$BDIR/noise-sky_it1_cte
@@ -1120,6 +891,91 @@ echo -e "\n·Subtracting background"
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
 subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
+
+
+
+if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" ) ]]; then
+  echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
+  writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
+  iteration=1
+  h=0
+  coaddDir=$BDIR/coadds-prephot
+  coaddDone=$coaddDir/done.txt
+  minRmsFileName=min_rms_prev_it$iteration.txt
+  noisesky_prephot=$BDIR/noise-sky_prephot
+  noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
+  if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
+  if [ -f $coaddDone ]; then
+    echo -e "\n Coadd pre-photometry already done\n"
+  else
+    # imagesAreMasked=false
+    # computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
+
+    noisesky_prephot=$noiseskydir
+
+
+    subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
+    subskyfullGridDone=$subskyfullGrid_dir/done.txt
+    if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
+    smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
+
+
+    rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
+    echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
+
+
+    prefixOfTheFilesToRemove="entirecamera_"
+    # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
+    # removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    # removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
+    rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+
+    python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
+
+    echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
+    sigmaForStdSigclip=3
+    clippingdir=$BDIR/clipping-outliers-prephot
+    clippingdone=$clippingdir/done.txt
+    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $subskyfullGrid_dir $sigmaForStdSigclip
+
+
+    subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
+    subSkyNoOutliersPxDone=$subSkyNoOutliersPxDir/done.txt
+    if ! [ -d $subSkyNoOutliersPxDir ]; then mkdir $subSkyNoOutliersPxDir; fi
+    removeOutliersFromWeightedFrames $subskyfullGrid_dir $clippingdir $subSkyNoOutliersPxDir $subSkyNoOutliersPxDone
+
+    ### Calculate the weights for the images based on the minimum rms ###
+    echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
+    writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
+    wdir=$BDIR/weight-dir_prephot
+    wonlydir=$BDIR/only-w-dir_prephot
+    wdone=$wdir/done.txt
+    wonlydone=$wonlydir/done.txt
+    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
+    if ! [ -d $wdir ]; then mkdir $wdir; fi
+    computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
+
+    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
+    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
+
+    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+    if [ -f $maskName ]; then
+      echo -e "\tThe mask of the weighted coadd is already done"
+    else
+      astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
+    fi
+
+    exposuremapDir=$coaddDir/"$objectName"_exposureMap
+    exposuremapdone=$coaddDir/done_exposureMap.txt
+    computeExposureMap $wdir $exposuremapDir $exposuremapdone
+  fi
+fi
+
 
 
 toleranceForMatching=1.5 #arcsec
@@ -1190,6 +1046,7 @@ computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration 
                           $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
 
+
 # Creating histogram with the number of stars used for the calibratino of each frame
 diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
 if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
@@ -1203,10 +1060,12 @@ else
   echo done > $numberOfStarsUsedInEachFrameDone
 fi
 
+
 applyCommonCalibrationFactor=true
 if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
   computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
 fi
+
 
 # DIAGNOSIS PLOT
 # Histogram of the background values on magnitudes / arcsec²
@@ -1249,10 +1108,11 @@ else
   done
   methodToUse="sextractor"
 
-  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $photCorrSmallGridDir $fwhmFolder 1 $methodToUse "'$noisechisel_param'" $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames 
+  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $entiredir_smallGrid $fwhmFolder 1 $methodToUse "'$noisechisel_param'" $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames 
   python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $entiredir_smallGrid $pixelScale $maximumSeeing
   echo done > $badFilesWarningsDone
 fi
+
 
 # DIAGNOSIS PLOTs ---------------------------------------------------
 
@@ -1327,6 +1187,7 @@ echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
 # Because of that, we have the function createBlocks(), to detect the number of blocks needed to divide the frames, and their respective crop sections
 createBlocks $photCorrfullGridDir $coaddSizePx
 
+
 numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
 
 
@@ -1381,6 +1242,7 @@ else
 fi
 
 
+
 ##We now need the coadd dir and the coadd name
 coaddDir=$BDIR/coadds_it$iteration
 coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
@@ -1401,7 +1263,7 @@ else
     astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
     imToMask=$coaddDir/coadd_convolved.fits
   fi
-  astnoisechisel $imToMask --tilesize=15,15 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+  astnoisechisel $imToMask --tilesize=35,35 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
   if [ "$blockScale" -gt 1 ]; then
     astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
     astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
@@ -1464,6 +1326,7 @@ if ! [ -f $fwhmPlotsWithCoadd ]; then
 fi
 
 
+
 # # Remove intermediate folders to save some space
 find $BDIR/noisesky_forCleaningBadFramesBeforeFlat_n1 -type f ! -name 'done*' -exec rm {} \;
 #find $BDIR/noise-sky_it1 -type f ! -name 'done*' -exec rm {} \;
@@ -1499,10 +1362,12 @@ for ((i=0; i<${#maskArray[@]}; i+=5)); do
 	python3 $pythonScriptsPath/manualMaskRegionFromWCSArea.py $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $valueToPut $ra_tmp $dec_tmp $r $axisRatio $pa
 done
 
-if [ -f $CDIR/mask.fits ]; then
+if [ -f $CDIR/mask.fits ] && [ -f $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits ]; then
   #If a mask already exists, we combine the created one with the existing one
   cp $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits
   astarithmetic $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask_copy.fits $CDIR/mask.fits -g1 1 eq 1 where float32 -o $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits --quiet
+elif [ -f $CDIR/mask.fits ]; then
+  cp $CDIR/mask.fits $BDIR/coadds_it1/"$objectName"_coadd_"$filter"_mask.fits
 fi
 
 
@@ -1583,8 +1448,6 @@ smallPointings_maskedDir=$BDIR/pointings_smallGrid_masked_it$iteration
 maskedPointingsDone=$smallPointings_maskedDir/done_.txt
 maskPointings $starsSub_small $smallPointings_maskedDir $maskedPointingsDone $maskName $entiredir_smallGrid
 
-
-
 noiseskydir=$BDIR/noise-sky_it$iteration
 noiseskydone=$noiseskydir/done_"$filter"_ccd"$h".txt
 imagesAreMasked=true # They are masked, but we run and apply noisechisel mask anyway to improve it if possible
@@ -1594,11 +1457,6 @@ rm -f $smallPointings_maskedDir/*.fits
 subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter"_ccd"$h".txt
 subtractSky $starsSub_small $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT 
-
-
-
-
-
 
 
 writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
@@ -1619,6 +1477,7 @@ computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration 
 if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
   computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
 fi
+
 
 
 # DIAGNOSIS PLOT
@@ -1644,6 +1503,7 @@ subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it$iteration
 photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
 applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
 
+
 rm -f $subskySmallGrid_dir/*.fits
 
 
@@ -1662,9 +1522,8 @@ else
     fi
     mosaicPlot=false
     produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it$iteration $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_it$iteration $onlyPointLikeCat
+                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR  $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_it$iteration $onlyPointLikeCat
 fi
-
 
 
 
@@ -1674,11 +1533,21 @@ fi
 #computeSky $smallPointings_photCorr_maskedDir $noiseskydir $noiseskydone true wholeImage -1 true $BDIR/ring $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
 
 
+# Warping in case I need to check manually the TST frames
+# mkdir -p $BDIR/tmp
+# for i in $( /bin/ls -v $photCorrSmallGridDir/*.fits ); do
+# 	name=$( basename $i )
+# 	astwarp $i --scale=1/12 -h1 -o $BDIR/tmp/$name
+# done
+
+
+
 photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
 photCorrfullGridDone=$photCorrfullGridDir/done.txt
 if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
 smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra_gal $dec_gal
 rm -f $photCorrSmallGridDir/*.fits
+
 
 fwhmFolder=$BDIR/seeing_values
 badFilesWarningsFile=identifiedBadFrames_fwhm_it2.txt
@@ -1724,6 +1593,7 @@ rm $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
 
 createBlocks $photCorrfullGridDir $coaddSizePx
 numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
+
 
 if [ "$numBlocks" -eq 1 ]; then
   buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir

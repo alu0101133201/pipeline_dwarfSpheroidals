@@ -346,7 +346,6 @@ checkIfNeededFilterCorrectionIsGiven() {
 }
 export -f checkIfNeededFilterCorrectionIsGiven
 
-
 # In this function we check the transmittances given. Just for having everything in the same units
 # We place everything into Angstroms and transmittances from 0 to 1.
 checkUnitsAndConvertToCommonUnitsIfNeeded() {
@@ -389,8 +388,6 @@ checkUnitsAndConvertToCommonUnitsIfNeeded() {
 }
 export -f checkUnitsAndConvertToCommonUnitsIfNeeded
 
-
-
 checkIfAllTheTransmittancesNeededAreGiven() {
     local telescope=$1
     local survey=$2
@@ -420,6 +417,179 @@ checkIfAllTheTransmittancesNeededAreGiven() {
     fi
 }
 export -f checkIfAllTheTransmittancesNeededAreGiven
+
+
+
+
+maskAndNormaliseForFlatIteration() {
+    # Shared "mask + normalise" core used by flat iterations 2 and 3 in oneNightPreProcessing.
+    # It only covers the part of the iteration that is IDENTICAL between it2 and it3:
+    #   noisechisel-mask -> maskImages -> normaliseImagesWithRing (running + whole-night variants)
+    # Combining into a flat, any correction, and dividing the science images by it stays in
+    # oneNightPreProcessing itself, since that logic genuinely differs between it2 and it3
+    # (it3 additionally does bad-frame removal before combining, and a running/whole-night
+    # correction step after combining).
+
+    local iterationNum=$1
+    local inputRunningDir=$2
+    local inputWholeNightDir=$3
+    local n_exp=$4
+    local currentNight=$5
+ 
+    local noiseDir_running=$BDIR/noise-it"$iterationNum"-Running_n$currentNight
+    local noiseDone_running=$noiseDir_running/done_"$filter"_ccd"$h".txt
+    local noiseDir_wholeNight=$BDIR/noise-it"$iterationNum"-WholeNight_n$currentNight
+    local noiseDone_wholeNight=$noiseDir_wholeNight/done_"$filter"_ccd"$h".txt
+    local maskedDir_running=$BDIR/masked-it"$iterationNum"-Running_n$currentNight
+    local maskedDone_running=$maskedDir_running/done_"$filter"_ccd"$h".txt
+    local maskedDir_wholeNight=$BDIR/masked-it"$iterationNum"-WholeNight_n$currentNight
+    local maskedDone_wholeNight=$maskedDir_wholeNight/done_"$filter"_ccd"$h".txt
+    local normDir_running=$BDIR/norm-it"$iterationNum"-Running-images_n$currentNight
+    local normDone_running=$normDir_running/done_"$filter"_ccd"$h".txt
+    local normDir_wholeNight=$BDIR/norm-it"$iterationNum"-WholeNight-images_n$currentNight
+    local normDone_wholeNight=$normDir_wholeNight/done_"$filter"_ccd"$h".txt
+ 
+    echo -e "${GREEN} --- Flat iteration $iterationNum --- ${NOCOLOUR}"
+ 
+    # Obtain a mask using noisechisel on the running flat images
+    if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
+        if ! [ -d "$noiseDir_running" ]; then mkdir "$noiseDir_running"; fi
+        if [ -f "$noiseDone_running" ]; then
+            echo -e "\nScience images are 'noisechiseled' for it$iterationNum running flat for night $currentNight and extension $h\n"
+        else
+            frameNames=()
+            for a in $(seq 1 $n_exp); do
+                base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+                frameNames+=("$base")
+            done
+            printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} "$inputRunningDir" "$noiseDir_running" $blockScale "'$noisechisel_param'"
+            echo done > "$noiseDone_running"
+        fi
+    fi
+    rm -f "$inputRunningDir"/*.fits
+ 
+    # Obtain a mask using noisechisel on the whole night flat images
+    if ! [ -d "$noiseDir_wholeNight" ]; then mkdir "$noiseDir_wholeNight"; fi
+    if [ -f "$noiseDone_wholeNight" ]; then
+        echo -e "\nScience images are 'noisechiseled' for it$iterationNum whole night flat for night $currentNight and extension $h\n"
+    else
+        frameNames=()
+        for a in $(seq 1 $n_exp); do
+            base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
+            frameNames+=("$base")
+        done
+        printf "%s\n" "${frameNames[@]}" | parallel -j "$num_parallel" runNoiseChiselOnFrame {} "$inputWholeNightDir" "$noiseDir_wholeNight" $blockScale "'$noisechisel_param'"
+        echo done > "$noiseDone_wholeNight"
+    fi
+    rm -f "$inputWholeNightDir"/*.fits
+ 
+    # Mask the images (running flat)
+    if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
+        if ! [ -d "$maskedDir_running" ]; then mkdir "$maskedDir_running"; fi
+        if [ -f "$maskedDone_running" ]; then
+            echo -e "\nScience images are masked for running flat, night $currentNight and extension $h\n"
+        else
+            maskImages $mbiascorrdir "$noiseDir_running" "$maskedDir_running" $USE_COMMON_RING $keyWordToDecideRing $n_exp
+            echo done > "$maskedDone_running"
+        fi
+    fi
+    rm -f "$noiseDir_running"/*.fits
+ 
+    # Mask the images (whole night flat)
+    if ! [ -d "$maskedDir_wholeNight" ]; then mkdir "$maskedDir_wholeNight"; fi
+    if [ -f "$maskedDone_wholeNight" ]; then
+        echo -e "\nScience images are masked for whole night flat, night $currentNight and extension $h\n"
+    else
+        maskImages $mbiascorrdir "$noiseDir_wholeNight" "$maskedDir_wholeNight" $USE_COMMON_RING $keyWordToDecideRing $n_exp
+        echo done > "$maskedDone_wholeNight"
+    fi
+    rm -f "$noiseDir_wholeNight"/*.fits
+ 
+    # Normalising masked images (running flat)
+    if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
+        if ! [ -d "$normDir_running" ]; then mkdir "$normDir_running"; fi
+        if [ -f "$normDone_running" ]; then
+            echo -e "\nMasked science images are normalized for running flat, night $currentNight and extension $h\n"
+        else
+            normaliseImagesWithRing "$maskedDir_running" "$normDir_running" $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $n_exp
+            echo done > "$normDone_running"
+        fi
+        printf -v "normit${iterationNum}dir" '%s' "$normDir_running"
+    fi
+    rm -f "$maskedDir_running"/*.fits
+ 
+    # Normalising masked images (whole night flat)
+    if ! [ -d "$normDir_wholeNight" ]; then mkdir "$normDir_wholeNight"; fi
+    if [ -f "$normDone_wholeNight" ]; then
+        echo -e "\nMasked science images are normalized for whole night flat, night $currentNight and extension $h\n"
+    else
+        normaliseImagesWithRing "$maskedDir_wholeNight" "$normDir_wholeNight" $USE_COMMON_RING $ringdir/ring.fits $ringdir/ring_2.fits $ringdir/ring_1.fits $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $n_exp
+        echo done > "$normDone_wholeNight"
+    fi
+    rm -f "$maskedDir_wholeNight"/*.fits
+    printf -v "normit${iterationNum}WholeNightdir" '%s' "$normDir_wholeNight"
+}
+export -f maskAndNormaliseForFlatIteration
+ 
+flatsForIteration() {
+    # Shared "combine normalised images into a flat" step used by flat iterations 2 and 3.
+    # Covers calculateRunningFlat + calculateWholeNightFlat, which are already identical in
+    # call signature between it2 and it3 - only the output directory for the running flat
+    # differs (it2 writes straight to its final flatit2dir; it3 writes to an intermediate
+    # "BeforeCorrection" dir, since it3 still needs the correctRunningFlatWithWholeNightFlat
+    # step afterwards). That output directory is passed in as a parameter for this reason.
+
+    local iterationNum=$1
+    local runningFlatOutputDir=$2
+    local currentNight=$3
+ 
+    local normDirRunningVar="normit${iterationNum}dir"
+    local normDirRunning="${!normDirRunningVar}"
+    local normDirWholeNightVar="normit${iterationNum}WholeNightdir"
+    local normDirWholeNight="${!normDirWholeNightVar}"
+ 
+    # Combine the normalised images into the running flat
+    if [[ "${RUNNING_FLAT,,}" == "true" ]]; then
+        local runningDone=$runningFlatOutputDir/done_"$filter"_ccd"$h".txt
+        if ! [ -d "$runningFlatOutputDir" ]; then mkdir "$runningFlatOutputDir"; fi
+        if [ -f "$runningDone" ]; then
+            echo -e "\nScience images are stacked for it$iterationNum running flat for night $currentNight and extension $h\n"
+        else
+            calculateRunningFlat "$normDirRunning" "$runningFlatOutputDir" "$runningDone" "$iterationNum"
+        fi
+    fi
+    rm -f "$normDirRunning"/*.fits
+ 
+    # We also compute the flat using all the frames of the night
+    local wholeNightFlatDir=$BDIR/flat-it"$iterationNum"-WholeNight_n$currentNight
+    local wholeNightDone=$wholeNightFlatDir/done_"$filter"_ccd"$h".txt
+    if ! [ -d "$wholeNightFlatDir" ]; then mkdir "$wholeNightFlatDir"; fi
+    if [ -f "$wholeNightDone" ]; then
+        echo -e "\nWhole night flat it-$iterationNum already built for night $currentNight and extension $h\n"
+    else
+        calculateWholeNightFlat "$wholeNightFlatDir/flat-it${iterationNum}_wholeNight_n$currentNight.fits" "$normDirWholeNight" "$currentNight" "$wholeNightFlatDir"
+        echo "done" >> "$wholeNightDone"
+    fi
+    rm -f "$normDirWholeNight"/*.fits
+ 
+    printf -v "flatit${iterationNum}WholeNightdir" '%s' "$wholeNightFlatDir"
+}
+export -f flatsForIteration
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 subtractBiasFromFrame(){
     local base=$1
     local dark=$2
@@ -442,6 +612,7 @@ subtractBiasFromFrame(){
     rm $i
 }
 export -f subtractBiasFromFrame
+
 # Functions used in Flat
 maskImages() {
     local inputDirectory=$1
@@ -502,7 +673,6 @@ getInitialMidAndFinalFrameTimes() {
   echo "$initialTime $meanTime $finalTime"
 }
 export -f getInitialMidAndFinalFrameTimes
-
 
 writeKeywordToFits() {
     local fitsFile=$1
@@ -724,6 +894,7 @@ normaliseImagesWithRing() {
     local keyWordValueForFirstRing=$9
     local keyWordValueForSecondRing=${10}
     local n_exp=${11}
+    
     imagesToNormalise=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -795,14 +966,12 @@ calculateRunningFlat() {
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits" "${lefFlatFiles[@]}"
     propagateKeyword "${lefFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_left_ccd"$h".fits"
 
-
     rightFlatFiles=("${fileArray[@]:(fileArrayLength-$windowSize):fileArrayLength}")
     echo "Computing right flat - iteration $iteration"
     calculateFlat "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits" "${rightFlatFiles[@]}"
     propagateKeyword "${rightFlatFiles[$halfWindowSize]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_right_ccd"$h".fits"
 
     echo "Computing non-common flats - iteration $iteration"
-    #aValues=()
     for a in $(seq 1 $(ls $normalisedDir/*.fits | wc -l)); do
 	if [ "$a" -gt "$((halfWindowSize + 1))" ] && [ "$((a))" -lt "$(($(ls $normalisedDir/*.fits | wc -l) - $halfWindowSize))" ]; then
             leftLimit=$(( a - $halfWindowSize - 1))
@@ -811,10 +980,7 @@ calculateRunningFlat() {
             tmpIndex=$(( a - 1 ))
             propagateKeyword "${fileArray[$tmpIndex]}" $dateHeaderKey "$outputDir/flat-it"$iteration"_"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits"
         fi
-    #    aValues+=("$a")
     done
-    #printf "%s\n" "${aValues[@]}" | parallel -j "$num_cpus" calculateNonCommonFlat {} $outputDir $iteration $fileArray
-    #seq 1 $n_exp | parallel -j "$num_cpus" calculateNonCommonFlat {} "$outputDir" "$iteration" "$normalisedDir" "$h" "$n_exp"
     echo done > $doneFile
 }
 export -f calculateRunningFlat
@@ -888,6 +1054,8 @@ divideImagesByRunningFlats(){
     local flatDir=$3
     local flatDone=$4
     local n_exp=$5
+    local iteration=$6
+    
     imagesToDivide=()
     for a in $(seq 1 $n_exp); do
         base="$objectName"-Decals-"$filter"_n"$currentNight"_f"$a"_ccd"$h".fits
@@ -1019,7 +1187,6 @@ runNoiseChiselOnFrame() {
     local outputDir=$3
     local blockScale=$4
     local noiseChiselParams=$5
-    local num_threads=4
     ###If a block scale is given, we will block, highlighting LSB regions, detect, and un-block the mask
 
     imageToUse=$inputFileDir/$baseName
@@ -1119,7 +1286,7 @@ warpImage() {
     astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
     echo $row_min $row_max $col_min $col_max > $entiredir/entirecamera_"$currentIndex"_cropRegion.txt
 
-    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 $frameFullGrid
+    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 # $frameFullGrid
 
     # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but  swarp for some reason propagates it incorrectly
     propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 
@@ -1614,6 +1781,19 @@ downloadIndex() {
 }
 export -f downloadIndex
 
+sexa_to_deg() {
+    local sexa=$1
+    local sign=1
+    # Handle negative (for Dec)
+    if [[ "$sexa" == -* ]]; then
+        sign=-1
+        sexa="${sexa#-}"
+    fi
+    IFS=':' read -r h m s <<< "$sexa"
+    echo "$sign $h $m $s" | awk '{printf "%.10f", $1 * ($2 + $3/60 + $4/3600)}'
+}
+export -f sexa_to_deg
+
 solveField() {
     local i=$1
     local solve_field_L_Param=$2
@@ -1625,6 +1805,7 @@ solveField() {
     local astroimadir=$8
     local sexcfg_sf=$9
     local sizeOfOurFieldDegrees=${10}
+    local indexDir=${11}
     base=$( basename $i)
 
 
@@ -1632,44 +1813,56 @@ solveField() {
     LC_NUMERIC=C  # Format to get rid of scientific notation if needed
 
     pointingRAValue=$( astfits $i --keyvalue=$pointingRA --quiet)
-    pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
     if [[ "$pointingRAUnits" == "hours" ]]; then
-        pointRA=$(echo "$pointingRAValue * 15" | bc -l)
+    	pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
+        pointingRAValue=$(echo "$pointingRAValue * 15" | bc -l)
     elif [[ "$pointingRAUnits" == "deg" || "$pointingRAUnits" == "degrees" ]]; then
-        pointRA="$pointingRAValue"
+    	pointingRAValue=$( printf "%.8f\n" " $pointingRAValue")
+        pointingRAValue="$pointingRAValue"
+    elif [[ "$pointingRAUnits" == "sexa" ]]; then
+        pointingRAValue=$( sexa_to_deg "$pointingRAValue" )
+	pointingRAValue=$( echo "$pointingRAValue * 15" | bc -l)
     else
         echo "Error: Unsupported RA units: $pointingRAUnits"
         exit 888
     fi
 
     pointingDecValue=$( astfits $i --keyvalue=$pointingDEC --quiet)
-    pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
     if [[ "$pointingDECUnits" == "hours" ]]; then
-        pointDec=$(echo "$pointingDecValue * 15" | bc -l)
+        pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
+        pointingDecValue=$(echo "$pointingDecValue * 15" | bc -l)
     elif [[ "$pointingDECUnits" == "deg" || "$pointingDECUnits" == "degrees" ]]; then
-        pointDec="$pointingDecValue"
+        pointingDecValue=$( printf "%.8f\n" " $pointingDecValue")
+        pointingDecValue="$pointingDecValue"
+    elif [[ "$pointingDECUnits" == "sexa" ]]; then
+        pointingDecValue=$( sexa_to_deg "$pointingDecValue" )
     else
         echo "Error: Unsupported RA units: $pointingDECUnits"
         exit 888
     fi
 
+    pointRA=$pointingRAValue
+    pointDec=$pointingDecValue
+
+
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
-    max_attempts=4
+    max_attempts=2
     attempt=1
     sex_path=$( which sex )
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
-        echo solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees
-        solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees\
-        -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
+
+	solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees \
+	-L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
         --use-source-extractor --source-extractor-path=$sex_path \
         --source-extractor-config=$sexcfg_sf --x-column X_IMAGE --y-column Y_IMAGE \
-        --sort-column MAG_AUTO --sort-ascending  \
+        --sort-column MAG_AUTO --sort-ascending \
         -Unone --temp-axy  -Snone -Mnone -Rnone -Bnone -N$astroimadir/$base ;
+
         if [ -s "$layer_temp" ]; then
             attempt=$max_attempts
         fi
@@ -3209,7 +3402,7 @@ produceCalibrationCheckPlot() {
 
         # In the nominal resolution it takes sooo long for doing this plots. So only a set of frames are used for the
         # calibration check
-        if [ "$frameNumber" -gt 10 ]; then
+        if [ "$frameNumber" -gt 50 ]; then
             :
         else
             if [[ ($survey == "SPECTRA") || ("$mosaicPlot" == true) ]]; then
@@ -4079,7 +4272,7 @@ createBlocks(){
         echo -e "crop sections already done"
     else
         availMemory_gb=$(awk '/MemAvailable/ {printf "%.3f \n", $2/1024/1024/1.3 }' /proc/meminfo)
-        safetyMem=100.0 #Gb
+        safetyMem=50.0 #Gb
         availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
         echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
         
@@ -4116,6 +4309,7 @@ cropInSectionsSingleFrame(){
 
     i=$fullGridDir/$base
     out=$outDir/$base
+    echo astcrop $i -h1 --mode=img --section=$section --zeroisnotblank -o $out --numthreads=$num_threads
     astcrop $i -h1 --mode=img --section=$section --zeroisnotblank -o $out --numthreads=$num_threads
 }
 export -f cropInSectionsSingleFrame
