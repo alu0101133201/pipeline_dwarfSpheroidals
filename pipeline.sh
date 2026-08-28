@@ -74,7 +74,7 @@ load_module $wcsModuleName
 RUN_NIGHT=""
 RUN_COMMON=false
 
-OPTSTRING=":hn:c"
+OPTSTRING=":hn:cp:"
 while getopts ${OPTSTRING} opt; do
   case ${opt} in
     h)
@@ -84,6 +84,8 @@ while getopts ${OPTSTRING} opt; do
       RUN_NIGHT=${OPTARG};;
     c)
       RUN_COMMON=true;;
+    p)
+      PHASE=${OPTARG};;
     \?)
       echo "Invalid option: -${OPTARG}"
       exit 1;;
@@ -603,7 +605,6 @@ oneNightPreProcessing() {
   fi
 
   rm  $flatit3dir/*.fits  
-
   
   # At this point we can process the frames of all the nights in the same way
   # So we place all the final frames into a common folder.
@@ -651,221 +652,322 @@ if [ -n "$RUN_NIGHT" ]; then
   echo "Night $RUN_NIGHT is starting work at $(date)"
   oneNightPreProcessing "$RUN_NIGHT"
   echo "Night $RUN_NIGHT actually finished all its work naturally at $(date)"
-  
-  sleep 30 # Add a delay
+  exit 0
 fi
 
+# We rename the files in an homogeneous way
+renameFiles(){ 
+  totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
 
-#3. Now we recover the common reduction part
-lockfile_rename="$framesForCommonReductionDir/rename_done.txt"
-index=1
-echo $lockfile_rename
-if [ ! -f "$lockfile_rename" ]; then
   echo -e "\n ${GREEN} --- Sequentially renaming frames for common reduction --- ${NOCOLOUR} \n"
-  for file in $(ls -v $framesForCommonReductionDir/*ccd0.fits); do
-    mv "$file" "$framesForCommonReductionDir/$index.fits"
-    # astfits "$framesForCommonReductionDir/${index}.fits" -h1 --write=ORIGINAL_FILE,$(basename "$file")
-    index=$(( index+1 ))
-  done
-  echo done > $lockfile_rename
-fi
-
-
-
-totalNumberOfFrames=$( ls $framesForCommonReductionDir/*.fits | wc -l)
-export totalNumberOfFrames
-echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
-
-
-# Up to this point the frame of every night has been corrected of bias-dark and flat.
-# That corrections are perform night by night (because it's necessary for perform that corretions)
-# Now, all the frames are "equal" so we do no distinction between nights.
-# All the frames are stored together in $framesForCommonReductionDir with names 1.fits, 2.fits, 3.fits ... n.fits.
-echo -e "\n${GREEN} --- Astrometry --- ${NOCOLOUR}\n"
-
-writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
-echo -e "·Downloading Gaia Catalogue"
-catdir=$DIR/catalogs
-catName=$catdir/"$objectName"_gaia.fits
-      
-
-
-sexcfg_sf=$CDIR/sextractor_solvefield.sex #Solving the images
-writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
-echo -e "·Solving fields"
-
-astrocfg=$CDIR/astrometry_$objectName.cfg
-
-indexdir=$BDIR/indexes
-rm $astrocfg
-echo inparallel > $astrocfg
-echo cpulimit 300 >> $astrocfg
-echo "add_path $indexdir" >> $astrocfg
-echo autoindex  0 >> $astrocfg
-
-
-telescopes_already_astrometrised=( "TTT3_iKon" "TTT3_QHY" )
-
-astroimadir=$BDIR/astro-ima
-astroimadone=$astroimadir/done_"$filter".txt
-if ! [ -d $astroimadir ]; then mkdir $astroimadir; fi
-if [ -f $astroimadone ]; then
-  echo -e "\n\tImages are already astrometrized\n"
-else
-  if [[ " ${telescopes_already_astrometrised[*]} " == *" $telescope "* ]]; then
-    cp $framesForCommonReductionDir/*.fits $astroimadir/
+  if [ -f "$framesForCommonReductionDir/rename_done.txt" ]; then
+    echo "Frames already renamed"
   else
+    index=1
+    for file in $(ls -v $framesForCommonReductionDir/*ccd0.fits); do
+      mv "$file" "$framesForCommonReductionDir/$index.fits"
+      index=$(( index+1 ))
+    done
+    echo done > "$framesForCommonReductionDir/rename_done.txt"
+  fi
+
+  ls "$framesForCommonReductionDir"/*.fits | wc -l > "$totalFramesFile"
+  totalNumberOfFrames=$(cat "$totalFramesFile")
+  export totalNumberOfFrames
+  echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"
+}
+export -f renameFiles
+
+runAstrometrySetup() {
+  astrocfg=$CDIR/astrometry_$objectName.cfg
+  indexdir=$BDIR/indexes
+
+  rm -f $astrocfg
+  echo inparallel > $astrocfg
+  echo cpulimit 300 >> $astrocfg
+  echo "add_path $indexdir" >> $astrocfg
+  echo autoindex  0 >> $astrocfg
+}
+export -f runAstrometrySetup
+
+runAstrometryPhase() {
+    echo -e "\n${GREEN} --- Astrometry (task $SLURM_PROCID of $SLURM_NTASKS) --- ${NOCOLOUR}\n"
+ 
+ 
+    writeTimeOfStepToFile "Download Gaia catalogue" $fileForTimeStamps
+    echo -e "·Downloading Gaia Catalogue"
+    catdir=$DIR/catalogs
+    catName=$catdir/"$objectName"_gaia.fits
+ 
+    writeTimeOfStepToFile "Solving fields" $fileForTimeStamps
+    echo -e "·Solving fields"
+ 
+
+    astroimadir=$BDIR/astro-ima
+    if ! [ -d $astroimadir ]; then mkdir -p $astroimadir; fi
+ 
+    telescopes_already_astrometrised=( "TTT3_iKon" "TTT3_QHY" )
+    if [[ " ${telescopes_already_astrometrised[*]} " == *" $telescope "* ]]; then
+        astroimadone=$astroimadir/done_"$filter".txt
+        (
+            flock -x 202
+            if [ ! -f $astroimadone ]; then
+                cp $framesForCommonReductionDir/*.fits $astroimadir/
+                echo done > $astroimadone
+            fi
+        ) 202>"$astroimadir/copy.lock"
+        return 0
+    fi
+ 
+    # --- Per-task chunk of the actual solving work ---
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")    
+    export totalNumberOfFrames
+ 
+    sexcfg_sf=$CDIR/sextractor_solvefield.sex
+    local taskDone="$astroimadir/done_${filter}_task${SLURM_PROCID}.txt"
+    if [ -f "$taskDone" ]; then
+        echo -e "\n\tThis task's frames are already solved\n"
+        return 0
+    fi
+ 
     frameNames=()
     for a in $(seq 1 $totalNumberOfFrames); do
-        base=$a.fits
-        i=$framesForCommonReductionDir/$base
-        frameNames+=("$i")
+        if (( (a - 1) % SLURM_NTASKS == SLURM_PROCID )); then
+            frameNames+=("$framesForCommonReductionDir/$a.fits")
+        fi
     done
     printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" solveField {} $solve_field_L_Param $solve_field_H_Param $solve_field_u_Param $ra_gal $dec_gal $CDIR $astroimadir $sexcfg_sf $sizeOfOurFieldDegrees
-  fi
-  echo done > $astroimadone
-fi
+    echo done > "$taskDone"
+}
+export -f runAstrometryPhase
+ 
+runSextractorScampPhase() {
+    # Runs on every task of one multi-task step. Must run in a *separate*
+    # srun step after astrometry-solve has fully finished for every frame -
+    # solveField's round-robin frame assignment doesn't line up with the
+    # contiguous batches scamp needs here, so a task in this phase may need
+    # frames any task in the previous phase solved.
+    #
+    # SExtractor is per-frame independent, same shape as solveField. scamp
+    # isn't per-frame, but it IS per-CHUNK independent (each 100-frame batch
+    # is its own self-contained joint fit). So each task is handed whole
+    # chunks and runs sextractor+scamp for its own chunks end-to-end - no
+    # cross-task dependency inside this phase at all, no extra barrier needed.
+    echo -e "\n${GREEN} --- SExtractor + scamp (task $SLURM_PROCID of $SLURM_NTASKS) --- ${NOCOLOUR}\n"
+ 
+    writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
+    echo -e "·Creating SExtractor catalogues and running scamp"
+ 
+    sexcfg=$CDIR/sextractor_astrometry.sex
+    sexparam=$CDIR/sextractor_astrometry.param
+    sexconv=$CDIR/default.conv
+    sexdir=$BDIR/sex-it1
+    astroimadir=$BDIR/astro-ima
 
-
-writeTimeOfStepToFile "Making sextractor catalogues and running scamp" $fileForTimeStamps
-echo -e "·Creating SExtractor catalogues and running scamp"
-
-numOfSextractorPlusScampIterations=1
-
-sexcfg=$CDIR/sextractor_astrometry.sex
-sexparam=$CDIR/sextractor_astrometry.param
-sexconv=$CDIR/default.conv
-sexdir=$BDIR/sex-it1
-
-scampcfg=$CDIR/scamp.cfg
-scampdir=$BDIR/scamp-it1
-scampres=$scampdir/results_Decals-"$filter"
-scampdone=$scampdir/done_"$filter".txt
-
-if ! [ -d $sexdir ]; then mkdir $sexdir; fi
-if ! [ -d $scampdir ]; then mkdir $scampdir; fi
-if ! [ -d $scampres ]; then mkdir $scampres; fi
-
-if [ -f $scampdone ]; then
-    echo -e "\n\tSex catalogs and scamp are already done for extension $h\n"
-else
-  frameNames=()
-  totalNumberOfFrames=$( /bin/ls $BDIR/framesForCommonReduction/*.fits | wc -l )
-  for a in $(seq 1 $totalNumberOfFrames); do
-      frameNames+=("$a")
-  done
-
-  for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
-    echo -e "\tSExtractor + scamp iteration $i"
-    printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
-
-    N=100
-    for (( start=0; start<totalNumberOfFrames; start+=N )); do
-      chunk=( "${frameNames[@]:$start:$N}" )
-      catFiles=()
-      for f in "${chunk[@]}"; do
-        catFiles+=("$sexdir/$f.cat")
+    scampcfg=$CDIR/scamp.cfg
+    scampdir=$BDIR/scamp-it1
+    scampres=$scampdir/results_Decals-"$filter"
+ 
+    mkdir -p "$sexdir" "$scampdir" "$scampres"
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+ 
+    local N=100
+    local numChunks=$(( (totalNumberOfFrames + N - 1) / N ))
+    local numOfSextractorPlusScampIterations=1
+ 
+    for ((i = 1; i <= numOfSextractorPlusScampIterations; i++)); do
+      echo -e "\tSExtractor + scamp iteration $i"
+ 
+      for (( c=0; c<numChunks; c++ )); do
+        # Round-robin chunks across tasks
+        if (( c % SLURM_NTASKS != SLURM_PROCID )); then
+            continue
+        fi
+ 
+        local start=$(( c * N + 1 ))
+        local end=$(( start + N - 1 ))
+        if (( end > totalNumberOfFrames )); then end=$totalNumberOfFrames; fi
+ 
+        local chunkDone="$scampdir/done_chunk${start}_${end}_it${i}.txt"
+        if [ -f "$chunkDone" ]; then
+            echo -e "\n\tChunk $start-$end (iteration $i) already processed\n"
+            continue
+        fi
+ 
+        echo -e "\tSExtractor + scamp for frames $start-$end (chunk $c, task $SLURM_PROCID, iteration $i)"
+ 
+        frameNames=()
+        for (( a=start; a<=end; a++ )); do
+            frameNames+=("$a")
+        done
+ 
+        printf "%s\n" "${frameNames[@]}" | parallel -j "$num_cpus" runSextractorOnImage {} $sexcfg $sexparam $sexconv $astroimadir $sexdir $saturationThreshold $gain
+ 
+        catFiles=()
+        for f in "${frameNames[@]}"; do
+            catFiles+=("$sexdir/$f.cat")
+        done
+ 
+        # Isolate this chunk's scamp run in its own working directory so
+        # concurrently-running tasks don't clobber each other's scamp.xml /
+        # check-plot output (scamp writes those to the CWD by default).
+        local chunkWorkDir
+        chunkWorkDir=$(mktemp -d "$scampdir/tmp_chunk${start}_${end}.XXXXXX")
+        (
+            cd "$chunkWorkDir"
+            scamp -c $scampcfg "${catFiles[@]}" -NTHREADS=$num_cpus
+            mv ./*.pdf "$scampres/" 2>/dev/null
+            mv scamp.xml "$scampdir/scamp_${start}_${end}_it${i}.xml"
+        )
+        rm -rf "$chunkWorkDir"
+ 
+        # Only touch THIS chunk's files - sexdir is shared across tasks
+        for f in "${frameNames[@]}"; do
+            if [ -f "$sexdir/$f.head" ]; then
+                cp "$sexdir/$f.head" "$astroimadir/"
+            fi
+            rm -f "$sexdir/$f.cat"
+        done
+ 
+        echo done > "$chunkDone"
       done
-      scamp -c $scampcfg "${catFiles[@]}" -NTHREADS=$num_cpus
-      mv *.pdf $scampres/
-      mv scamp.xml $scampdir
     done
-    cp $sexdir/*.head $astroimadir/
-    rm -f $sexdir/*.cat
-  done
-  echo done > $scampdone
+}
+export -f runSextractorScampPhase
+ 
+runWarpPhase() {
+    # Runs on every task of one multi-task step. Must run in a separate srun
+    # step after sextractor-scamp has fully finished for every chunk, since
+    # warping reads each frame's .head file (written by scamp into astro-ima)
+    # and there's no guarantee this task's assigned frames were solved by
+    # the same task in the previous phase.
+    #
+    # Per-frame independent, same shape as solveField: round-robin frames
+    # across tasks by SLURM_PROCID. warpImage now cleans up its own
+    # full-grid intermediate file per-frame, so there's no shared-directory
+    # cleanup left to coordinate between tasks.
+    echo -e "\n${GREEN} --- Warping (task $SLURM_PROCID of $SLURM_NTASKS) --- ${NOCOLOUR}\n"
+ 
+    if ! [ -d "$BDIR/astro-ima" ]; then
+        folderWithFramesToWarp=$BDIR/framesForCommonReduction
+    else
+        folderWithFramesToWarp=$BDIR/astro-ima
+    fi
+ 
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    entiredir_fullGrid=$BDIR/pointings_fullGrid
+    swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
+    export swarpcfg
+ 
+    mkdir -p "$entiredir_smallGrid" "$entiredir_fullGrid"
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+    export totalNumberOfFrames
+ 
+    local taskDone="$entiredir_smallGrid/done_task${SLURM_PROCID}.txt"
+    if [ -f "$taskDone" ]; then
+        echo -e "\n\tThis task's frames are already warped\n"
+        return 0
+    fi
+ 
+    imagesToWarp=()
+    for a in $(seq 1 $totalNumberOfFrames); do
+        if (( (a - 1) % SLURM_NTASKS == SLURM_PROCID )); then
+          echo "I am node $SLURM_PROCID processing the file $a"
+          imagesToWarp+=("$folderWithFramesToWarp/$a.fits")
+        fi
+    done
+
+    printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_parallel" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $num_threads
+    rm -rf $entiredir_fullGrid
+    echo done > "$taskDone"
+}
+export -f runWarpPhase
+
+runSkyPhase() {
+    # Runs on every task of one multi-task step. Must run in a separate srun
+    # step after warp has fully finished for every frame, same reasoning as
+    # before (round-robin frame assignment doesn't line up across phases).
+    #
+    # Calls the existing computeSky and subtractSky functions unchanged in
+    # sequence - both are now node-aware internally (they only process this
+    # task's round-robin share of frames), and both partition frames by the
+    # same numeric index, so a task's subtractSky call only ever needs sky
+    # values that this same task just computed itself - no barrier needed
+    # between the two calls.
+    #
+    # The polynomial-sky (MODEL_SKY_AS_CONSTANT=false) path has been dropped
+    # entirely - it was never used - so there's now exactly one computeSky
+    # call, not two.
+    echo -e "\n${GREEN} --- Compute and subtract sky (task $SLURM_PROCID of $SLURM_NTASKS) --- ${NOCOLOUR}\n"
+
+    noiseskydir=$BDIR/noise-sky_it1
+    ringDir=$BDIR/ring
+    subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    imagesAreMasked=false
+    mkdir -p "$noiseskydir" "$subskySmallGrid_dir"
+ 
+    writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
+    echo -e "·Modelling the background and subtracting it"
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+    export totalNumberOfFrames
+ 
+    noiseskydone="$noiseskydir/done_task${SLURM_PROCID}.txt"
+
+    computeSky $entiredir_smallGrid $noiseskydir $noiseskydone true $sky_estimation_method -1 $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "'$noisechisel_param'" "'$maskParams'"
+
+    subskySmallGrid_done="$subskySmallGrid_dir/done_task${SLURM_PROCID}.txt"
+    subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir true
+}
+export -f runSkyPhase
+
+
+
+
+if [ -n "$PHASE" ]; then
+  case "$PHASE" in
+    astrometry-setup)
+      renameFiles
+      runAstrometrySetup
+
+      # This shouldn't go there, but is temporal
+      diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+      badFilesWarningsFile=identifiedBadFrames_astrometry.txt
+      touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
+
+      exit 0
+      ;;
+    astrometry-solve)
+      runAstrometryPhase
+      exit 0
+      ;;
+    sextractor-scamp)
+      runSextractorScampPhase
+      exit 0
+      ;;
+    warp)
+      runWarpPhase
+      exit 0
+      ;;
+    sky)
+      runSkyPhase
+      exit 0
+      ;;
+    *)
+      echo "Unknown phase: $PHASE"
+      exit 1
+      ;;
+  esac
 fi
 
-
-# diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-# if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
-# mv $scampdir $diagnosis_and_badFilesDir
-
-
-
-echo -e "\n ${GREEN} ---Warping and correcting distorsion--- ${NOCOLOUR}"
-writeTimeOfStepToFile "Warping frames" $fileForTimeStamps
-# Warp the data so we can:
-#     1.- Place it in a proper grid
-#     2.- Improve the astrometry thanks to scamp
-
-# We need to warp to a huge grid (fullGrid) which covers the full field in order to combine all the images
-# In order to save space and time, we crop it to the grid which contains data in each frame (smallGrid)
-# and later we recover de full grid just before stacking
-
-
-if ! [ -d "$BDIR/astro-ima" ]; then
-  folderWithFramesToWarp=$BDIR/framesForCommonReduction
-else
-  folderWithFramesToWarp=$BDIR/astro-ima
-fi
-
-
-
-
-entiredir_smallGrid=$BDIR/pointings_smallGrid
-entiredone=$entiredir_smallGrid/done_.txt
-swarpcfg=$ROOTDIR/"$objectName"/config/swarp.cfg
-export swarpcfg
-
-if ! [ -d $entiredir_smallGrid ]; then mkdir $entiredir_smallGrid; fi
-
-if [ -f $entiredone ]; then
-    echo -e "\n\tImages already with astromety corrected using scamp-swarp and regrid to final grid (stored in pointings)\n"
-else
-  entiredir_fullGrid=$BDIR/pointings_fullGrid
-  if ! [ -d $entiredir_fullGrid ]; then mkdir $entiredir_fullGrid; fi
-
-  imagesToWarp=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-      base="$a".fits
-      imagesToWarp+=($folderWithFramesToWarp/$base)
-  done
-
-  printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_parallel" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $num_cpus
-  rm -rf $entiredir_fullGrid
-  echo done > $entiredone
-fi
-
-
-# rm -f $framesForCommonReductionDir/*.fits
-
-# Checking bad astrometrised frames ------
-diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-badFilesWarningsFile=identifiedBadFrames_astrometry.txt
-badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_astrometry.txt
-if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
-if [ -f $badFilesWarningsDone ]; then
-    echo -e "\n\tBad astrometrised frames warning already done\n"
-else
-  scampXMLFilePath=$scampdir/scamp.xml
-  # I create the file because we need it even if empty (for future python scripts). 
-  # If you use frames already astrometrised it won't be created if we do not do that explicitly with the touch commmand
-  touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
-  # python3 $pythonScriptsPath/checkForBadFrames_badAstrometry.py $diagnosis_and_badFilesDir $scampXMLFilePath $badFilesWarningsFile $entiredir_smallGrid
-  echo done > $badFilesWarningsDone
-fi
-totalNumberOfFrames=$(ls $entiredir_smallGrid/*.fits | wc -l)
-
-
-echo -e "${GREEN} --- Compute and subtract Sky --- ${NOCOLOUR} \n"
-noiseskydir=$BDIR/noise-sky_it1
-noiseskydone=$noiseskydir/done_"$filter".txt
-
-echo -e "·Modelling the background for subtracting it"
-imagesAreMasked=false
-ringDir=$BDIR/ring
-writeTimeOfStepToFile "Computing sky" $fileForTimeStamps
-computeSky $entiredir_smallGrid $noiseskydir $noiseskydone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
-
-
-# If we have not done it already (i.e. the modelling of the background selected has been a polynomial) we estimate de background as a constant for identifying bad frames
-noiseskyctedir=$BDIR/noise-sky_it1_cte
-noiseskyctedone=$noiseskyctedir/done_"$filter".txt
-if [ "$MODEL_SKY_AS_CONSTANT" = false ]; then
-  echo -e "\nModelling the background for the bad frame detection"
-  computeSky $entiredir_smallGrid $noiseskyctedir $noiseskyctedone true $sky_estimation_method -1 false $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
-fi
+exit 0
 
 
 # Checking and removing bad frames based on the background value ------
@@ -884,96 +986,6 @@ else
   fi
   python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $entiredir_smallGrid $airMassKeyWord $diagnosis_and_badFilesDir
   echo done > $badFilesWarningsDone
-fi
-
-
-echo -e "\n·Subtracting background"
-subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
-subskySmallGrid_done=$subskySmallGrid_dir/done_"$filter".txt
-subtractSky $entiredir_smallGrid $subskySmallGrid_dir $subskySmallGrid_done $noiseskydir $MODEL_SKY_AS_CONSTANT
-
-
-
-if [[ ("$produceCoaddPrephot" = "true") || ("$produceCoaddPrephot" = "True" ) ]]; then
-  echo -e "${GREEN} --- Coadding before photometric calibration --- ${NOCOLOUR} \n"
-  writeTimeOfStepToFile "Building coadd before photometry" $fileForTimeStamps
-  iteration=1
-  h=0
-  coaddDir=$BDIR/coadds-prephot
-  coaddDone=$coaddDir/done.txt
-  minRmsFileName=min_rms_prev_it$iteration.txt
-  noisesky_prephot=$BDIR/noise-sky_prephot
-  noisesky_prephotdone=$noisesky_prephot/done_$filter.txt
-  if ! [ -d $noisesky_prephot ]; then mkdir $noisesky_prephot; fi
-  if [ -f $coaddDone ]; then
-    echo -e "\n Coadd pre-photometry already done\n"
-  else
-    # imagesAreMasked=false
-    # computeSky $subskySmallGrid_dir $noisesky_prephot $noisesky_prephotdone $MODEL_SKY_AS_CONSTANT $sky_estimation_method $polynomialDegree $imagesAreMasked $ringDir $USE_COMMON_RING $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "$noisechisel_param" "$maskParams"
-
-    noisesky_prephot=$noiseskydir
-
-
-    subskyfullGrid_dir=$BDIR/sub-sky-fullGrid_it1
-    subskyfullGridDone=$subskyfullGrid_dir/done.txt
-    if ! [ -d $subskyfullGrid_dir ]; then mkdir $subskyfullGrid_dir; fi
-    smallGridtoFullGrid $subskySmallGrid_dir $subskyfullGrid_dir $subskyfullGridDone $coaddSizePx $ra $dec
-
-
-    rejectedFramesDir=$BDIR/rejectedFrames_prephot_it$iteration
-    echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-    if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-
-
-    prefixOfTheFilesToRemove="entirecamera_"
-    # rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-    # removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-    # removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-    rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-    removeBadFramesFromReduction $subskyfullGrid_dir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-    removeBadFramesFromReduction $noisesky_prephot $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-
-    python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noisesky_prephot $DIR $iteration $minRmsFileName
-
-    echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
-    writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
-    sigmaForStdSigclip=3
-    clippingdir=$BDIR/clipping-outliers-prephot
-    clippingdone=$clippingdir/done.txt
-    buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $subskyfullGrid_dir $sigmaForStdSigclip
-
-
-    subSkyNoOutliersPxDir=$BDIR/sub-sky-fullGrid_noOutliersPx_it$iteration
-    subSkyNoOutliersPxDone=$subSkyNoOutliersPxDir/done.txt
-    if ! [ -d $subSkyNoOutliersPxDir ]; then mkdir $subSkyNoOutliersPxDir; fi
-    removeOutliersFromWeightedFrames $subskyfullGrid_dir $clippingdir $subSkyNoOutliersPxDir $subSkyNoOutliersPxDone
-
-    ### Calculate the weights for the images based on the minimum rms ###
-    echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
-    writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
-    wdir=$BDIR/weight-dir_prephot
-    wonlydir=$BDIR/only-w-dir_prephot
-    wdone=$wdir/done.txt
-    wonlydone=$wonlydir/done.txt
-    if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
-    if ! [ -d $wdir ]; then mkdir $wdir; fi
-    computeWeights $wdir $wdone $wonlydir $wonlydone $subSkyNoOutliersPxDir $noisesky_prephot $iteration $minRmsFileName
-
-    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_prephot_it$iteration.fits
-    stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
-    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-    if [ -f $maskName ]; then
-      echo -e "\tThe mask of the weighted coadd is already done"
-    else
-      astnoisechisel $coaddName $noisechisel_param --numthreads=$num_cpus -o $maskName
-    fi
-
-    exposuremapDir=$coaddDir/"$objectName"_exposureMap
-    exposuremapdone=$coaddDir/done_exposureMap.txt
-    computeExposureMap $wdir $exposuremapDir $exposuremapdone
-  fi
 fi
 
 

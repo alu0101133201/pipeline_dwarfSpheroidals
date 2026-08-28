@@ -1261,7 +1261,7 @@ warpImage() {
     local ra=$4
     local dec=$5
     local coaddSizePx=$6
-    local num_cpus=$7
+    local num_threads=$7
 
     # ****** Decision note *******
     # We need to regrid the frames into the final coadd grid. But if we do this right now we will be processing
@@ -1276,7 +1276,7 @@ warpImage() {
 
     # Resample into the final grid
     SWARP_CMD=$( detect_swarp )
-    $SWARP_CMD -c $swarpcfg $imageToSwarp -NTHREADS $num_cpus -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
+    $SWARP_CMD -c $swarpcfg $imageToSwarp -NTHREADS $num_threads -CENTER $ra,$dec -IMAGE_SIZE $coaddSizePx,$coaddSizePx -IMAGEOUT_NAME $entiredir/"$currentIndex"_swarp1.fits -WEIGHTOUT_NAME $entiredir/"$currentIndex"_swarp_w1.fits -SUBTRACT_BACK N -PIXEL_SCALE $pixelScale -PIXELSCALE_TYPE MANUAL
     # Mask bad pixels
     astarithmetic $entiredir/"$currentIndex"_swarp_w1.fits -h0 set-i i i 0 lt nan where -o$tmpFile1
     astarithmetic $entiredir/"$currentIndex"_swarp1.fits -h0 $tmpFile1 -h1 0 eq nan where -o$frameFullGrid
@@ -1488,6 +1488,7 @@ computeSkyForFrame(){
 }
 export -f computeSkyForFrame
 
+
 computeSky() {
     local framesToUseDir=$1
     local noiseskydir=$2
@@ -1509,20 +1510,27 @@ computeSky() {
     
     if ! [ -d $noiseskydir ]; then mkdir $noiseskydir; fi
     if [ -f $noiseskydone ]; then
+        echo -e $noiseskydone
         echo -e "\n\tScience images have the sky already computed\n"
     else
         framesToComputeSky=()
-        for a in $( ls $framesToUseDir/*.fits ); do
-            base=$( basename $a )
-            framesToComputeSky+=("$base")
-            #computeSkyForFrame $base $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $noisechisel_param $maskParams
+        local taskId=${SLURM_PROCID:-0}
+        local numTasks=${SLURM_NTASKS:-1}
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                base="entirecamera_$a.fits"
+                if [ -f "$framesToUseDir/$base" ]; then
+                    framesToComputeSky+=("$base")
+                fi
+            fi
         done
-
+       
         printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_parallel" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "'$noisechisel_param'" "'$maskParams'"
         echo done > $noiseskydone
     fi
 }
 export -f computeSky
+
 
 subtractSkyForFrame() {
     local a=$1
@@ -1563,21 +1571,26 @@ subtractSky() {
     local directoryToStoreSkySubtracteddone=$3
     local directoryWithSkyValues=$4
     local constantSky=$5
-
-
+ 
+ 
     if ! [ -d $directoryToStoreSkySubtracted ]; then mkdir $directoryToStoreSkySubtracted; fi
     if [ -f $directoryToStoreSkySubtracteddone ]; then
         echo -e "\n\tSky substraction is already done for the science images\n"
     else
     framesToSubtractSky=()
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
     for a in $(seq 1 $totalNumberOfFrames); do
+        if (( (a - 1) % numTasks == taskId )); then
             framesToSubtractSky+=("$a")
+        fi
     done
     printf "%s\n" "${framesToSubtractSky[@]}" | parallel -j "$num_cpus" subtractSkyForFrame {} $directoryWithSkyValues $framesToSubtract $directoryToStoreSkySubtracted $constantSky
     echo done > $directoryToStoreSkySubtracteddone
     fi
 }
 export -f subtractSky
+
 
 # Functions for decals data
 # The function that is to be used (the 'public' function using OOP terminology) is 'prepareSurveyDataForPhotometricCalibration'
