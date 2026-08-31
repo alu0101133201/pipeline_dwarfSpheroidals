@@ -11,7 +11,7 @@ outputFile=sys.argv[4]
 numberOfBlocksFile=sys.argv[5]
 
 #Number of frames to combine
-totalFrames=len(glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
+totalFrames=len(glob.glob(os.path.join(framesDir,"*.fits")))
 #Size of the folder in GB
 #sizeBytes=sum(os.path.getsize(f) for f in glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
 #sizeGB=sizeBytes/(1024.0**3)

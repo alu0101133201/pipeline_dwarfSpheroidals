@@ -174,8 +174,9 @@ exp_fr=$(astarithmetic $expMax 0.5 x -q)
 astarithmetic $coaddToRecalibrate $exposureMap -g1 $exp_fr lt nan where --output=$imagesForCalibration/entirecamera_1.fits
 
 
+
 computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $tileSize $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic 
+                          $mosaicDir $alphatruedir $calibrationBrightLimitCoaddPrephot $calibrationFaintLimitCoaddPrephot $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
 
 
 # Apply calibration factor

@@ -783,7 +783,7 @@ calculateWholeNightFlat(){
     python3 $pythonScriptsPath/createCropSections.py $normalisedDir $detectorWidth,$detectorHeight 200.0 $BDIR/cropSections_$night.txt $BDIR/numberOfBlocks_$night.txt
     numBlocksX=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks_$night.txt)
     numBlocksY=$(awk 'NR=='2'{print $1}' $BDIR/numberOfBlocks_$night.txt)
-    if [ $numBlocksX - eq 1 ]; then
+    if [ $numBlocksX -eq 1 ]; then
         calculateFlat $flatName $(ls -v $normalisedDir/*Decals-"$filter"_n"$night"_f*_ccd"$h".fits)
     else
         if ! [ -f $BDIR/sectionsToCombine_$night.txt ]; then
@@ -792,7 +792,7 @@ calculateWholeNightFlat(){
         while IFS=' ' read -r cropSection m n; do
             cropInSections $normalisedDir $cropSection $BDIR/sectionsToCombine_$night $BDIR/sectionsToCombine_$night/done_"$m""$n".txt
             flat_mn=$flatDir/flat_"$m"_"$n".fits
-            calculateFlat $flat_mn $(ls -v $BDIR/sectionsToCombne_$night/*.fits)
+            calculateFlat $flat_mn $(ls -v $BDIR/sectionsToCombine_$night/*.fits)
             rm $BDIR/sectionsToCombine_$night/*.fits
         done < $BDIR/cropSections_$night.txt
         stitchCommand=""
@@ -987,14 +987,14 @@ maskVignettingOnImages() {
     a="${a%%_ccd*}"
     if $runningFlat; then
       if [ "$a" -le "$((halfWindowSize + 1))" ]; then
-        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_left_ccd0.fits
+        currentFlatImage=$flatDir/flat-it*_"$filter"_n"$currentNight"_left_ccd0.fits
       elif [ "$a" -ge "$((n_exp - halfWindowSize))" ]; then
-        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_right_ccd0.fits
+        currentFlatImage=$flatDir/flat-it*_"$filter"_n"$currentNight"_right_ccd0.fits
       else
-        currentFlatImage=$flatDir/flat-it3_"$filter"_n"$currentNight"_f"$a"_ccd0.fits
+        currentFlatImage=$flatDir/flat-it*_"$filter"_n"$currentNight"_f"$a"_ccd0.fits
       fi
     else
-      currentFlatImage=$wholeFlatDir/flat-it3_wholeNight_n$currentNight.fits
+      currentFlatImage=$wholeFlatDir/flat-it*_wholeNight_n$currentNight.fits
     fi 
     i=$imaDir/$base
     out=$outDir/$base
@@ -1572,7 +1572,7 @@ downloadGaiaCatalogue() {
     # Here I  demand that the parallax OR a proper motion is > 3 times its error
     asttable $catdir/tmp.txt -c1,2,3 -c'arith $4 $4 $5 gt 1000 where' -c'arith $6 $6 $7 gt 1000 where' -c'arith $8 $8 $9 gt 1000 where' -o$catdir/test_.txt
     asttable $catdir/test_.txt -c1,2,3 -c'arith $4 $5 + $6 +' -o$catdir/test1.txt
-    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 -o $catName
+    asttable $catdir/test1.txt -c1,2,3 --range=ARITH_2,999,3001 --range=3,5:15 -o $catName
 
     # # Here we don't demand any condition
     # asttable $catdir/tmp.txt -o $catName
@@ -1601,6 +1601,7 @@ downloadIndex() {
                             -P $re \
                             -S phot_g_mean_mag \
                             -E -A RA -D  DEC\
+                            -I 90${re} \
                             -o $indexdir/index_$re.fits;
 }
 export -f downloadIndex
@@ -1617,7 +1618,7 @@ solveField() {
     local sexcfg_sf=$9
     local sizeOfOurFieldDegrees=${10}
     base=$( basename $i)
-
+    base_noext=${base%.*}
 
     # Get the RA and Dec of the pointing. It has to be converted to deg
     LC_NUMERIC=C  # Format to get rid of scientific notation if needed
@@ -1651,7 +1652,7 @@ solveField() {
         echo "Error: Unsupported RA units: $pointingDECUnits"
         exit 888
     fi
-
+    
     # The default sextractor parameter file is used.
     # I tried to use the one of the config directory (which is used in other steps), but even using the default one, it fails
     # Maybe a bug? I have not managed to make it work
@@ -1661,8 +1662,8 @@ solveField() {
     while [ $attempt -le $max_attempts ]; do
         #Sometimes the output of solve-field is not properly writen in the computer (.i.e, size of file=0). 
         #Because of that, we iterate solve-field in a maximum of 4 times until file is properly saved
-        echo solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees
-        solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius $sizeOfOurFieldDegrees\
+        #
+        solve-field $i --no-plots --ra $pointRA --dec $pointDec --radius 1.6 \
         -L $solve_field_L_Param -H $solve_field_H_Param -u $solve_field_u_Param \
         --overwrite --extension 1 --config $confFile/astrometry_$objectName.cfg --no-verify \
         --use-source-extractor --source-extractor-path=$sex_path \
@@ -3597,7 +3598,6 @@ generateCatalogueFromImage_sextractor(){
     # I specify the configuration path here because in the photometric calibration the working directory changes. This has to be changed and use the config path given in the pipeline
     cfgPath=$ROOTDIR/"$objectName"/config
     source-extractor $image -c $cfgPath/sextractor_detection.sex -CATALOG_NAME $outputDir/"$a"_tmp.cat -FILTER_NAME $cfgPath/default.conv -PARAMETERS_NAME $cfgPath/sextractor_detection.param -CATALOG_TYPE ASCII_HEAD 1>/dev/null 2>&1
-
     # The following code is to identify the FWHM and Re columns numbers. This is needed because it is dependant
     # on the order of the parameters in the .param file.
     headerLines=$( grep '^#' "$outputDir/"$a"_tmp.cat")
@@ -3618,7 +3618,7 @@ generateCatalogueFromImage_sextractor(){
     # Remove the sextractor headers to add later the noisechisel equivalents (for consistency)
     numberOfHeaders=$( grep '^#' $outputDir/"$a"_tmp2.cat | wc -l)
     sed -i "1,${numberOfHeaders}d" "$outputDir/"$a"_tmp2.cat"
-
+    
     # Note. It seems like reCol and fwhmCol should go the other way around, but the awk command REMOVES the column that receives. So this is not a mistake
     if [ $apertureUnitsToCalculate == "FWHM" ]; then
         awk -v col="$reCol" '{for (i=1; i<=NF; i++) if (i != col) {printf "%s%s", $i, (i<NF || (i == NF && i != col) ? OFS : "");} print ""}' $outputDir/"$a"_tmp2.cat > $outputDir/"$a".cat
@@ -3627,6 +3627,7 @@ generateCatalogueFromImage_sextractor(){
     else
         echo "Error. Aperture Units not recognised. We should not get there never"
     fi
+    
     
     # Headers to mimic the noisechisel format. Change between MacOS and Linux
     if [[ "$OSTYPE" == "darwin"* ]]; then
