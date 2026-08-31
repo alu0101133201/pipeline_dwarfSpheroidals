@@ -65,8 +65,8 @@ def getBadAstrometrisedFrames(file):
 
 
 def getFilenameWithPattern(folderPath, n):
-    pattern1 = re.compile(rf"\bf{n}\b.*\.fits\b", re.IGNORECASE) 
-    pattern2 = re.compile(rf"\b{n}\b.*\.fits\b", re.IGNORECASE)  
+    pattern1 = re.compile(rf"f{n}(?!\d)_.*\.fits$", re.IGNORECASE)
+    pattern2 = re.compile(rf"(?<!\d){n}(?!\d)\.fits$", re.IGNORECASE)
 
     for filename in os.listdir(folderPath):
         if pattern1.search(filename):
@@ -217,7 +217,7 @@ def obtainNormalisedBackground(currentFile, folderWithAirMasses, airMassKeyWord)
     try:
         airmass = obtainAirmassFromFile(currentFile, folderWithAirMasses, airMassKeyWord)
     except:
-        print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + ")")
+        print("something went wrong in obtaining the airmass, returning nans (file: " + str(currentFile) + "). Folder with airmasses " + str(folderWithAirMasses) + " and airMassKeyword " + str(airMassKeyWord))
         return(float('nan'), float('nan'), float('nan'), float('nan'), float('nan')) 
 
     return(backgroundValue, backgroundValue / airmass, backgroundStd,backgroundSkew,backgroundKurto)
@@ -234,7 +234,7 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
         file = files[i]
         match=re.search(pattern,file)
         frame=match.group(1)
-        file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
+        file=folderWithFramesWithAirmasses+'/entirecamera_'+frame+'.fits'
         date=obtainKeyWordFromFits(file,'DATE-OBS')
         air=obtainKeyWordFromFits(file,'AIRMASS')
         date_ok=datetime.fromisoformat(date)
@@ -243,20 +243,6 @@ def saveParameterEvolution(files, values, parameter, imageName, astrometryReject
         ax[0].scatter(date_ok,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
         ax[1].scatter(air,bck,marker='o',s=50,edgecolor='black',color='teal',zorder=5)
 
-    # astrometryRejectedValues        = [x for x in values[astrometryRejectedIndices]]  if len(astrometryRejectedIndices) > 0 else []
-    # astrometryRejectedFiles         = [x for x in files[astrometryRejectedIndices]]   if len(astrometryRejectedIndices) > 0 else []
-
-    # for j in range(len(astrometryRejectedFiles)):
-    #     match=re.search(pattern, astrometryRejectedFiles[j])
-    #     frame=match.group(1)
-    #     file=folderWithFramesWithAirmasses+'/'+frame+'.fits'
-    #     date=obtainKeyWordFromFits(file,'DATE-OBS')
-    #     air=obtainKeyWordFromFits(file,'AIRMASS')
-    #     date_ok=datetime.fromisoformat(date)
-    #     # ax[0].scatter(date_ok, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry' if (j==0) else "")
-    #     # ax[1].scatter(air, astrometryRejectedValues[j], facecolors='none', edgecolor='blue', lw=1.5, s=350, zorder=10, label='Rejected astrometry'if (j==0) else "")
-    #     if j==0:
-    #         ax[0].legend(fontsize=18)
 
     for label in ax[0].get_xticklabels():
         label.set_rotation(45)
@@ -383,7 +369,10 @@ writeMetricToFile(outputFolder + "/kurtosisValues.dat", files, backgroundKurtos)
 badAstrometrisedIndices   = getIndicesOfFiles(files, badAstrometrisedFrames)
 
 # 2.- Plots 
+
+
 saveParameterEvolution(files, originalBackgroundValues, "Background", outputFolder+"/backgroundEvolution_original.png", badAstrometrisedIndices)
+
 saveParameterEvolution(files, normalisedBackgroundValues, "Background", outputFolder+"/backgroundEvolution_normalised.png", badAstrometrisedIndices)
 saveParameterEvolution(files, backgroundStds, "STD", outputFolder+"/stdEvolution.png", badAstrometrisedIndices)
 saveParameterEvolution(files, backgroundSkews, "Skewness", outputFolder+"/skewnessEvolution.png", badAstrometrisedIndices)

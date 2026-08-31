@@ -126,7 +126,7 @@ echo -e "\nNumber of CPUs allocated: $num_cpus"
 export num_cpus
 
 # After some testing we find that it is efficient to use noisechisel with 4 threads. So we parallelise accordingly
-noisechiselNumThreads=4
+noisechiselNumThreads=8
 export noisechiselNumThreads
 
 if (( num_cpus < noisechiselNumThreads )); then
@@ -617,7 +617,6 @@ oneNightPreProcessing() {
     done
     echo "done" > $framesForCommonReductionDone
     rm $maskedcornerdir/*.fits 
-- 
   fi
 
   # # Removing intermediate information to save space - We maintain the final flats for checking them
@@ -883,7 +882,6 @@ runWarpPhase() {
     done
 
     printf "%s\n" "${imagesToWarp[@]}" | parallel -j "$num_parallel" warpImage {} $entiredir_fullGrid $entiredir_smallGrid $ra $dec $coaddSizePx $num_threads
-    rm -rf $entiredir_fullGrid
     echo done > "$taskDone"
 }
 export -f runWarpPhase
@@ -929,6 +927,642 @@ runSkyPhase() {
 export -f runSkyPhase
 
 
+runSkyDiagnosticsPhase() {
+    # Runs once, on a single task - checkForBadFrames_backgroundValueAndStd.py
+    # needs every frame's sky value file to exist first, so this must run in
+    # its own srun step after sky has fully finished for every frame.
+    #
+    # No longer branches on MODEL_SKY_AS_CONSTANT - that "false" path used
+    # $noiseskyctedir, which no longer exists anywhere in the pipeline since
+    # the polynomial-sky duplicate computeSky call was removed. Always uses
+    # the constant-sky directory now.
+    echo -e "\n${GREEN} --- Sky background diagnostics --- ${NOCOLOUR}\n"
+ 
+    noiseskydir=$BDIR/noise-sky_it1
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_backgroundProperties.txt
+    mkdir -p "$diagnosis_and_badFilesDir"
+ 
+    # This is temporal, but otherwise it fails... Traces from previous checks that we were performing
+    badFilesWarningsFile=identifiedBadFrames_astrometry.txt
+    touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
+
+
+    if [ -f "$badFilesWarningsDone" ]; then
+        echo -e "\n\tbadFiles warning already done\n"
+    else
+        python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $noiseskydir $entiredir_smallGrid $airMassKeyWord $diagnosis_and_badFilesDir
+        echo done > "$badFilesWarningsDone"
+    fi
+}
+export -f runSkyDiagnosticsPhase
+
+runPrepareCalibrationDataPhase() {
+    # Runs once, on a single task. prepareSurveyDataForPhotometricCalibration
+    # is a genuinely sequential chain (download -> mosaic -> select
+    # calibration stars -> aperture photometry, each step consuming the
+    # previous one's output) rather than per-frame independent work, so
+    # there's no multi-task version of this phase - deliberately left
+    # unparallelised for now.
+    echo -e "\n${ORANGE} ------ PHOTOMETRIC CALIBRATION: preparing calibration data ------ ${NOCOLOUR}\n"
+    writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
+ 
+    toleranceForMatching=1.5 #arcsec
+    sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
+    export toleranceForMatching
+    export sigmaForPLRegion
+ 
+    # Parameters for performing the sigma clipping to the different samples in aststatistics
+    sigmaForStdSigclip=2
+    iterationsForStdSigClip=3
+    export sigmaForStdSigclip
+    export iterationsForStdSigClip
+ 
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    catdir=$DIR/catalogs
+    catName=$catdir/"$objectName"_gaia.fits
+ 
+    referenceImagesForMosaic=$entiredir_smallGrid
+    mosaicDir=$DIR/mosaic
+    selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
+    rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
+    aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
+    mosaicDone=$mosaicDir/done_prep.txt
+ 
+    # ****** Decision note *******
+    # The pipeline originally worked only with decals, which downloads always bricks of 3600x3600 pixels. Then the option of using PANSTARRS was added, and we tried to keep things
+    # similar by downloading bricks of 3600. The thing (unkown reason for me at least) is that if you download panstarrs bricks of 3600x3600px, it has gaps. That's not an issue with
+    # large fields (the gaps are not big compared with TST field for example) but it is with small cameras (hipercam, osiris etc...). So, if you download the bricks of 1000x1000px you get
+    # rid of the gaps. That's why we define a threshold above which we keep going with bricks of 3600x3600px, otherwise we assume that we are with a small FOV and go for a compact small-brick download
+    # (take into account that using always 1000 is not viable for large fields, since the number of bricks increases A LOT)
+    if (( $(echo "$sizeOfOurFieldDegrees > 0.5" | bc -l) )); then
+        sizeOfBrick=3600
+    else
+        sizeOfBrick=1000
+    fi
+ 
+    # ****** Decision note *******
+    # Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
+    # we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
+    # magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset.
+    # For solving this we compute this offset and correct it in each run of the pipeline (thus PANSTARRS always agreeing with GAIA)\\
+    # GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere.
+    #It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha
+    # (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
+    # Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
+    prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
+                                                $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
+                                                $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
+}
+export -f runPrepareCalibrationDataPhase
+
+runComputeCalibrationFactorsPhase() {
+    # Runs on every task of one multi-task step. Must run in a separate srun
+    # step after prepare-calibration-data has finished (needs mosaicDir /
+    # selectedCalibrationStarsDir / rangeUsedCalibrationDir populated) and
+    # after sky has finished for every frame (needs subskySmallGrid_dir).
+    #
+    # computeCalibrationFactors chains four internal steps; three of them
+    # were already per-frame parallel internally (now made node-aware, same
+    # numeric-index round-robin as computeSky/subtractSky - NOT ls-order,
+    # since a frame dropping out at an earlier step would otherwise shift
+    # every later step's list-position-based split). The fourth,
+    # combineDecalsBricksCataloguesForEachFrame, stays genuinely sequential
+    # (only relevant when not calibrating to SPECTRA/a mosaic) but is now
+    # flock-protected so exactly one task runs it while the rest wait and
+    # skip via its own done-check - no separate srun needed just for that.
+    echo -e "\n${ORANGE} ------ PHOTOMETRIC CALIBRATION: calibration factors (task $SLURM_PROCID of $SLURM_NTASKS) ------ ${NOCOLOUR}\n"
+    writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
+ 
+    toleranceForMatching=1.5 #arcsec
+    sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
+    export toleranceForMatching
+    export sigmaForPLRegion
+    sigmaForStdSigclip=2
+    iterationsForStdSigClip=3
+    export sigmaForStdSigclip
+    export iterationsForStdSigClip
+
+    mosaicDir=$DIR/mosaic
+    selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
+    rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
+    subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+    export totalNumberOfFrames
+ 
+    iteration=1
+    alphatruedir=$BDIR/alpha-stars-true_it$iteration
+    matchdir=$BDIR/match-decals-myData_it$iteration
+    ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
+    prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
+    mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
+    imagesForCalibration=$subskySmallGrid_dir
+    calibratingMosaic=false
+ 
+    computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
+                              $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
+}
+export -f runComputeCalibrationFactorsPhase
+
+runCalibrationFactorsDiagnosticsPhase() {
+    # Runs once, on a single task. Both steps here genuinely need every
+    # task's computeCalibrationFactors work finished first: the histogram
+    # needs every frame's numberOfStars_*.txt stitched together, and
+    # computeCommonCalibrationFactor needs every frame's alpha_*.txt file.
+    echo -e "\n${ORANGE} ------ PHOTOMETRIC CALIBRATION: calibration factors diagnostics ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    alphatruedir=$BDIR/alpha-stars-true_it$iteration
+ 
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    mkdir -p "$diagnosis_and_badFilesDir"
+ 
+    numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir/numOfStarsUsedForCalibrationHist.png
+    numberOfStarsUsedInEachFrameDone=$diagnosis_and_badFilesDir/done_numOfStarsUsedForCalibrate.txt
+    if [ -f $numberOfStarsUsedInEachFrameDone ]; then
+      echo -e "\nHistogram with the number of stars used for calibrating each plot already done"
+    else
+      stitchNumberOfStarsUsedForCalibrate $alphatruedir
+      python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot
+      echo done > $numberOfStarsUsedInEachFrameDone
+    fi
+ 
+    applyCommonCalibrationFactor=true
+    if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
+      computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
+    fi
+}
+export -f runCalibrationFactorsDiagnosticsPhase
+
+runApplyCalibrationAndFwhmPhase() {
+    # Runs on every task of one multi-task step. Must run in a separate srun
+    # step after compute-calibration-factors/calibration-factors-diagnostics
+    # have fully finished (needs alphatruedir and, if using a common factor,
+    # commonCalibrationFactor_it$iteration.txt).
+    #
+    # applyCalibrationFactors is already per-frame parallel internally, now
+    # made node-aware the same way as computeSky/selectStars/etc. FWHM
+    # computation was never wrapped in its own function before (only the
+    # per-frame computeFWHMSingleFrame existed) - dispatched directly here,
+    # same node-aware numeric-index partitioning.
+    #
+    # Both steps are genuinely per-frame independent, so they're done
+    # back-to-back in the same task with no barrier needed between them -
+    # same reasoning as computeSky -> subtractSky earlier.
+    echo -e "\n${ORANGE} ------ Applying calibration factors + FWHM (task $SLURM_PROCID of $SLURM_NTASKS) ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    alphatruedir=$BDIR/alpha-stars-true_it$iteration
+    subskySmallGrid_dir=$BDIR/sub-sky-smallGrid_it1
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
+    applyCommonCalibrationFactor=true
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+    export totalNumberOfFrames
+ 
+    toleranceForMatching=1.5 #arcsec
+    sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
+    export toleranceForMatching
+    export sigmaForPLRegion
+    sigmaForStdSigclip=2
+    iterationsForStdSigClip=3
+    export sigmaForStdSigclip
+    export iterationsForStdSigClip
+
+    echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
+    applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
+ 
+    # FWHM computation
+    fwhmFolder=$BDIR/seeing_values
+    mkdir -p "$fwhmFolder"
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+    local fwhmTaskDone="$fwhmFolder/done_task${taskId}.txt"
+    if [ -f "$fwhmTaskDone" ]; then
+        echo -e "\n\tThis task's FWHM values are already computed\n"
+    else
+        imagesToFWHM=()
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                if [ -f "$entiredir_smallGrid/entirecamera_$a.fits" ]; then
+                    imagesToFWHM+=("entirecamera_$a.fits")
+                fi
+            fi
+        done
+        methodToUse="sextractor"
+        printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $entiredir_smallGrid $fwhmFolder 1 $methodToUse "'$noisechisel_param'" $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames
+        echo done > "$fwhmTaskDone"
+    fi
+}
+export -f runApplyCalibrationAndFwhmPhase
+
+runFwhmCheckPhase() {
+    # Runs once, on a single task. checkForBadFrames_fwhm.py needs every
+    # frame's fwhm_*.txt file to exist first (each frame writes its own
+    # uniquely-named file - no shared-append hazard like numberOfStars had,
+    # so no stitch step needed, just a barrier to wait for every task).
+    echo -e "\n${ORANGE} ------ FWHM check ------ ${NOCOLOUR}\n"
+ 
+    fwhmFolder=$BDIR/seeing_values
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    mkdir -p "$diagnosis_and_badFilesDir"
+ 
+    badFilesWarningsFile=identifiedBadFrames_fwhm.txt
+    badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
+    if [ -f $badFilesWarningsDone ]; then
+        echo -e "\nbadFiles warning already done\n"
+    else
+        python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $entiredir_smallGrid $pixelScale $maximumSeeing
+        echo done > $badFilesWarningsDone
+    fi
+}
+export -f runFwhmCheckPhase
+
+
+runBackgroundDiagnosisPhase() {
+    # Runs once, on a single task. diagnosis_normalisedBackgroundMagnitudesAndCalibrationFactorPlots.py
+    # needs both every frame's background value (from the sky phase) and the
+    # common calibration factor (written by computeCommonCalibrationFactor,
+    # called inside runCalibrationFactorsDiagnosticsPhase) - so this must run
+    # after that phase, but as a plain file dependency, not a shell-variable
+    # one, so it doesn't matter whether it's called from the same process or
+    # a separate one.
+    #
+    # No longer branches on MODEL_SKY_AS_CONSTANT - same dead-variable bug as
+    # runSkyDiagnosticsPhase (noiseskyctedir no longer exists anywhere).
+    # Always uses the constant-sky directory now.
+    echo -e "\n${ORANGE} ------ PHOTOMETRIC CALIBRATION: background diagnosis plot ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    alphatruedir=$BDIR/alpha-stars-true_it$iteration
+    tmpDir=$BDIR/noise-sky_it1
+    applyCommonCalibrationFactor=true
+    mkdir -p "$diagnosis_and_badFilesDir"
+ 
+    backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness_it$iteration.done
+    if [ -f $backgroundBrightnessDone ]; then
+      echo -e "\nDiagnosis based on background brightness already done"
+    else
+      badFilesBackgroundWarningsFile=identifiedBadFrames_backgroundBrightness_it$iteration.txt
+      badFilesCalibrationFactorFile=identifiedBadFrames_calibrationFactor_it$iteration.txt
+      python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudesAndCalibrationFactorPlots.py $tmpDir $entiredir_smallGrid $airMassKeyWord $alphatruedir \
+                                                                                                        $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesBackgroundWarningsFile \
+                                                                                                        $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt 1
+      echo "done" > $backgroundBrightnessDone
+    fi
+}
+export -f runBackgroundDiagnosisPhase
+
+runAstrometryDiagnosisPhase() {
+    iteration=1
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    matchdir=$BDIR/match-decals-myData_it$iteration
+    mkdir -p "$diagnosis_and_badFilesDir"
+ 
+    astrometryPlotName=$diagnosis_and_badFilesDir/astrometry.png
+    if [ -f $astrometryPlotName ]; then
+        echo -e "\nAstrometry diagnosis plot already done\n"
+    else
+        produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
+    fi
+}
+export -f runAstrometryDiagnosisPhase
+
+runCalibrationDiagnosisPlotPhase() {
+    # Runs once, on a single task. Needs photCorrSmallGridDir (from
+    # apply-calibration-and-fwhm) and the aperture-photometry catalogues
+    # (from prepare-calibration-data / compute-calibration-factors).
+    iteration=1
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    mosaicDir=$DIR/mosaic
+    photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
+    mkdir -p "$diagnosis_and_badFilesDir"
+ 
+    aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
+    onlyPointLikeCat=$BDIR/my-catalog-halfmaxradius_it$iteration
+    calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_individualFrames.png
+    if [ -f $calibrationPlotName ]; then
+        echo -e "\nCalibration diagnosis plot for individual frames already done\n"
+    else
+        if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
+            dirWithReferenceCat=$mosaicDir
+        else
+            dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_it1
+        fi
+        mosaicPlot=false
+        produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
+                                      $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_it$iteration $onlyPointLikeCat
+    fi
+}
+export -f runCalibrationDiagnosisPlotPhase
+
+
+runSmallGridToFullGridPhase() {
+    # Runs on every task of one multi-task step. Must run in a separate srun
+    # step after background-astrometry-calibPlot-diagnostics has finished
+    # (produceCalibrationCheckPlot there still needs photCorrSmallGridDir
+    # intact - this phase is what deletes it, per-frame, as it converts).
+    #
+    # smallGridtoFullGrid is already per-frame parallel internally, now made
+    # node-aware the same way as computeSky/applyCalibrationFactors/etc.
+    # Each frame's own small-grid input is deleted by
+    # smallGridToFullGridSingleFrame itself as it's converted - no bulk
+    # cleanup needed or wanted here (a bulk rm on this shared directory
+    # would be unsafe under concurrent multi-task execution, same class of
+    # bug we fixed once already for warpImage's frameFullGrid).
+    echo -e "\n${ORANGE} ------ Small grid to full grid (task $SLURM_PROCID of $SLURM_NTASKS) ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
+    photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+    photCorrfullGridDone=$photCorrfullGridDir/done.txt
+    mkdir -p "$photCorrfullGridDir"
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+    export totalNumberOfFrames
+ 
+    smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra $dec
+}
+export -f runSmallGridToFullGridPhase
+
+runRemoveBadFramesAndCreateBlocksPhase() {
+    # Runs once, on a single task. Must run after small-grid-to-full-grid
+    # has finished for every frame. removeBadFramesFromReduction operates on
+    # a small reject list with lightweight file moves - not worth
+    # parallelising. find_rms_min.py and createBlocks are similarly small,
+    # aggregate/planning steps that need every frame's data already in
+    # place, not per-frame work.
+    #
+    # Deliberately does NOT read numberOfBlocks.txt after createBlocks -
+    # that's only needed by whichever phase actually distributes the
+    # coaddition across sections/nodes, not by this phase.
+    echo -e "\n${ORANGE} ------ Removing bad frames + detecting block division ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    noiseskydir=$BDIR/noise-sky_it$iteration
+    photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    rejectedFramesDir=$BDIR/rejectedFrames
+    mkdir -p "$diagnosis_and_badFilesDir" "$rejectedFramesDir"
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+    export totalNumberOfFrames
+ 
+    echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
+    prefixOfTheFilesToRemove="entirecamera_"
+    rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
+    removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
+    rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness_it$iteration.txt
+    removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
+    rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor_it$iteration.txt
+    removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
+    removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
+ 
+    # Store the minimum standard deviation of the frames in order to compute the weights
+    h=0
+    minRmsFileName=min_rms_it1.txt
+    python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
+ 
+    echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
+    createBlocks $photCorrfullGridDir $coaddSizePx
+}
+export -f runRemoveBadFramesAndCreateBlocksPhase
+
+runBuildCoaddBlocksPhase() {
+    # Runs on every task of one multi-task step. Must run after
+    # remove-bad-frames-and-create-blocks has written cropSections.txt.
+    #
+    # Each line of cropSections.txt is one spatial section (cropSection, m,
+    # n) - confirmed spatially independent (non-overlapping astcrop
+    # --section regions, stitched together only at the very end). Round-
+    # robins LINES across tasks, same pattern used for frames/chunks
+    # elsewhere - a task that owns more than one section just processes them
+    # sequentially, one fully finishing before the next starts.
+    #
+    # buildCoadd now takes optional m/n block parameters (see pipeline_functions.sh)
+    # so its internal working directories are section-suffixed - concurrent
+    # tasks working on different sections never collide, and buildCoadd
+    # writes straight to the final coadds_MN_it# location, so no mv step is
+    # needed here (unlike the original single-node while-loop).
+    #
+    # Deliberately stops here: stitchFiles and the bulk
+    # `rm -f $photCorrfullGridDir/*.fits` both need every section, across
+    # every task, finished first - that's a real barrier, left for a
+    # follow-up single-task phase.
+    echo -e "\n${ORANGE} ------ Building coadd blocks (task $SLURM_PROCID of $SLURM_NTASKS) ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    noiseskydir=$BDIR/noise-sky_it$iteration
+    photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+    minRmsFileName=min_rms_it1.txt
+ 
+    totalFramesFile="$framesForCommonReductionDir/totalNumberOfFrames.txt"
+    totalNumberOfFrames=$(cat "$totalFramesFile")
+    export totalNumberOfFrames
+
+
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+ 
+    mapfile -t sectionLines < "$BDIR/cropSections.txt"
+ 
+    for i in "${!sectionLines[@]}"; do
+        if (( i % numTasks != taskId )); then
+            continue
+        fi
+ 
+        read -r cropSection m n <<< "${sectionLines[$i]}"
+        sectionDone=$BDIR/coadds_"$m""$n"_it$iteration/done.txt
+        if [ -f $sectionDone ]; then
+            echo -e "Coadd for section {$cropSection} already done"
+            continue
+        fi
+ 
+        echo -e "\tBuilding coadd for section $cropSection (block ${m}${n}, task $taskId)"
+
+        # Section-specific crop temp dir - concurrent tasks cropping
+        # different sections must not share this path.
+        fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"_"$m""$n"
+        fullGridDone_sec=$fullGridDir_sec/done_crops.txt
+        if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
+        cropInSections $photCorrfullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
+ 
+        buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir $m $n
+ 
+        # Clean up this section's own intermediates - safe now that they're
+        # section-suffixed, doesn't touch sibling sections' still-in-progress work.
+        rm -rf $BDIR/clipping-outliers_it${iteration}_${m}${n}
+        rm -rf $BDIR/photCorrFullGrid-dir_noOutliersPx_it${iteration}_${m}${n}
+        rm -rf $BDIR/weight-dir_it${iteration}_${m}${n}
+        rm -rf $BDIR/only-w-dir_it${iteration}_${m}${n}
+        rm -rf $BDIR/framesWithCoaddSubtracted_it${iteration}_${m}${n}
+        rm -rf $fullGridDir_sec
+    done
+}
+export -f runBuildCoaddBlocksPhase
+
+
+ 
+runStitchCoaddsPhase() {
+    # Runs once, on a single task. Must run after build-coadd-blocks has
+    # finished for every section, across every task - stitchFiles needs
+    # every coadds_MN_it# directory to exist.
+    #
+    # Reads BOTH numberOfBlocksX and numberOfBlocksY from numberOfBlocks.txt
+    # (previously only the first value was read and reused for both
+    # dimensions - see the fix in stitchFiles itself).
+    #
+    # The final cleanup line's glob (coadds_*_it#) was previously quoted
+    # (coadds_"*"_it#), making the asterisk literal instead of a wildcard -
+    # it silently matched nothing and never actually deleted the per-block
+    # intermediates. Fixed here too, so this now genuinely reclaims that
+    # space - a real behaviour change from before, not just a rename.
+    #
+    # Only handles the numBlocks > 1 case, matching build-coadd-blocks -
+    # the numBlocks == 1 path (calling buildCoadd directly on the whole
+    # mosaic, no sectioning at all) isn't wired into any phase yet.
+    echo -e "\n${ORANGE} ------ Stitching coadd blocks ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
+    coaddDir=$BDIR/coadds_it$iteration
+    mkdir -p "$coaddDir"
+ 
+    read -r numBlocksX numBlocksY < "$BDIR/numberOfBlocks.txt"
+ 
+    coaddName_nofolder="$objectName"_coadd_"$filter"_it"$iteration".fits
+    coaddDone=$coaddDir/done.txt
+    expMapName_nofolder=exposureMap.fits
+    expMapDone=$coaddDir/done_exposureMap.txt
+    residualsName_nofolder="$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
+    residualsDone=$coaddDir/done_residuals.txt
+ 
+    stitchFiles $coaddName_nofolder $numBlocksX $numBlocksY $coaddDir $coaddDone $iteration
+    stitchFiles $expMapName_nofolder $numBlocksX $numBlocksY $coaddDir $expMapDone $iteration
+    stitchFiles $residualsName_nofolder $numBlocksX $numBlocksY $coaddDir $residualsDone $iteration
+ 
+  
+    numberOfFramesCombinedFile=$BDIR/numberOfFramesCombined_it$iteration.txt
+    ls $photCorrfullGridDir/*.fits | wc -l > "$numberOfFramesCombinedFile"
+
+
+    rm -f $photCorrfullGridDir/*.fits
+    rm -f $BDIR/coadds_*_it$iteration/*.fits
+}
+export -f runStitchCoaddsPhase
+
+runCoaddMaskAndDiagnosticsPhase() {
+    # Runs once, on a single task. Must run after stitch-coadds has produced
+    # the final coaddName/exposureMap. Builds the coadd's own detection
+    # mask, measures the surface brightness limit, writes header keywords,
+    # and computes the coadd's own FWHM for the diagnostic plot overlay.
+    #
+    # NOTE: the computeFWHMSingleFrame call below is only passed 6 of the 8
+    # arguments the function expects (brightLimit/faintLimit are missing) -
+    # this matches the pre-existing dead code exactly, not something this
+    # conversion introduced. Flagged for the person to confirm/fix
+    # separately rather than silently changed here.
+    echo -e "\n${ORANGE} ------ Coadd mask, SB limit, keywords, FWHM ------ ${NOCOLOUR}\n"
+ 
+    iteration=1
+    coaddDir=$BDIR/coadds_it$iteration
+    coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
+    maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
+ 
+    if [ -f $maskName ]; then
+        echo -e "\tThe mask of the weighted coadd is already done"
+    else
+        ## If block scale is greater than 1, we apply the block
+        if [ "$blockScale" -gt 1 ]; then
+            astwarp $coaddName --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
+            imToMask=$coaddDir/coadd_blocked.fits
+        else
+            imToMask=$coaddName
+        fi
+        ### Second. If a kernel exists in the configuration file, we apply it
+        kernelFile=$CDIR/kernel.fits
+        if [ -f $kernelFile ]; then
+            astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
+            imToMask=$coaddDir/coadd_convolved.fits
+        fi
+        astnoisechisel $imToMask --tilesize=35,35 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
+        if [ "$blockScale" -gt 1 ]; then
+            astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
+            astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
+            rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits
+        else
+            mv $coaddDir/mask_warped.fits $maskName
+        fi
+        rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
+    fi
+ 
+    sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
+    exposuremapName=$coaddDir/exposureMap.fits
+    if [ -f  $sblimitFile ]; then
+        echo -e "\n\tSurface brightness limit for coadd already measured\n"
+        surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
+    else
+        surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
+    fi
+ 
+    times=($(getInitialMidAndFinalFrameTimes $BDIR/framesForCommonReduction))
+    initialTime=$( TZ=UTC date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
+    meanTime=$( TZ=UTC date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
+    finalTime=$( TZ=UTC date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
+ 
+    keyWords=("FRAMES_COMBINED" \
+              "NUMBER_OF_DIFFERENT_NIGHTS" \
+              "INITIAL_DATE_OBS" \
+              "MEAN_DATE_OBS" \
+              "FINAL_DATE_OBS" \
+              "FILTER" \
+              "LOWER_VIGNETTING_THRESHOLD" \
+              "UPPER_VIGNETTING_THRESHOLD" \
+              "SATURATION_THRESHOLD" \
+              "CALIBRATED_USING" \
+              "CALIBRATION_BRIGHTLIMIT" \
+              "CALIBRATION_FAINTLIMIT" \
+              "RUNNING_FLAT" \
+              "WINDOW_SIZE" \
+              "SURFACE_BRIGHTNESS_LIMIT")
+ 
+    numberOfFramesCombinedFile=$BDIR/numberOfFramesCombined_it$iteration.txt
+    numberOfFramesCombined=$(cat "$numberOfFramesCombinedFile")
+    values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
+    comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
+ 
+    astfits $coaddName --write=/,"Pipeline information"
+    addkeywords $coaddName keyWords values comments
+ 
+    diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
+    fwhmFolder=$BDIR/seeing_values
+    entiredir_smallGrid=$BDIR/pointings_smallGrid
+    badFilesWarningsFile=identifiedBadFrames_fwhm.txt
+ 
+    fwhmPlotsWithCoadd=$diagnosis_and_badFilesDir/done_fwhmPlotswithCoadd.txt
+    if ! [ -f $fwhmPlotsWithCoadd ]; then
+        coaddFWHMDir=$BDIR/seeing_values_coadd
+        if ! [ -d $coaddFWHMDir ]; then mkdir $coaddFWHMDir; fi
+        computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds_it1 $coaddFWHMDir 1 "sextractor" "$noisechisel_param" $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames
+        # The name of the script is confusing because this was not planned, but this is for generating the fwhm plot with the coadd fwhm on top of it
+        python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $entiredir_smallGrid $pixelScale $maximumSeeing true $coaddFWHMDir
+        echo "done" > $fwhmPlotsWithCoadd
+    fi
+}
+export -f runCoaddMaskAndDiagnosticsPhase
+
 
 
 if [ -n "$PHASE" ]; then
@@ -936,12 +1570,6 @@ if [ -n "$PHASE" ]; then
     astrometry-setup)
       renameFiles
       runAstrometrySetup
-
-      # This shouldn't go there, but is temporal
-      diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-      badFilesWarningsFile=identifiedBadFrames_astrometry.txt
-      touch $diagnosis_and_badFilesDir/$badFilesWarningsFile 
-
       exit 0
       ;;
     astrometry-solve)
@@ -960,381 +1588,58 @@ if [ -n "$PHASE" ]; then
       runSkyPhase
       exit 0
       ;;
+    sky-diagnostics)
+      runSkyDiagnosticsPhase
+      exit 0
+      ;;
+    prepare-calibration-data)
+      runPrepareCalibrationDataPhase
+      exit 0
+      ;;
+    compute-calibration-factors)
+      runComputeCalibrationFactorsPhase
+      exit 0
+      ;;
+    calibration-factors-diagnostics)
+      runCalibrationFactorsDiagnosticsPhase
+      exit 0
+      ;;
+    apply-calibration-and-fwhm)
+      runApplyCalibrationAndFwhmPhase
+      exit 0
+      ;;
+    background-astrometry-calibPlot-diagnostics)
+      runFwhmCheckPhase
+      runBackgroundDiagnosisPhase
+      runAstrometryDiagnosisPhase
+      runCalibrationDiagnosisPlotPhase
+      exit 0
+      ;;
+    small-to-fullGrid)
+      runSmallGridToFullGridPhase
+      exit 0
+      ;;
+    remove-bad-frames-and-create-blocks)
+      runRemoveBadFramesAndCreateBlocksPhase
+      exit 0
+      ;;
+    build-coadd-blocks)
+      runBuildCoaddBlocksPhase
+      exit 0
+      ;;
+    stitch-coadds)
+      runStitchCoaddsPhase
+      exit 0
+      ;;
+    coadd-mask-and-diagnostics)
+      runCoaddMaskAndDiagnosticsPhase
+      exit 0
+      ;;
     *)
       echo "Unknown phase: $PHASE"
       exit 1
       ;;
   esac
-fi
-
-exit 0
-
-
-# Checking and removing bad frames based on the background value ------
-diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-badFilesWarningsDone=$diagnosis_and_badFilesDir/done_badFrames_backgroundProperties.txt
-
-if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
-if [ -f $badFilesWarningsDone ]; then
-    echo -e "\n\tbadFiles warning already done\n"
-else
-  # We choose the right directory in order to provide the constant estimation and not the polynomial (in case that it has been selected)
-  if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-    tmpDir=$noiseskydir
-  else
-    tmpDir=$noiseskyctedir
-  fi
-  python3 $pythonScriptsPath/checkForBadFrames_backgroundValueAndStd.py $tmpDir $entiredir_smallGrid $airMassKeyWord $diagnosis_and_badFilesDir
-  echo done > $badFilesWarningsDone
-fi
-
-
-
-toleranceForMatching=1.5 #arcsec
-sigmaForPLRegion=3 # Parameter for deciding the selection region (half-max-rad region)
-export toleranceForMatching
-export sigmaForPLRegion
-
-# Parameters for performing the sigma clipping to the different samples in aststatistics
-sigmaForStdSigclip=2
-iterationsForStdSigClip=3
-export sigmaForStdSigclip
-export iterationsForStdSigClip
-
-#### PHOTOMETRIC CALIBRATION  ####
-echo -e "${ORANGE} ------ PHOTOMETRIC CALIBRATION ------ ${NOCOLOUR}\n"
-writeTimeOfStepToFile "Photometric calibration" $fileForTimeStamps
-
-
-### PREPARING DATA FOR CALIBRATION ###
-referenceImagesForMosaic=$entiredir_smallGrid
-mosaicDir=$DIR/mosaic
-selectedCalibrationStarsDir=$mosaicDir/automaticallySelectedStarsForCalibration
-rangeUsedCalibrationDir=$mosaicDir/rangesUsedForCalibration
-aperturePhotDir=$mosaicDir/aperturePhotometryCatalogues # This is the final product that "prepareCalibrationData" produces and will be used in "computeCalibrationFactors"
-mosaicDone=$mosaicDir/done_prep.txt
-
-# ****** Decision note *******
-# The pipeline originally worked only with decals, which downloads always bricks of 3600x3600 pixels. Then the option of using PANSTARRS was added, and we tried to keep things
-# similar by downloading bricks of 3600. The thing (unkown reason for me at least) is that if you download panstarrs bricks of 3600x3600px, it has gaps. That's not an issue with 
-# large fields (the gaps are not big compared with TST field for example) but it is with small cameras (hipercam, osiris etc...). So, if you download the bricks of 1000x1000px you get 
-# rid of the gaps. That's why we define a threshold above which we keep going with bricks of 3600x3600px, otherwise we assume that we are with a small FOV and go for a compact small-brick download
-# (take into account that using always 1000 is not viable for large fields, since the number of bricks increases A LOT)
-
-if (( $(echo "$sizeOfOurFieldDegrees > 0.5" | bc -l) )); then
-  sizeOfBrick=3600
-else
-  sizeOfBrick=1000
-fi
-
-
-# ****** Decision note *******
-# Since the calibration factors obtained with PANSTARRS imaging, GAIA spectra and SDDS spectra do NOT completely agree,
-# we have decided to calibrate to GAIA spectra. Thus, we have estimated the aperture needed in PANSTARRS (XRe) to recover
-# magnitudes obtained with GAIA spectra. When doing the tests for estimated this aperture we find that in certain fields we find and offset. 
-# For solving this we compute this offset and correct it in each run of the pipeline (thus PANSTARRS always agreeing with GAIA)\\ 
-# GAIA has been chosen over SDSS because we have more spectra, the calibration is more stable, and we have it in the southern hemisphere. 
-#It is true that GAIA sources are quite bright (for TST is fine but would be problematic for other telescopes) but since we only need to calibrate Halpha 
-# (much harder to saturate in that band) from bigger telescopes we expect to be fine.\\
-# Additionally a correction between the survey filter (panstarrs, etc...) and your filter is applied. This is a offset introduced in the configuration file
-prepareCalibrationData $surveyForPhotometry $referenceImagesForMosaic $aperturePhotDir $filter $ra $dec $mosaicDir $selectedCalibrationStarsDir $rangeUsedCalibrationDir \
-                                            $pixelScale $sizeOfOurFieldDegrees $catName $surveyForSpectra $apertureUnits $folderWithTransmittances "$filterCorrectionCoeff" \
-                                            $surveyCalibrationToGaiaBrightLimit $surveyCalibrationToGaiaFaintLimit $mosaicDone $sizeOfBrick
-
-
-
-# Calibration of individual frames
-writeTimeOfStepToFile "Computing calibration factors for individual frames" $fileForTimeStamps
-iteration=1
-alphatruedir=$BDIR/alpha-stars-true_it$iteration
-matchdir=$BDIR/match-decals-myData_it$iteration
-ourDataCatalogueDir=$BDIR/ourData-aperture-photometry_it$iteration
-prepareCalibrationCataloguePerFrame=$BDIR/survey-aperture-photometry_perBrick_it$iteration
-mycatdir=$BDIR/my-catalog-halfmaxradius_it$iteration
-imagesForCalibration=$subskySmallGrid_dir
-calibratingMosaic=false
-
-computeCalibrationFactors $surveyForPhotometry $iteration $imagesForCalibration $selectedCalibrationStarsDir $matchdir $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $mycatdir $rangeUsedCalibrationDir \
-                          $mosaicDir $alphatruedir $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $apertureUnits $numberOfApertureUnitsForCalibration $calibratingMosaic "'$noisechisel_param'"
-
-
-
-# Creating histogram with the number of stars used for the calibratino of each frame
-diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-if ! [ -d $diagnosis_and_badFilesDir ]; then mkdir $diagnosis_and_badFilesDir; fi
-
-numberOfStarsUsedInEachFramePlot=$diagnosis_and_badFilesDir/numOfStarsUsedForCalibrationHist.png
-numberOfStarsUsedInEachFrameDone=$diagnosis_and_badFilesDir/done_numOfStarsUsedForCalibrate.txt
-if [ -f $numberOfStarsUsedInEachFrameDone ]; then
-  echo -e "\nHistogram with the number of stars used for calibrating each plot already done"
-else
-  python3 $pythonScriptsPath/diagnosis_numOfStarsUsedInCalibration.py $alphatruedir/numberOfStarsUsedForCalibrate.txt $numberOfStarsUsedInEachFramePlot
-  echo done > $numberOfStarsUsedInEachFrameDone
-fi
-
-
-applyCommonCalibrationFactor=true
-if [[ ("$applyCommonCalibrationFactor" = "true") || ("$applyCommonCalibrationFactor" = "True") ]]; then
-  computeCommonCalibrationFactor $alphatruedir $iteration $objectName $BDIR
-fi
-
-
-# DIAGNOSIS PLOT
-# Histogram of the background values on magnitudes / arcsec²
-if [ "$MODEL_SKY_AS_CONSTANT" = true ]; then
-  tmpDir=$BDIR/noise-sky_it1
-else
-  tmpDir=$noiseskyctedir
-fi
-
-backgroundBrightnessDone=$diagnosis_and_badFilesDir/backgroundBrightness_it$iteration.done
-if [ -f $backgroundBrightnessDone ]; then
-  echo -e "\nDiagnosis based on background brightness already done"
-else
-  badFilesBackgroundWarningsFile=identifiedBadFrames_backgroundBrightness_it$iteration.txt
-  badFilesCalibrationFactorFile=identifiedBadFrames_calibrationFactor_it$iteration.txt
-  python3 $pythonScriptsPath/diagnosis_normalisedBackgroundMagnitudesAndCalibrationFactorPlots.py $tmpDir $entiredir_smallGrid $airMassKeyWord $alphatruedir \
-                                                                                                  $pixelScale $diagnosis_and_badFilesDir $maximumBackgroundBrightness $badFilesBackgroundWarningsFile \
-                                                                                                  $badFilesCalibrationFactorFile $applyCommonCalibrationFactor $BDIR/commonCalibrationFactor_it$iteration.txt 1
-  echo "done" > $backgroundBrightnessDone
-fi
-
-
-echo -e "\n ${GREEN} ---Applying calibration factors--- ${NOCOLOUR}"
-alphatruedir=$BDIR/alpha-stars-true_it$iteration
-photCorrSmallGridDir=$BDIR/photCorrSmallGrid-dir_it$iteration
-applyCalibrationFactors $subskySmallGrid_dir $alphatruedir $photCorrSmallGridDir $iteration $applyCommonCalibrationFactor
-rm -f $subskySmallGrid_dir/*.fits
-# Checking and removing bad frames based on the FWHM value ------
-fwhmFolder=$BDIR/seeing_values
-badFilesWarningsFile=identifiedBadFrames_fwhm.txt
-badFilesWarningsDone=$diagnosis_and_badFilesDir/done_fwhmValue.txt
-if [ -f $badFilesWarningsDone ]; then
-    echo -e "\nbadFiles warning already done\n"
-else
-  if ! [ -d $fwhmFolder ]; then mkdir $fwhmFolder; fi
-  imagesToFWHM=()
-  for a in $(seq 1 $totalNumberOfFrames); do
-    base="$a".fits
-    imagesToFWHM+=("entirecamera_$base")
-  done
-  methodToUse="sextractor"
-
-  printf "%s\n" "${imagesToFWHM[@]}" | parallel -j "$num_cpus" computeFWHMSingleFrame {} $entiredir_smallGrid $fwhmFolder 1 $methodToUse "'$noisechisel_param'" $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames 
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $entiredir_smallGrid $pixelScale $maximumSeeing
-  echo done > $badFilesWarningsDone
-fi
-
-
-# DIAGNOSIS PLOTs ---------------------------------------------------
-
-# Astrometry
-astrometryPlotName=$diagnosis_and_badFilesDir/astrometry.png
-if [ -f $astrometryPlotName ]; then
-    echo -e "\nAstrometry diagnosis plot already done\n"
-else
-  produceAstrometryCheckPlot $matchdir $pythonScriptsPath $astrometryPlotName $pixelScale
-fi
-
-# Calibration
-aperturesFolder=$BDIR/my-catalog-halfmaxradius_it1
-onlyPointLikeCat=$BDIR/my-catalog-halfmaxradius_it$iteration
-calibrationPlotName=$diagnosis_and_badFilesDir/calibrationPlot_individualFrames.png
-if [ -f $calibrationPlotName ]; then
-    echo -e "\nCalibration diagnosis plot for individual frames already done\n"
-else
-    if [[ "$surveyForCalibration" == "SPECTRA" ]]; then
-      dirWithReferenceCat=$mosaicDir
-    else
-      dirWithReferenceCat=$BDIR/survey-aperture-photometry_perBrick_it1
-    fi
-    mosaicPlot=false
-    produceCalibrationCheckPlot $BDIR/ourData-aperture-photometry_it1 $photCorrSmallGridDir $aperturesFolder $dirWithReferenceCat \
-                                  $pythonScriptsPath $calibrationPlotName $calibrationBrightLimitIndividualFrames $calibrationFaintLimitIndividualFrames $numberOfApertureUnitsForCalibration $diagnosis_and_badFilesDir $surveyForPhotometry $BDIR $mosaicPlot $diagnosis_and_badFilesDir/calibratedCatalogue_it$iteration $onlyPointLikeCat
-fi
-
-
-
-
-echo -e "\n${ORANGE} ------ STD WEIGHT COMBINATION ------ ${NOCOLOUR}\n"
-# Compute rms and of the photometrized frames
-noiseskydir=$BDIR/noise-sky_it$iteration
-
-photCorrfullGridDir=$BDIR/photCorrFullGrid-dir_it$iteration
-photCorrfullGridDone=$photCorrfullGridDir/done.txt
-if ! [ -d $photCorrfullGridDir ]; then mkdir $photCorrfullGridDir; fi
-smallGridtoFullGrid $photCorrSmallGridDir $photCorrfullGridDir $photCorrfullGridDone $coaddSizePx $ra $dec
-rm -f $photCorrSmallGridDir/*.fits
-
-
-echo -e "\nRemoving (moving to $rejectedFramesDir) the frames that have been identified as bad frames"
-diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-rejectedFramesDir=$BDIR/rejectedFrames
-if ! [ -d $rejectedFramesDir ]; then mkdir $rejectedFramesDir; fi
-
-prefixOfTheFilesToRemove="entirecamera_"
-# rejectedByAstrometry=identifiedBadFrames_astrometry.txt
-# removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-# removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByAstrometry $prefixOfTheFilesToRemove
-rejectedByBackgroundFWHM=identifiedBadFrames_fwhm.txt
-removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundFWHM $prefixOfTheFilesToRemove
-rejectedByBackgroundValue=identifiedBadFrames_backgroundBrightness_it$iteration.txt
-removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByBackgroundValue $prefixOfTheFilesToRemove
-rejectedByCalibrationFactor=identifiedBadFrames_calibrationFactor_it$iteration.txt
-removeBadFramesFromReduction $photCorrfullGridDir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
-removeBadFramesFromReduction $noiseskydir $rejectedFramesDir $diagnosis_and_badFilesDir $rejectedByCalibrationFactor $prefixOfTheFilesToRemove
-
-
-
-# Store the minimum standard deviation of the frames in order to compute the weights
-h=0
-minRmsFileName=min_rms_it1.txt
-python3 $pythonScriptsPath/find_rms_min.py $filter 1 $totalNumberOfFrames $h $noiseskydir $DIR $iteration $minRmsFileName
-
-
-echo -e "\n ${GREEN} ---Detecting block division--- ${NOCOLOUR}"
-# For large images and large number of them, it could be possible than RAM memory is not enough for stacking
-# Because of that, we have the function createBlocks(), to detect the number of blocks needed to divide the frames, and their respective crop sections
-createBlocks $photCorrfullGridDir $coaddSizePx
-
-
-numBlocks=$(awk 'NR=='1'{print $1}' $BDIR/numberOfBlocks.txt)
-
-
-
-#If number of blocks is equal to 1, we do not need to do anything weird
-if [ "$numBlocks" -eq 1 ]; then
-  #The following functions for creating the coadd have been added into a single one called "buildCoadd()". 
-  #Nevertheless, I'll let the body commented in case something is needed
-  buildCoadd $photCorrfullGridDir $minRmsFileName $iteration $noiseskydir
-else
-  while IFS=' ' read -r cropSection m n; do
-    sectionDone=$BDIR/coadds_"$m""$n"_it$iteration/done.txt
-    if [ -f $sectionDone ]; then
-      echo -e "Coadd for section {$cropSection} already done"
-    else
-      #First we crop into a single section
-      fullGridDir_sec=$BDIR/photCorrFullGrid-dir-section_it"$iteration"
-      fullGridDone_sec=$fullGridDir_sec/done_crops.txt
-      if ! [ -d $fullGridDir_sec ]; then mkdir $fullGridDir_sec; fi
-      cropInSections $photCorrfullGridDir $cropSection $fullGridDir_sec $fullGridDone_sec
-      
-      #Now we build the coadd
-      buildCoadd $fullGridDir_sec $minRmsFileName $iteration $noiseskydir
-      
-      #Finally, we move according to m and n the folders the coadd and remove intermediate folders
-      rm -rf $BDIR/clipping-outliers_it$iteration
-      rm -rf $BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
-      rm -rf $BDIR/weight-dir_it$iteration
-      rm -rf $BDIR/only-w-dir_it$iteration
-      rm -rf $BDIR/framesWithCoaddSubtracted_it$iteration
-      rm -rf $fullGridDir_sec
-      mv $BDIR/coadds_it$iteration $BDIR/coadds_"$m""$n"_it$iteration
-      
-    fi
-  done < "$BDIR/cropSections.txt"
-  rm -f $photCorrfullGridDir/*.fits
-  
-  #Now we stitch together all coadds, exposureMaps and residuals
-  coaddDir=$BDIR/coadds_it$iteration
-  if ! [ -d $coaddDir ]; then mkdir $coaddDir; fi
-  coaddName_nofolder="$objectName"_coadd_"$filter"_it"$iteration".fits
-  coaddDone=$coaddDir/done.txt
-  expMapName_nofolder=exposureMap.fits
-  expMapDone=$coaddDir/done_exposureMap.txt
-  residualsName_nofolder="$objectName"_sumMosaicAfterCoaddSub_"$filter"_it"$iteration".fits
-  residualsDone=$coaddDir/done_residuals.txt
-
-  stitchFiles $coaddName_nofolder $numBlocks $coaddDir $coaddDone $iteration
-  stitchFiles $expMapName_nofolder $numBlocks $coaddDir $expMapDone $iteration
-  stitchFiles $residualsName_nofolder $numBlocks $coaddDir $residualsDone $iteration
-  rm -f $BDIR/coadds_"*"_it$iteration/*.fits
-fi
-
-
-
-##We now need the coadd dir and the coadd name
-coaddDir=$BDIR/coadds_it$iteration
-coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
-maskName=$coaddDir/"$objectName"_coadd_"$filter"_mask.fits
-if [ -f $maskName ]; then
-  echo -e "\tThe mask of the weighted coadd is already done"
-else
-  ## If block scale is greater than 1, we apply the block
-  if [ "$blockScale" -gt 1 ]; then
-    astwarp $coaddName --scale=1/$blockScale --numthreads=$num_cpus -o $coaddDir/coadd_blocked.fits
-    imToMask=$coaddDir/coadd_blocked.fits
-  else
-    imToMask=$coaddName
-  fi
-  ### Second. If a kernel exists in the configuration file, we apply it
-  kernelFile=$CDIR/kernel.fits
-  if [ -f $kernelFile ]; then
-    astconvolve $imToMask --kernel=$kernelFile --domain=spatial --numthreads=$num_cpus -o $coaddDir/coadd_convolved.fits
-    imToMask=$coaddDir/coadd_convolved.fits
-  fi
-  astnoisechisel $imToMask --tilesize=35,35 --rawoutput --numthreads=$num_cpus -o $coaddDir/mask_warped.fits
-  if [ "$blockScale" -gt 1 ]; then
-    astwarp $coaddDir/mask_warped.fits --gridfile=$coaddName --gridhdu=1 --numthreads=$num_cpus -o $coaddDir/mask_unwarped.fits
-    astarithmetic $coaddDir/mask_unwarped.fits -h1 set-i i i 0 gt 1 where float32 -q -o $maskName
-    rm $coaddDir/mask_unwarped.fits $coaddDir/mask_warped.fits
-  else
-    mv $coaddDir/mask_warped.fits $maskName
-  fi  
-  rm $coaddDir/coadd_blocked.fits $coaddDir/coadd_convolved.fits 2>/dev/null
-fi
-
-
-sblimitFile=$coaddDir/"$objectName"_"$filter"_sblimit.txt
-exposuremapName=$coaddDir/exposureMap.fits
-if [ -f  $sblimitFile ]; then
-  echo -e "\n\tSurface brightness limit for coadd already measured\n"
-  surfaceBrightnessLimit=$( awk '/Limiting magnitude/ { print $NF }' $sblimitFile )
-else
-  surfaceBrightnessLimit=$( limitingSurfaceBrightness $coaddName $maskName $exposuremapName $coaddDir $areaSBlimit $fractionExpMap $pixelScale $sblimitFile )
-fi
-
-
-times=($(getInitialMidAndFinalFrameTimes $INDIR))
-initialTime=$( TZ=UTC date -d @"${times[0]}" "+%Y-%m-%d_%H:%M:%S")
-meanTime=$( TZ=UTC date -d @"${times[1]}" "+%Y-%m-%d_%H:%M:%S")
-finalTime=$( TZ=UTC date -d @"${times[2]}" "+%Y-%m-%d_%H:%M:%S")
-
-keyWords=("FRAMES_COMBINED" \
-          "NUMBER_OF_DIFFERENT_NIGHTS" \
-          "INITIAL_DATE_OBS" \
-          "MEAN_DATE_OBS" \
-          "FINAL_DATE_OBS" \
-          "FILTER" \
-          "LOWER_VIGNETTING_THRESHOLD" \
-          "UPPER_VIGNETTING_THRESHOLD" \
-          "SATURATION_THRESHOLD" \
-          "CALIBRATED_USING" \
-          "CALIBRATION_BRIGHTLIMIT" \
-          "CALIBRATION_FAINTLIMIT" \
-          "RUNNING_FLAT" \
-          "WINDOW_SIZE" \
-          "SURFACE_BRIGHTNESS_LIMIT")
-
-numberOfFramesCombined=$(ls $BDIR/photCorrFullGrid-dir_it$iteration/*.fits | wc -l)
-values=("$numberOfFramesCombined" "$numberOfNights" "$initialTime" "$meanTime" "$finalTime" "$filter" "$lowerVignettingThreshold" "$upperVignettingThreshold" "$saturationThreshold" "$surveyForPhotometry" "$calibrationBrightLimitIndividualFrames" "$calibrationFaintLimitIndividualFrames" "$RUNNING_FLAT" "$halfWindowSize" "$surfaceBrightnessLimit")
-comments=("" "" "" "" "" "" "" "" "" "" "" "" "" "Running flat built with +-N frames" "[mag/arcsec^2](3sig;"$areaSBlimit"x"$areaSBlimit" arcsec)")
-
-astfits $coaddName --write=/,"Pipeline information"
-addkeywords $coaddName keyWords values comments
-
-
-diagnosis_and_badFilesDir=$BDIR/diagnosis_and_badFiles
-fwhmPlotsWithCoadd=$diagnosis_and_badFilesDir/done_fwhmPlotswithCoadd.txt
-if ! [ -f $fwhmPlotsWithCoadd ]; then
-  coaddFWHMDir=$BDIR/seeing_values_coadd
-  if ! [ -d $coaddFWHMDir ]; then mkdir $coaddFWHMDir; fi
-  computeFWHMSingleFrame "$objectName"_coadd_"$filter"_it$iteration.fits $BDIR/coadds_it1 $coaddFWHMDir 1 "sextractor" "$noisechisel_param"
-  # The name of the script is confusing because this was not planned, but this is for generating the fwhm plot with the coadd fwhm on top of it
-  python3 $pythonScriptsPath/checkForBadFrames_fwhm.py $fwhmFolder $diagnosis_and_badFilesDir $badFilesWarningsFile $entiredir_smallGrid $pixelScale $maximumSeeing true $coaddFWHMDir
-  echo "done" > $fwhmPlotsWithCoadd
 fi
 
 

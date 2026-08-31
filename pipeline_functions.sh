@@ -19,7 +19,7 @@ load_module() {
     errorNumber=8
 
     if [[ -z "$moduleName" ]]; then
-        echo "Error: No module name provided"
+        echo "Error: No module name provided"prepareCalibrationData
         return $errorNumber
     fi
 
@@ -1286,7 +1286,7 @@ warpImage() {
     astcrop $frameFullGrid --polygon=$col_min,$row_min:$col_max,$row_min:$col_max,$row_max:$col_min,$row_max --mode=img  -o $entiredir/entirecamera_"$currentIndex".fits --quiet
     echo $row_min $row_max $col_min $col_max > $entiredir/entirecamera_"$currentIndex"_cropRegion.txt
 
-    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 # $frameFullGrid
+    rm $entiredir/"$currentIndex"_swarp_w1.fits $entiredir/"$currentIndex"_swarp1.fits $tmpFile1 $frameFullGrid
 
     # I'm manually propagating the date because is used in some versions of the pipeline (amateur data) but  swarp for some reason propagates it incorrectly
     propagateKeyword $imageToSwarp $dateHeaderKey $entiredir/entirecamera_"$currentIndex".fits 
@@ -1314,6 +1314,7 @@ smallGridToFullGridSingleFrame(){
 }
 export -f smallGridToFullGridSingleFrame
 
+
 smallGridtoFullGrid(){
     local smallGridDir=$1
     local fullGridDir=$2
@@ -1321,20 +1322,28 @@ smallGridtoFullGrid(){
     local fullGridSize=$4
     local fullGridRA=$5
     local fullGridDEC=$6
-    
-
-    if [ -f $fullGridDone ]; then
-        echo -e "\n\tFrames from $smallGridDir have been already pased into the full grid\n"
+ 
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+    local taskDone="${fullGridDone}.task${taskId}"
+ 
+    if [ -f $taskDone ]; then
+        echo -e "\n\tThis task's frames from $smallGridDir have already been passed into the full grid\n"
     else
         framesToGrid=()
-        for frame in $smallGridDir/*.fits; do
-            framesToGrid+=("$frame")
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                if [ -f "$smallGridDir/entirecamera_$a.fits" ]; then
+                    framesToGrid+=("$smallGridDir/entirecamera_$a.fits")
+                fi
+            fi
         done
         printf "%s\n" "${framesToGrid[@]}" | parallel -j "$num_cpus" smallGridToFullGridSingleFrame {} $fullGridDir $fullGridSize $fullGridRA $fullGridDEC 
-        echo done > $fullGridDone
+        echo done > $taskDone
     fi
 }
 export -f smallGridtoFullGrid
+
 
 removeBadFramesFromReduction() {
     local sourceToRemoveFiles=$1
@@ -1524,7 +1533,7 @@ computeSky() {
                 fi
             fi
         done
-       
+
         printf "%s\n" "${framesToComputeSky[@]}" | parallel -j "$num_parallel" computeSkyForFrame {} $framesToUseDir $noiseskydir $constantSky $constantSkyMethod $polyDegree $inputImagesAreMasked $ringDir $useCommonRing $keyWordToDecideRing $keyWordThreshold $keyWordValueForFirstRing $keyWordValueForSecondRing $ringWidth $blockScale "'$noisechisel_param'" "'$maskParams'"
         echo done > $noiseskydone
     fi
@@ -2754,6 +2763,7 @@ selectStarsAndRangeForCalibrateSingleFrame(){
 }
 export -f selectStarsAndRangeForCalibrateSingleFrame
 
+
 selectStarsAndSelectionRangeOurData() {
     local iteration=$1
     local framesForCalibrationDir=$2
@@ -2761,18 +2771,24 @@ selectStarsAndSelectionRangeOurData() {
     local methodToUse=$4
     local apertureUnits=$5
     local noisechisel_param=$6
-
-    mycatdone=$mycatdir/done.txt
+ 
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+    mycatdone=$mycatdir/done_task${taskId}.txt
     if ! [ -d $mycatdir ]; then mkdir $mycatdir; fi
     if [ -f $mycatdone ]; then
             echo -e "\n\tSources for photometric calibration are already extracted for my image\n"
     else
         framesToUse=()
-        for a in $( ls $framesForCalibrationDir/*.fits ); do
-            framename=$( basename $a )
-            framesToUse+=("$framename")
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                match=$(cd "$framesForCalibrationDir" && ls *entirecamera_"$a".* 2>/dev/null | head -1)
+                if [ -n "$match" ]; then
+                    framesToUse+=("$match")
+                fi
+            fi
         done
-
+ 
         headerWithData=1
         printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" selectStarsAndRangeForCalibrateSingleFrame {} $framesForCalibrationDir $mycatdir $headerWithData $methodToUse $apertureUnits "$noisechisel_param"
         echo done > $mycatdone
@@ -2833,28 +2849,40 @@ matchDecalsAndSingleFrame() {
 }
 export -f matchDecalsAndSingleFrame
 
+
 matchDecalsAndOurData() {
     local myCatalogues=$1
     local calibrationCatalogues=$2
     local matchdir=$3
     local surveyForCalibration=$4
     local calibratingMosaic=$5
-
-    matchdirdone=$matchdir/done_automatic.txt
+ 
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+    matchdirdone=$matchdir/done_task${taskId}.txt
     if ! [ -d $matchdir ]; then mkdir $matchdir; fi
     if [ -f $matchdirdone ]; then
         echo -e "\n\tMatch between decals (aperture) catalog and my (aperture) catalogs already done\n"
     else
         frameNumber=()
-        for a in $( ls $myCatalogues/*.cat ); do
-            frameName=$( basename $a )
-            frameNumber+=("$frameName")
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                match=$(cd "$myCatalogues" && ls *entirecamera_"$a".* 2>/dev/null | head -1)
+
+                if [ -n "$match" ]; then
+                    frameNumber+=("$match")
+                fi
+            fi
         done
         printf "%s\n" "${frameNumber[@]}" | parallel -j "$num_cpus" matchDecalsAndSingleFrame {} $myCatalogues $calibrationCatalogues $matchdir $surveyForCalibration $calibratingMosaic
         echo done > $matchdirdone
     fi
 }
 export -f matchDecalsAndOurData
+
+
+
+
 
 buildOurCatalogueOfMatchedSourcesForFrame() {
     local base=$1
@@ -2871,11 +2899,6 @@ buildOurCatalogueOfMatchedSourcesForFrame() {
 
     dataHdu=1
 
-    # raColumnName=RA
-    # decColumnName=DEC
-    # photometryOnImage_noisechisel $a $ourDatadir $automaticCatalogue $i $r_myData_pix $ourDatadir/$base.cat 22.5 $dataHdu \
-    #                                 $raColumnName $decColumnName
-
     columnWithXCoordForOutDataPx=0 # These numbers come from how the catalogue of the matches stars is built. This is not very clear right now, should be improved
     columnWithYCoordForOutDataPx=1
     columnWithXCoordForOutDataWCS=2
@@ -2890,24 +2913,31 @@ buildOurCatalogueOfMatchedSources() {
     local framesForCalibrationDir=$2
     local mycatdir=$3
     local numberOfApertureUnitsForCalibration=$4
-
-    ourDatadone=$ourDatadir/done.txt
+ 
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+    ourDatadone=$ourDatadir/done_task${taskId}.txt
     if ! [ -d $ourDatadir ]; then mkdir $ourDatadir; fi
     if [ -f $ourDatadone ]; then
         echo -e "\n\tAperture catalogs in our data done\n"
     else
         framesToUse=()
-        for a in $( ls $framesForCalibrationDir/*.fits); do
-            frameName=$( basename $a )
-            framesToUse+=("$frameName")
-            #buildOurCatalogueOfMatchedSourcesForFrame $frameName $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
-        done
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                match=$(cd "$framesForCalibrationDir" && ls *entirecamera_"$a".* 2>/dev/null | head -1)
 
+                if [ -n "$match" ]; then
+                    framesToUse+=("$match")
+                fi
+            fi
+        done
+ 
         printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_parallel" buildOurCatalogueOfMatchedSourcesForFrame {} $ourDatadir $framesForCalibrationDir $mycatdir $numberOfApertureUnitsForCalibration
         echo done > $ourDatadone
     fi
 }
 export -f buildOurCatalogueOfMatchedSources
+
 
 matchCalibrationStarsCatalogues() {
     local matchdir2=$1
@@ -2943,52 +2973,83 @@ matchCalibrationStarsCatalogues() {
 }
 export -f matchCalibrationStarsCatalogues
 
+computeAndStoreFactorsForFrame() {
+    local baseName=$1
+    local matchdir=$2
+    local alphatruedir=$3
+    local brightLimit=$4
+    local faintLimit=$5
+ 
+    a=$( echo $baseName | awk -F'[_.]' '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $(i+1)=="fits") print $i}')
+ 
+    alphaFile=alpha_$a.txt
+    f=$matchdir/$baseName
+ 
+    alphatruet=$alphatruedir/"$objectName"_"$filter"_"$a".txt
+    asttable $f -h1 --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
+    raCol=0
+    decCol=1
+    python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py "$alphatruet" "$alphatruedir/"$objectName"_"$filter"_"$a"_starsUsedForCalibrate.reg" "plain" $raCol $decCol
+    asttable $alphatruet -h1 -c1,2,'arith $6 $8 /' -o$alphatruedir/$alphaFile
+ 
+    # This was done because if we use sigclipmean or median with only 3 stars it gives nan. But if we use mean always it gives wrong values when we have more stars
+    if [ "$(asttable "$alphatruedir/$alphaFile" | wc -l)" -eq 3 ]; then
+        mean=$(asttable "$alphatruedir/$alphaFile" -c3 | aststatistics --mean)
+    else
+        mean=$(asttable "$alphatruedir/$alphaFile" -c3 | aststatistics --sigclip-median)
+    fi
+ 
+    std=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --std)
+    echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
+    count=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
+ 
+    # Each frame writes its OWN file instead of appending to one shared file -
+    # concurrent appends from multiple frames (whether via local parallel or
+    # across multiple nodes) aren't guaranteed atomic on every filesystem, and
+    # this file is read downstream by diagnosis_numOfStarsUsedInCalibration.py.
+    # stitchNumberOfStarsUsedForCalibrate combines these back into one file
+    # once every frame (across every task) has finished.
+    echo "Frame number $a: $count" > $alphatruedir/numberOfStars_"$a".txt
+}
+export -f computeAndStoreFactorsForFrame
+
+
 computeAndStoreFactors() {
     local alphatruedir=$1
     local matchdir=$2
     local brightLimit=$3
     local faintLimit=$4
-
-
-    alphatruedone=$alphatruedir/done.txt
-    numberOfStarsUsedToCalibrateFile=$alphatruedir/numberOfStarsUsedForCalibrate.txt
-
+ 
+ 
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+    alphatruedone=$alphatruedir/done_task${taskId}.txt
+ 
     if ! [ -d $alphatruedir ]; then mkdir $alphatruedir; fi
     if [ -f $alphatruedone ]; then
         echo -e "\n\tTrustable alphas computed for extension $h\n"
     else
-        for a in $( ls $matchdir/*.cat ); do                       
-            baseName=$( basename $a )
-            a=$( echo $baseName | awk -F'[_.]' '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $(i+1)=="fits") print $i}')
-
-            alphaFile=alpha_$a.txt
-            f=$matchdir/$baseName
-
-            alphatruet=$alphatruedir/"$objectName"_"$filter"_"$a".txt
-            asttable $f -h1 --range=MAGNITUDE_CALIBRATED,$brightLimit,$faintLimit -o$alphatruet
-            raCol=0
-            decCol=1
-            python3 $pythonScriptsPath/createDS9RegionsFromCatalogue.py "$alphatruet" "$alphatruedir/"$objectName"_"$filter"_"$a"_starsUsedForCalibrate.reg" "plain" $raCol $decCol
-            asttable $alphatruet -h1 -c1,2,'arith $6 $8 /' -o$alphatruedir/$alphaFile
-
-            # python3 /home/sguerra/pipeline/pipelineScripts/tmp_diagnosis_distributionOfCalibrationFactorsInFrame.py $alphatruedir/$alphaFile $a
-
-            # This was done because if we use sigclipmean or median with only 3 stars it gives nan. But if we use mean always it gives wrong values when we have more stars
-            if [ "$(asttable "$alphatruedir/$alphaFile" | wc -l)" -eq 3 ]; then
-                mean=$(asttable "$alphatruedir/$alphaFile" -c3 | aststatistics --mean)
-            else
-                mean=$(asttable "$alphatruedir/$alphaFile" -c3 | aststatistics --sigclip-median)
+        framesToUse=()
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                match=$(cd "$matchdir" && ls *entirecamera_"$a".* 2>/dev/null | head -1)
+                echo "node $taskId processing $a"
+                if [ -n "$match" ]; then
+                    framesToUse+=("$match")
+                fi
             fi
-            
-            std=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --std)
-            echo "$mean $std" > $alphatruedir/alpha_"$objectName"_Decals-"$filter"_"$a".txt
-            count=$(asttable $alphatruedir/$alphaFile -c3 | aststatistics --sclipparams=$sigmaForStdSigclip,$iterationsForStdSigClip --number)
-            echo "Frame number $a: $count" >> $numberOfStarsUsedToCalibrateFile
         done
+ 
+        printf "%s\n" "${framesToUse[@]}" | parallel -j "$num_cpus" computeAndStoreFactorsForFrame {} $matchdir $alphatruedir $brightLimit $faintLimit
         echo done > $alphatruedone
     fi
 }
 export -f computeAndStoreFactors
+
+
+
+
+
 
 combineCatalogues() {
     local outputDir=$1
@@ -3100,22 +3161,27 @@ computeCalibrationFactors() {
     methodToUse="sextractor"
     echo -e "\n ${GREEN} ---Selecting stars and range for our data--- ${NOCOLOUR}"
     selectStarsAndSelectionRangeOurData $iteration $imagesForCalibration $mycatdir $methodToUse $apertureUnits "$noisechisel_param"
-    
 
     echo -e "\n ${GREEN} ---Building catalogues for our data with aperture photometry --- ${NOCOLOUR}"
-   buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
+    buildOurCatalogueOfMatchedSources $ourDataCatalogueDir $imagesForCalibration $mycatdir $numberOfApertureUnitsForCalibration
     
-    #if [ $iteration -eq 2 ]; then exit; fi
-    # If we are calibrating with spectra we just have the whole catalogue of the field
-    # If we are calibrating with a survey then we have a catalogue por survey's brick and we need to combine the needed bricks for build a catalogue per frame
-    if ! [ -d $prepareCalibrationCataloguePerFrame ]; then mkdir $prepareCalibrationCataloguePerFrame; fi
+    if ! [ -d $prepareCalibrationCataloguePerFrame ]; then mkdir -p $prepareCalibrationCataloguePerFrame; fi
     if [[ ("$surveyForCalibration" == "SPECTRA") || ( "$calibratingMosaic" == true) ]]; then
-        cp $mosaicDir/wholeFieldPhotometricCatalogue.cat $prepareCalibrationCataloguePerFrame
+        (
+            flock -x 204
+            if [ ! -f "$prepareCalibrationCataloguePerFrame/wholeFieldPhotometricCatalogue.cat" ]; then
+                cp $mosaicDir/wholeFieldPhotometricCatalogue.cat $prepareCalibrationCataloguePerFrame
+            fi
+        ) 204>"$mosaicDir/copyWholeFieldCatalogue.lock"
     else
-        echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
-        combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
+        (
+            flock -x 205
+            echo -e "\n ${GREEN} ---Combining decals catalogues for matching each brick --- ${NOCOLOUR}"
+            combineDecalsBricksCataloguesForEachFrame $prepareCalibrationCataloguePerFrame $mosaicDir/frames_bricks_association.txt $mosaicDir/aperturePhotometryCatalogues
+        ) 205>"$mosaicDir/combineBricks.lock"
     fi
-        
+
+
     echo -e "\n ${GREEN} ---Matching our aperture catalogues and Decals aperture catalogues--- ${NOCOLOUR}"
     matchDecalsAndOurData $ourDataCatalogueDir $prepareCalibrationCataloguePerFrame $matchdir $surveyForCalibration $calibratingMosaic
     
@@ -3123,6 +3189,21 @@ computeCalibrationFactors() {
     computeAndStoreFactors $alphatruedir $matchdir $brightLimit $faintLimit
 }
 export -f computeCalibrationFactors
+
+stitchNumberOfStarsUsedForCalibrate() {
+    # Combines the per-frame numberOfStars_*.txt files written by
+    # computeAndStoreFactorsForFrame into the single file
+    # diagnosis_numOfStarsUsedInCalibration.py expects. Must only run after
+    # every task's computeAndStoreFactorsForFrame calls have finished for
+    # every frame - this is a real barrier (not a mutual-exclusion problem),
+    # so this belongs in a separate single-task phase, not flock-guarded
+    # inline like combineDecalsBricksCataloguesForEachFrame.
+    local alphatruedir=$1
+    cat $alphatruedir/numberOfStars_*.txt > $alphatruedir/numberOfStarsUsedForCalibrate.txt
+}
+export -f stitchNumberOfStarsUsedForCalibrate
+ 
+
 
 getCalibrationFactorForIndividualFrame() {
     local a=$1
@@ -3161,9 +3242,11 @@ applyCalibrationFactorsToFrame() {
         echo "Value of variable applyCommonCalibrationFactor ($applyCommonCalibrationFactor) not recognised"
         exit 55
     fi
+    echo astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/entirecamera_"$a".fits
     astarithmetic $f -h1 $alpha x float32 -o $photCorrDir/entirecamera_"$a".fits
 }
 export -f applyCalibrationFactorsToFrame
+
 
 applyCalibrationFactors() {
     local imagesForCalibration=$1
@@ -3171,24 +3254,29 @@ applyCalibrationFactors() {
     local photCorrDir=$3
     local iteration=$4
     local applyCommonCalibrationFactor=$5
-
-    muldone=$photCorrDir/done_calibration.txt
-    if ! [ -d $photCorrDir ]; then mkdir $photCorrDir; fi
+ 
+    local taskId=${SLURM_PROCID:-0}
+    local numTasks=${SLURM_NTASKS:-1}
+    muldone=$photCorrDir/done_task${taskId}.txt
+    if ! [ -d $photCorrDir ]; then mkdir -p $photCorrDir; fi
     if [ -f $muldone ]; then
             echo -e "\n\tMultiplication for alpha in the pointings (huge grid) is done for extension $h\n"
     else
         framesToApplyFactor=()
-        for a in $(ls $imagesForCalibration/*.fits); do
-            frameName=$( basename $a )
-            frameNumber=$( echo $frameName | grep -oP '(?<=_)\d+(?=\.fits)' )
-            framesToApplyFactor+=("$frameNumber")
+        for a in $(seq 1 $totalNumberOfFrames); do
+            if (( (a - 1) % numTasks == taskId )); then
+                if [ -f "$imagesForCalibration/entirecamera_$a.fits" ]; then
+                    framesToApplyFactor+=("$a")
+                fi
+            fi
         done
-
+ 
         printf "%s\n" "${framesToApplyFactor[@]}" | parallel -j "$num_cpus" applyCalibrationFactorsToFrame {} $imagesForCalibration $alphatruedir $photCorrDir $iteration $applyCommonCalibrationFactor
         echo done > $muldone
     fi
 }
 export -f applyCalibrationFactors
+
 
 # Compute the weights o the frames based on the std of the background
 # In order to perform a weighted mean
@@ -3415,7 +3503,7 @@ produceCalibrationCheckPlot() {
 
         # In the nominal resolution it takes sooo long for doing this plots. So only a set of frames are used for the
         # calibration check
-        if [ "$frameNumber" -gt 50 ]; then
+        if [ "$frameNumber" -gt 10 ]; then
             :
         else
             if [[ ($survey == "SPECTRA") || ("$mosaicPlot" == true) ]]; then
@@ -3423,7 +3511,6 @@ produceCalibrationCheckPlot() {
             else
                 referenceCatalogue=$referenceCatalogueDir/entirecamera_$frameNumber.cat
             fi
-
 
 
             myCalibratedFrame=$myFrames_calibrated/entirecamera_$frameNumber.fits
@@ -3434,7 +3521,6 @@ produceCalibrationCheckPlot() {
             r_myData_pix=$(astarithmetic $r_myData_pix_ $numberOfApertureUnitsForCalibration. x -q )
 
      
-
             # raColumnName=RA
             # decColumnName=DEC
             # photometryOnImage_noisechisel -1 $calibratedCataloguesDir $myNonCalibratedCatalogue $myCalibratedFrame $r_myData_pix $calibratedCataloguesDir/$frameNumber.cat 22.5 \
@@ -3720,7 +3806,6 @@ computeExposureMap() {
     local exposureMapDir=$2
     local exposureMapDone=$3
     
-
     if ! [ -d $exposuremapDir ]; then mkdir $exposuremapDir; fi
     if [ -f $exposuremapdone ]; then
         echo -e "\n\tThe exposure map is already done\n"
@@ -3984,7 +4069,7 @@ computeFWHMSingleFrame(){
         exit $erroNumber
     fi
 
-    astmatch $outputCatalogue --hdu=1 $DIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=$num_cpus -o$fwhmdir/match_"$a"_my_gaia.txt
+    astmatch $outputCatalogue --hdu=1 $DIR/catalogs/"$objectName"_gaia.fits --hdu=1 --ccol1=RA,DEC --ccol2=RA,DEC --aperture=$toleranceForMatching/3600 --outcols=aX,aY,aRA,aDEC,aMAGNITUDE,aHALF_MAX_RADIUS --numthreads=1 -o$fwhmdir/match_"$a"_my_gaia.txt
     # Now we select the stars as we do for the photometry
     s=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE --range=MAGNITUDE,$brightLimit:$faintLimit | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1.5,$iterationsForStdSigClip --sigclip-median)
     std=$(asttable $fwhmdir/match_"$a"_my_gaia.txt -h1 -c6 --noblank=MAGNITUDE --range=MAGNITUDE,$brightLimit:$faintLimit | awk '{for(i=1;i<=NF;i++) if($i!="inf") print $i}' | aststatistics --sclipparams=1.5,$iterationsForStdSigClip --sigclip-std)
@@ -4211,65 +4296,82 @@ buildCoadd(){
     local minRmsFileName=$2
     local iteration=$3
     local noiseskydir=$4
-
+    local m=$5   # optional - block row. Only set when running per-section (numBlocks > 1).
+    local n=$6   # optional - block column.
+ 
+    # blockLabel suffixes buildCoadd's own working directories so concurrent
+    # sections (different tasks/nodes) never collide on the same path.
+    # coaddBlockLabel matches the pre-existing "coadds_MN_it#" naming the
+    # rest of the pipeline (the section-loop's done-check, stitchFiles)
+    # already expects - so buildCoadd writes straight to the correct final
+    # location, no rename/mv step needed by the caller. Both are empty for
+    # the numBlocks=1 case, giving the original unsuffixed behaviour.
+    local blockLabel=""
+    local coaddBlockLabel=""
+    if [ -n "$m" ] && [ -n "$n" ]; then
+        blockLabel="_${m}${n}"
+        coaddBlockLabel="${m}${n}_"
+    fi
+ 
     ##Upper and lower limits
     echo -e "\n ${GREEN} ---Masking outliers--- ${NOCOLOUR}"
     writeTimeOfStepToFile "Masking outliers" $fileForTimeStamps
-
-    clippingdir=$BDIR/clipping-outliers_it$iteration
+ 
+    clippingdir=$BDIR/clipping-outliers_it${iteration}${blockLabel}
     clippingdone=$clippingdir/done.txt
     sigmaForStdSigclip=3
     buildUpperAndLowerLimitsForOutliers $clippingdir $clippingdone $fullGridDir $sigmaForStdSigclip 
-
+ 
     ##Masking outliers
-    photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it$iteration
+    photCorrNoOutliersPxDir=$BDIR/photCorrFullGrid-dir_noOutliersPx_it${iteration}${blockLabel}
     photCorrNoOutliersPxDone=$photCorrNoOutliersPxDir/done.txt
     if ! [ -d $photCorrNoOutliersPxDir ]; then mkdir $photCorrNoOutliersPxDir; fi
     removeOutliersFromWeightedFrames $fullGridDir $clippingdir $photCorrNoOutliersPxDir $photCorrNoOutliersPxDone
-
+ 
     ##Calculate weights
     echo -e "\n ${GREEN} ---Computing weights for the frames--- ${NOCOLOUR}"
     writeTimeOfStepToFile "Computing frame weights" $fileForTimeStamps
-
-    wdir=$BDIR/weight-dir_it$iteration
-    wonlydir=$BDIR/only-w-dir_it$iteration
+ 
+    wdir=$BDIR/weight-dir_it${iteration}${blockLabel}
+    wonlydir=$BDIR/only-w-dir_it${iteration}${blockLabel}
     wdone=$wdir/done.txt
     wonlydone=$wonlydir/done.txt
     if ! [ -d $wonlydir ]; then mkdir $wonlydir; fi
     if ! [ -d $wdir ]; then mkdir $wdir; fi
     computeWeights $wdir $wdone $wonlydir $wonlydone $photCorrNoOutliersPxDir $noiseskydir $iteration $minRmsFileName
-
+ 
     ##Final coadd
     echo -e "\n ${GREEN} ---Coadding--- ${NOCOLOUR}"
     echo -e "\nBuilding coadd"
-    coaddDir=$BDIR/coadds_it$iteration
+    coaddDir=$BDIR/coadds_${coaddBlockLabel}it${iteration}
     coaddDone=$coaddDir/done.txt
     coaddName=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration".fits
     stackWeightedImages $coaddDir $coaddName $wdir $wonlydir $coaddDone
-
+ 
     ##Exposure map
     exposuremapDir=$coaddDir/"$objectName"_exposureMap
     exposuremapdone=$coaddDir/done_exposureMap.txt
     computeExposureMap $wdir $exposuremapDir $exposuremapdone
-
+ 
     ##Residual coadd
-    framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it$iteration
+    framesWithCoaddSubtractedDir=$BDIR/framesWithCoaddSubtracted_it${iteration}${blockLabel}
     framesWithCoaddSubtractedDone=$framesWithCoaddSubtractedDir/done_framesWithCoaddSubtracted.fits
     if ! [ -d $framesWithCoaddSubtractedDir ]; then mkdir $framesWithCoaddSubtractedDir; fi
     if [ -f $framesWithCoaddSubtractedDone ]; then
         echo -e "\n\tFrames with coadd subtracted already done\n"
     else
         sumMosaicAfterCoaddSubtraction=$coaddDir/"$objectName"_sumMosaicAfterCoaddSub_"$filter"_it$iteration.fits
-
+ 
         coaddAv=$coaddDir/"$objectName"_coadd_"$filter"_it"$iteration"_average.fits
         astarithmetic $(ls -v $photCorrNoOutliersPxDir/entirecamera_*.fits) $(ls $photCorrNoOutliersPxDir/entirecamera_*.fits | wc -l) -g1 mean -o $coaddAv
         subtractCoaddToFrames $fullGridDir $coaddAv $framesWithCoaddSubtractedDir 
         astarithmetic $(ls -v $framesWithCoaddSubtractedDir/entirecamera_*.fits) $(ls $framesWithCoaddSubtractedDir/entirecamera_*.fits | wc -l) -g1 sum -o$sumMosaicAfterCoaddSubtraction
-
+ 
         echo "done" > $framesWithCoaddSubtractedDone
     fi
 }
 export -f buildCoadd
+
 
 createBlocks(){
     local fullGridDir=$1
@@ -4285,11 +4387,12 @@ createBlocks(){
         echo -e "crop sections already done"
     else
         availMemory_gb=$(awk '/MemAvailable/ {printf "%.3f \n", $2/1024/1024/1.3 }' /proc/meminfo)
-        safetyMem=50.0 #Gb
+        safetyMem=15 #Gb
         availMemoryToUse=$(echo "$availMemory_gb - $safetyMem" | bc)
+        echo -e "\nTotal available memory: $availMemory_gb"
         echo -e "\nAvailable memory to use for mosaicking: $availMemoryToUse Gb"
         
-        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix,$coaddSizeInPix 75.0 $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
+        python3 $pythonScriptsPath/createCropSections.py $fullGridDir $coaddSizeInPix,$coaddSizeInPix $availMemoryToUse $BDIR/cropSections.txt $BDIR/numberOfBlocks.txt
     fi
 }
 export -f createBlocks
@@ -4322,30 +4425,37 @@ cropInSectionsSingleFrame(){
 
     i=$fullGridDir/$base
     out=$outDir/$base
-    echo astcrop $i -h1 --mode=img --section=$section --zeroisnotblank -o $out --numthreads=$num_threads
     astcrop $i -h1 --mode=img --section=$section --zeroisnotblank -o $out --numthreads=$num_threads
 }
 export -f cropInSectionsSingleFrame
 
-stitchFiles(){
-    local fileToStitch=$1
-    local numBlocks=$2
-    local outDir=$3
-    local stitchDone=$4
-    local iteration=$5
 
+stitchFiles(){
+    # numBlocksX and numBlocksY are taken separately - numberOfBlocks.txt
+    # (written by createCropSections.py) stores them as two independent
+    # values, since a non-square mosaic footprint can genuinely need a
+    # different block count in each dimension. Previously only the first
+    # value was read and reused for both loop bounds, which silently assumed
+    # a square grid and could miss sections or stitch incorrectly otherwise.
+    local fileToStitch=$1
+    local numBlocksX=$2
+    local numBlocksY=$3
+    local outDir=$4
+    local stitchDone=$5
+    local iteration=$6
+ 
     if [ -f $stitchDone ]; then
         echo -e "File $fileToStitch already stitched"
     else
         stitchCommand=""
-        for m in $(seq 1 $numBlocks); do
-            for n in $(seq 1 $numBlocks); do
+        for m in $(seq 1 $numBlocksX); do
+            for n in $(seq 1 $numBlocksY); do
                 file=$BDIR/coadds_"$m""$n"_it"$iteration"/$fileToStitch
                 stitchCommand+="$file -h1 "
             done
-            stitchCommand+="$numBlocks 2 stitch "
+            stitchCommand+="$numBlocksY 2 stitch "
         done
-        astarithmetic $stitchCommand $numBlocks 1 stitch -o $outDir/$fileToStitch
+        astarithmetic $stitchCommand $numBlocksX 1 stitch -o $outDir/$fileToStitch
         echo done > $stitchDone
     fi
 }
