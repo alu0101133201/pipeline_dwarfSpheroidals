@@ -10,12 +10,14 @@ availMemory=float(sys.argv[3]) #In GB
 outputFile=sys.argv[4]
 numberOfBlocksFile=sys.argv[5]
 
+# Optional: minimum total number of blocks (numberOfBlocksX * numberOfBlocksY)
+# to produce, e.g. the number of nodes available for the coaddition step, so
+# a memory-driven grid smaller than the node count doesn't leave nodes idle.
+# Defaults to 1 (no minimum) so existing callers are unaffected.
+minNumberOfBlocks=int(sys.argv[6]) if len(sys.argv) > 6 else 1
+
 #Number of frames to combine
 totalFrames=len(glob.glob(os.path.join(framesDir,"*.fits")))
-#Size of the folder in GB
-#sizeBytes=sum(os.path.getsize(f) for f in glob.glob(os.path.join(framesDir,"entirecamera*.fits")))
-#sizeGB=sizeBytes/(1024.0**3)
-#
 
 
 totalNumberOfPixels=sizeX*sizeY
@@ -31,6 +33,14 @@ sizeBlockX_pix=max(1,int(np.sqrt(maxPixelsPerCombination*ratio)))
 sizeBlockY_pix=max(1,int(np.sqrt(maxPixelsPerCombination/ratio)))
 numberOfBlocksX=math.ceil(sizeX/sizeBlockX_pix)
 numberOfBlocksY=math.ceil(sizeY/sizeBlockY_pix)
+
+memoryDrivenBlocks=numberOfBlocksX*numberOfBlocksY
+if memoryDrivenBlocks < minNumberOfBlocks:
+        scale=np.sqrt(minNumberOfBlocks/memoryDrivenBlocks)
+        numberOfBlocksX=math.ceil(numberOfBlocksX*scale)
+        numberOfBlocksY=math.ceil(numberOfBlocksY*scale)
+        sizeBlockX_pix=math.ceil(sizeX/numberOfBlocksX)
+        sizeBlockY_pix=math.ceil(sizeY/numberOfBlocksY)
 
 sections=[]
 for i in range(numberOfBlocksX):

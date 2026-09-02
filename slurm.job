@@ -1,0 +1,211 @@
+#!/bin/bash
+#SBATCH --nodes=6
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=48
+#SBATCH --time=02:00:00
+#SBATCH --job-name=DDO216_parallel
+#SBATCH --output=%j.out
+#SBATCH --error=%j.err
+#SBATCH --mem=88G
+
+galaxyName="DDO216_r"
+
+WORKSPACE_DIR=$(pwd)
+CONFIG_FILE="${WORKSPACE_DIR}/"$galaxyName".conf"
+VENV_PATH=$(realpath ../env_lapalma/bin/activate)
+PIPELINE_SCRIPT=$(realpath ../pipeline_new/pipeline.sh)
+
+LOGDIR="${WORKSPACE_DIR}/logs"
+mkdir -p "$LOGDIR"
+
+fmt_time() {
+    local total_seconds=$1
+    local min=$(( total_seconds / 60 ))
+    local sec=$(( total_seconds % 60 ))
+    printf "%dm%02ds" "$min" "$sec"
+}
+
+echo $CONFIG_FILE
+
+PIPELINE_START_TIME=$(date +%s)
+echo -e "\nPipeline started at $(date)"
+
+NUM_NIGHTS=$(ls -d DATA-or/night* | wc -l)
+
+echo "Number of nights to process: $NUM_NIGHTS"
+NIGHT_START_TIME=$(date +%s)
+for night in $(seq 1 $NUM_NIGHTS); do
+    echo "Launching night $night to a compute node..."
+      
+    srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+         --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+         --output="$LOGDIR/night${night}_%j.out" \
+         --error="$LOGDIR/night${night}_%j.err" \
+         bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -n $night '$CONFIG_FILE'" &
+done
+wait 
+
+NIGHT_END_TIME=$(date +%s)
+NIGHT_ELAPSED=$(( NIGHT_END_TIME - NIGHT_START_TIME ))
+echo -e "\n\nNight pre-processing (all $NUM_NIGHTS nights) took $(fmt_time $NIGHT_ELAPSED)"
+echo -e "All nights pre-processed. Starting common reduction steps\n"
+
+ASTROMETRY_START_TIME=$(date +%s)
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+    --output="$LOGDIR/setup_%j.out" --error="$LOGDIR/setup_%j.err" \
+    bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p astrometry-setup '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/solve_%j.out" --error="$LOGDIR/solve_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p astrometry-solve '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/sexscamp_%j.out" --error="$LOGDIR/sexscamp_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p sextractor-scamp '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/warp_%j.out" --error="$LOGDIR/warp_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p warp '$CONFIG_FILE'"
+
+ASTROMETRY_END_TIME=$(date +%s)
+ASTROMETRY_ELAPSED=$(( ASTROMETRY_END_TIME - ASTROMETRY_START_TIME ))
+echo "Astrometrisation (astrometry-setup, astrometry-solve, sextractor-scamp, warp) took $(fmt_time $ASTROMETRY_ELAPSED)"
+
+SKY_START_TIME=$(date +%s)
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/sky_%j.out" --error="$LOGDIR/sky_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p sky '$CONFIG_FILE'"
+     
+SKY_END_TIME=$(date +%s)
+SKY_ELAPSED=$(( SKY_END_TIME - SKY_START_TIME ))
+echo "Sky computation (sky) took $(fmt_time $SKY_ELAPSED)"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/skydiag_%j.out" --error="$LOGDIR/skydiag_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p sky-diagnostics '$CONFIG_FILE'"
+     
+CALIBRATION_START_TIME=$(date +%s)
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/prepcal_%j.out" --error="$LOGDIR/prepcal_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p prepare-calibration-data '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/calFactors_%j.out" --error="$LOGDIR/calFactors_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p compute-calibration-factors '$CONFIG_FILE'"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/calFactorsDiagnostic_%j.out" --error="$LOGDIR/calFactorsDiagnostic_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p calibration-factors-diagnostics '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/applyCalFacts_computeFWHM_%j.out" --error="$LOGDIR/applyCalFacts_computeFWHM_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p apply-calibration-and-fwhm '$CONFIG_FILE'"
+CALIBRATION_END_TIME=$(date +%s)
+CALIBRATION_ELAPSED=$(( CALIBRATION_END_TIME - CALIBRATION_START_TIME ))
+echo "Calibration (prepare-calibration-data, compute-calibration-factors, calibration-factors-diagnostics, apply-calibration-and-fwhm) took $(fmt_time $CALIBRATION_ELAPSED)"
+
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/preCoaddDiagnosis_%j.out" --error="$LOGDIR/cpreCoaddDiagnosis_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p background-astrometry-calibPlot-diagnostics '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/smallToFullGrid_%j.out" --error="$LOGDIR/smallToFullGrid_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p small-to-fullGrid '$CONFIG_FILE'"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/removebadblocks_%j.out" --error="$LOGDIR/removebadblocks_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p remove-bad-frames-and-create-blocks '$CONFIG_FILE'"
+
+COADD_START_TIME=$(date +%s)
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/coaddblocks_%j.out" --error="$LOGDIR/coaddblocks_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p build-coadd-blocks '$CONFIG_FILE'"
+     
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/stitch_%j.out" --error="$LOGDIR/stitch_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p stitch-coadds '$CONFIG_FILE'"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/coaddmask_%j.out" --error="$LOGDIR/coaddmask_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p coadd-mask-and-diagnostics '$CONFIG_FILE'"
+COADD_END_TIME=$(date +%s)
+COADD_ELAPSED=$(( COADD_END_TIME - COADD_START_TIME ))
+echo "Coadd building (build-coadd-blocks, stitch-coadds, coadd-mask-and-diagnostics) took $(fmt_time $COADD_ELAPSED)"
+
+
+MASKING_AND_SKY_IT2_START_TIME=$(date +%s)
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2mask_%j.out" --error="$LOGDIR/it2mask_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p create-it2-Mask '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2masksky_%j.out" --error="$LOGDIR/it2masksky_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-mask-and-sky '$CONFIG_FILE'"
+MASKING_AND_SKY_IT2_END_TIME=$(date +%s)
+MASKSKY_IT2=$(( MASKING_AND_SKY_IT2_END_TIME - MASKING_AND_SKY_IT2_START_TIME ))
+echo "It2 masking and sky (create-it2-Mask, it2-mask-and-sky) took $(fmt_time MASKSKY_IT2)"
+
+CALIBRATION_IT2_START_TIME=$(date +%s)
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2calfactors_%j.out" --error="$LOGDIR/it2calfactors_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-compute-calibration-factors '$CONFIG_FILE'"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2calibdiag_%j.out" --error="$LOGDIR/it2calibdiag_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-calibration-factors-diagnostics '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2applycal_%j.out" --error="$LOGDIR/it2applycal_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-apply-calibration-factors '$CONFIG_FILE'"
+CALIBRATION_IT2_END_TIME=$(date +%s)
+CALIBRATION_IT2_ELAPSED=$(( CALIBRATION_IT2_END_TIME - CALIBRATION_IT2_START_TIME ))
+echo "Calibration it2 (compute-calibration-factors, calibration-factors-diagnostics, apply-calibration-and-fwhm) took $(fmt_time $CALIBRATION_IT2_ELAPSED)"
+
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2fwhmcalib_%j.out" --error="$LOGDIR/it2fwhmcalib_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-fwhm-and-calibPlot-diagnostics '$CONFIG_FILE'"
+
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2sg2fg_%j.out" --error="$LOGDIR/it2sg2fg_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-small-to-fullGrid '$CONFIG_FILE'"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2removebadblocks_%j.out" --error="$LOGDIR/it2removebadblocks_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-remove-bad-frames-and-create-blocks '$CONFIG_FILE'"
+
+COADD_IT2_START_TIME=$(date +%s)
+srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
+     --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2coaddblocks_%j.out" --error="$LOGDIR/it2coaddblocks_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-build-coadd-blocks '$CONFIG_FILE'"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2stitch_%j.out" --error="$LOGDIR/it2stitch_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-stitch-coadds '$CONFIG_FILE'"
+
+srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
+     --output="$LOGDIR/it2keywords_%j.out" --error="$LOGDIR/it2keywords_%j.err" \
+     bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p it2-coadd-keywords '$CONFIG_FILE'"
+COADD_IT2_END_TIME=$(date +%s)
+COADD_IT2_ELAPSED=$(( COADD_IT2_END_TIME - COADD_IT2_START_TIME ))
+echo "Coadd it2 building (build-coadd-blocks, stitch-coadds, coadd-mask-and-diagnostics) took took $(fmt_time $COADD_IT2_ELAPSED)"
+
+
+
+PIPELINE_END_TIME=$(date +%s)
+ELAPSED=$(( PIPELINE_END_TIME - PIPELINE_START_TIME ))
+echo "Pipeline execution completed at $(date). Total elapsed time: ${ELAPSED}s ($(printf '%02d:%02d:%02d' $((ELAPSED/3600)) $((ELAPSED%3600/60)) $((ELAPSED%60))))"
