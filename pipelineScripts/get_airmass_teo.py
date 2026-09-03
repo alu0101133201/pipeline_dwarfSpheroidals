@@ -4,7 +4,8 @@ from astropy.time import Time
 from astropy import units as u
 import sys
 from astropy.io import fits
-
+from astropy.utils.iers import conf
+conf.auto_max_age = None
 ###Variables: file, dateheaderkeyword, ra, dec
 img = sys.argv[1]
 datK = sys.argv[2]
