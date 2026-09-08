@@ -4502,7 +4502,11 @@ renameFiles(){
     echo done > "$framesForCommonReductionDir/rename_done.txt"
   fi
 
-  ls "$framesForCommonReductionDir"/*.fits | wc -l > "$totalFramesFile"
+  if [ -f "$totalFramesFile" ]; then
+    echo "Total number of frames already counted"
+  else
+    ls "$framesForCommonReductionDir"/*.fits | wc -l > "$totalFramesFile"
+  fi
   totalNumberOfFrames=$(cat "$totalFramesFile")
   export totalNumberOfFrames
   echo -e "* Total number of frames to combine: ${GREEN} $totalNumberOfFrames ${NOCOLOUR} *"

@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --nodes=6
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=48
-#SBATCH --time=02:00:00
-#SBATCH --job-name=DDO216_parallel
+#SBATCH --time=24:00:00
+#SBATCH --job-name=DDO216_r
 #SBATCH --output=%j.out
 #SBATCH --error=%j.err
 #SBATCH --mem=88G
@@ -13,7 +13,7 @@ galaxyName="DDO216_r"
 WORKSPACE_DIR=$(pwd)
 CONFIG_FILE="${WORKSPACE_DIR}/"$galaxyName".conf"
 VENV_PATH=$(realpath ../env_lapalma/bin/activate)
-PIPELINE_SCRIPT=$(realpath ../pipeline_new/pipeline.sh)
+PIPELINE_SCRIPT=$(realpath ../pipeline/pipeline.sh)
 
 LOGDIR="${WORKSPACE_DIR}/logs"
 mkdir -p "$LOGDIR"
@@ -70,9 +70,13 @@ srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_
      --output="$LOGDIR/warp_%j.out" --error="$LOGDIR/warp_%j.err" \
      bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p warp '$CONFIG_FILE'"
 
+rm build/astro-ima/*.fits
+rm build/framesForCommonReduction/*.fits
+
 ASTROMETRY_END_TIME=$(date +%s)
 ASTROMETRY_ELAPSED=$(( ASTROMETRY_END_TIME - ASTROMETRY_START_TIME ))
 echo "Astrometrisation (astrometry-setup, astrometry-solve, sextractor-scamp, warp) took $(fmt_time $ASTROMETRY_ELAPSED)"
+
 
 SKY_START_TIME=$(date +%s)
 srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
@@ -110,9 +114,10 @@ CALIBRATION_END_TIME=$(date +%s)
 CALIBRATION_ELAPSED=$(( CALIBRATION_END_TIME - CALIBRATION_START_TIME ))
 echo "Calibration (prepare-calibration-data, compute-calibration-factors, calibration-factors-diagnostics, apply-calibration-and-fwhm) took $(fmt_time $CALIBRATION_ELAPSED)"
 
+rm build/sub-sky-smallGrid_it1/*.fits
 
 srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \
-     --output="$LOGDIR/preCoaddDiagnosis_%j.out" --error="$LOGDIR/cpreCoaddDiagnosis_%j.err" \
+     --output="$LOGDIR/coaddDiagnosis_%j.out" --error="$LOGDIR/coaddDiagnosis_%j.err" \
      bash -c "source '$VENV_PATH' && '$PIPELINE_SCRIPT' -p background-astrometry-calibPlot-diagnostics '$CONFIG_FILE'"
 
 srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
@@ -155,6 +160,9 @@ MASKING_AND_SKY_IT2_END_TIME=$(date +%s)
 MASKSKY_IT2=$(( MASKING_AND_SKY_IT2_END_TIME - MASKING_AND_SKY_IT2_START_TIME ))
 echo "It2 masking and sky (create-it2-Mask, it2-mask-and-sky) took $(fmt_time MASKSKY_IT2)"
 
+
+rm build/pointings_smallGrid_masked_it2/*.fits
+
 CALIBRATION_IT2_START_TIME=$(date +%s)
 srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_TASK \
      --export=ALL,SLURM_CPUS_ON_NODE=$SLURM_CPUS_PER_TASK \
@@ -172,6 +180,9 @@ srun --exact -N $SLURM_JOB_NUM_NODES -n $SLURM_JOB_NUM_NODES -c $SLURM_CPUS_PER_
 CALIBRATION_IT2_END_TIME=$(date +%s)
 CALIBRATION_IT2_ELAPSED=$(( CALIBRATION_IT2_END_TIME - CALIBRATION_IT2_START_TIME ))
 echo "Calibration it2 (compute-calibration-factors, calibration-factors-diagnostics, apply-calibration-and-fwhm) took $(fmt_time $CALIBRATION_IT2_ELAPSED)"
+
+
+rm build/sub-sky-smallGrid_it2/*.fits
 
 
 srun --exact -N 1 -n 1 -c $SLURM_CPUS_PER_TASK \

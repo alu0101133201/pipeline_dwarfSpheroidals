@@ -344,7 +344,6 @@ oneNightPreProcessing() {
  		    air=$(python3 $pythonScriptsPath/get_airmass_teo.py $i $dateHeaderKey $ra_gal $dec_gal $telescopeLat $telescopeLong $telescopeElevation)
        	astfits $i --write=$airMassKeyWord,$air,"Updated from secz"
       fi
-    	
       echo $air >> $skydir/airmass.txt
     done
     echo done > $skydone
